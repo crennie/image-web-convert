@@ -7,7 +7,7 @@ import type {
 import type { HttpLogger } from 'pino-http';
 import type pino from 'pino';
 import { randomUUID } from 'node:crypto';
-import { getTraceCorrelation } from './bootstrap.js';
+import { getTraceCorrelation } from './instrumentation.js';
 import { loadObservabilityConfig } from './config.js';
 
 /**
