@@ -1,6 +1,6 @@
 import type pino from 'pino';
 import { loadObservabilityConfig } from './config.js';
-import { getTraceCorrelation } from './bootstrap.js';
+import { getTraceCorrelation } from './instrumentation.js';
 
 export type GetLoggerOptions = {
     level?: pino.LevelWithSilent;

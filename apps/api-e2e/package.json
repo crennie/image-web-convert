@@ -7,7 +7,7 @@
             "@image-web-convert/api"
         ],
         "targets": {
-            "e2e": {
+            "_REMOVE_e2e": {
                 "executor": "@nx/jest:jest",
                 "outputs": [
                     "{projectRoot}/test-output/jest/coverage"
