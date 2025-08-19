@@ -17,6 +17,15 @@
         },
         {
             "path": "./libs/ui"
+        },
+        {
+            "path": "./libs/schemas"
+        },
+        {
+            "path": "./libs/observability"
+        },
+        {
+            "path": "./libs/observability"
         }
     ]
 }

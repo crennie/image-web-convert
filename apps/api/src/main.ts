@@ -1,21 +1,45 @@
-/**
- * This is not a production server yet!
- * This is only a minimal backend to get started.
- */
+import { initTelemetry } from '@image-web-convert/observability';
 
-import express from 'express';
-import * as path from 'path';
+(async () => {
+    await initTelemetry();
+    const http = await import('node:http');
+    const { loadEnv } = await import('./env.js');
+    const { createApp } = await import('./app.js');
 
-const app = express();
+    async function main() {
+        const env = loadEnv();
 
-app.use('/assets', express.static(path.join(__dirname, 'assets')));
+        const app = await createApp();
+        const server = http.createServer(app);
 
-app.get('/api', (req, res) => {
-    res.send({ message: 'Welcome to api!' });
-});
+        // Start server
+        server.listen(env.PORT, () => {
+            // mark ready once we are listening
+            app.locals.setReady?.(true);
+            console.log(`API listening on http://0.0.0.0:${env.PORT}`);
+        });
 
-const port = process.env.PORT || 3333;
-const server = app.listen(port, () => {
-    console.log(`Listening at http://localhost:${port}/api`);
-});
-server.on('error', console.error);
+        const shutdown = (signal: string) => {
+            console.log(`\n${signal} received. Shutting down...`);
+            app.locals.setReady?.(false);
+            server.close((err) => {
+                if (err) {
+                    console.error('Error during server close:', err);
+                    process.exit(1);
+                }
+                process.exit(0);
+            });
+
+            // Fallback hard-exit if something hangs
+            setTimeout(() => process.exit(1), 10_000).unref();
+        };
+
+        process.on('SIGINT', () => shutdown('SIGINT'));
+        process.on('SIGTERM', () => shutdown('SIGTERM'));
+    }
+
+    main().catch((err) => {
+        console.error('Fatal startup error:', err);
+        process.exit(1);
+    });
+})();
