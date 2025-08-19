@@ -1,5 +1,6 @@
 {
     "compilerOptions": {
+        "baseUrl": ".",
         "composite": true,
         "declarationMap": true,
         "emitDeclarationOnly": true,
@@ -16,9 +17,11 @@
         "skipLibCheck": true,
         "strict": true,
         "target": "es2022",
-        "customConditions": ["development"]
-    },
-    "paths": {
-        "@image-web-convert/ui": ["libs/ui"]
+        "customConditions": ["development"],
+        "paths": {
+            "@image-web-convert/observability": ["libs/observability"],
+            "@image-web-convert/schemas": ["libs/schemas"],
+            "@image-web-convert/ui": ["libs/ui"]
+        }
     }
 }
