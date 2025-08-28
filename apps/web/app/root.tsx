@@ -7,12 +7,12 @@ import {
     type MetaFunction,
     type LinksFunction,
 } from 'react-router';
-
-import { AppNav } from './app-nav';
+import { Nav } from '@image-web-convert/ui';
+import "../styles.css";
 
 export const meta: MetaFunction = () => [
     {
-        title: 'New Nx React Router App',
+        title: 'Image Web Converter',
     },
 ];
 
@@ -41,9 +41,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Meta />
                 <Links />
             </head>
-            <body>
-                <AppNav />
-                {children}
+            <body className="bg-background text-foreground min-h-screen">
+                <div className="pt-[65px]">
+                    <Nav className="h-[65px]" />
+                    {children}
+                </div>
                 <ScrollRestoration />
                 <Scripts />
             </body>

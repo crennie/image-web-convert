@@ -1,1 +1,51 @@
-/* You can add global styles to this file, and also import other style files */
+@import 'tailwindcss';
+@source "../../libs/ui/src";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+    /* font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+
+    color-scheme: light dark;
+    color: rgba(255, 255, 255, 0.87); */
+    --background: oklch(0.8926 0.1018 128.08);
+    --foreground: oklch(0.1312 0.0165 276.19);
+
+    --primary: oklch(0.406 0.0485 179.57);
+    --primary-foreground: oklch(1 0 0);
+
+    --secondary: oklch(0.7688 0.0331 56.46);
+    --secondary-foreground: oklch(0.1312 0.0165 276.19);
+
+    --destructive: oklch(0.577 0.245 27.325);
+
+    --muted: oklch(0.9745 0.0239 127.57)
+}
+
+.dark {
+    --background: oklch(0.8926 0.1018 128.08);
+    --foreground: oklch(0.1312 0.0165 276.19);
+
+    --primary: oklch(0.406 0.0485 179.57);
+    --primary-foreground: oklch(0.1312 0.0165 276.19);
+
+    --secondary: oklch(0.7688 0.0331 56.46);
+    --secondary-foreground: oklch(0.1312 0.0165 276.19);
+
+    --destructive: oklch(0.577 0.245 27.325);
+
+    --muted: oklch(0.9745 0.0239 127.57)
+}
+
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-destructive: var(--destructive);
+    --color-muted: var(--muted);
+}
