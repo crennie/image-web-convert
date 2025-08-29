@@ -1,4 +1,18 @@
-import { FileUpload, PageLayout } from '@image-web-convert/ui';
+import { Button, FileUpload, PageLayout } from '@image-web-convert/ui';
+import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
+
+
+function fallbackRender({ error, resetErrorBoundary }: FallbackProps) {
+    return (
+        <div role="alert">
+            <p>Something went wrong:</p>
+            <pre className="text-destructive">{error.message}</pre>
+            <Button variant="primary" onClick={() => resetErrorBoundary()}>
+                Try again
+            </Button>
+        </div>
+    );
+}
 
 export function ConversionPage() {
     return (
@@ -10,7 +24,14 @@ export function ConversionPage() {
                 </div>
 
                 <div className="">
-                    <FileUpload />
+                    <ErrorBoundary
+                        fallbackRender={fallbackRender}
+                        onReset={(details) => {
+                            // Reset the state of your app so the error doesn't happen again
+                        }}
+                    >
+                        <FileUpload />
+                    </ErrorBoundary>
                 </div>
             </div>
         </PageLayout>

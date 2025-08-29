@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const EnvSchema = z.object({
     APP_VERSION: z.string().default('0.0.0'),
-    
+
     PORT: z.coerce.number().int().positive().default(3000),
 
     BODY_LIMIT_JSON: z.string().default('2mb'),

@@ -17,6 +17,7 @@ export function ValidationErrors({ errors }: ValidationErrorsProps) {
 
     if (!errors.length) return;
     const displayError = errors[displayIndex];
+
     return (
         <div className="flex items-center gap-1 text-destructive">
             <div className="flex shrink-0">
