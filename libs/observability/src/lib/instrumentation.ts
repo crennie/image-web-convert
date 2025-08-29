@@ -53,7 +53,7 @@ export async function initTelemetry(
     // SDK internal diagnostics: quiet in prod, helpful in dev.
     diag.setLogger(
         new DiagConsoleLogger(),
-        cfg.environment === 'prod' ? DiagLogLevel.ERROR : DiagLogLevel.INFO
+        cfg.environment === 'prod' ? DiagLogLevel.ERROR : DiagLogLevel.WARN
     );
 
     if (!cfg.enabled) {

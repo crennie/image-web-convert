@@ -14,7 +14,7 @@ export function FilePicker({ clearErrors, onFilesPicked, onPreOpen }: FilePicker
     const inputRef = useRef<HTMLInputElement>(null);
     const onChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
         const files: File[] = [...e.target.files ?? []];
-        e.currentTarget.value = "";
+        e.currentTarget.value = ""; // Directly reset input field so browser recognizes same file chosen twice in a row
         onFilesPicked(files);
     }, [onFilesPicked]);
 
@@ -36,9 +36,9 @@ export function FilePicker({ clearErrors, onFilesPicked, onPreOpen }: FilePicker
 
     return (
         <FileUploadCardLayout>
-            <input ref={inputRef} id="file-upload" name="file-upload" type="file" multiple={true} onChange={onChange}
+            <input ref={inputRef} id="file-uploads" name="file-uploads" type="file" multiple={true} onChange={onChange}
                 className="hidden" />
-            <label tabIndex={0} htmlFor="file-upload" className="flex flex-col gap-3 items-center justify-center w-full h-full cursor-pointer text-primary"
+            <label tabIndex={0} htmlFor="file-uploads" className="flex flex-col gap-3 items-center justify-center w-full h-full cursor-pointer text-primary"
                 onClick={clearErrors}
                 onKeyDown={handleLabelKeyDown}
             >
