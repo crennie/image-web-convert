@@ -1,14 +1,15 @@
 import { initTelemetry } from '@image-web-convert/observability';
 
 (async () => {
-    await initTelemetry();
-    const http = await import('node:http');
     const { loadEnv } = await import('./env.js');
+    const env = loadEnv();
+    if (env.ENABLE_OTEL) {
+        await initTelemetry();
+    }
+    const http = await import('node:http');
     const { createApp } = await import('./app.js');
 
     async function main() {
-        const env = loadEnv();
-
         const app = await createApp();
         const server = http.createServer(app);
 

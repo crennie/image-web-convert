@@ -1,11 +1,11 @@
 import { HTMLAttributes, ReactNode } from "react"
 import { cn } from "../utils";
 
-interface FileUploadCardLayoutProps extends HTMLAttributes<HTMLDivElement> {
+interface FileCardLayoutProps extends HTMLAttributes<HTMLDivElement> {
     children: ReactNode
 }
 
-export function FileUploadCardLayout({ children, ...props }: FileUploadCardLayoutProps) {
+export function FileCardLayout({ children, ...props }: FileCardLayoutProps) {
     return (
         <div
             {...props}
@@ -17,4 +17,4 @@ export function FileUploadCardLayout({ children, ...props }: FileUploadCardLayou
     )
 }
 
-export default FileUploadCardLayout;
+export default FileCardLayout;

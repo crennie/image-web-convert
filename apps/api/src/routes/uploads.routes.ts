@@ -2,10 +2,10 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { Router } from 'express';
 import fileUpload from 'express-fileupload';
-import { create as createUpload } from '../controllers/upload.controller';
+import { create as createUpload } from '../controllers/uploads.controller';
 import { normalizeAbsolutePath } from '../services/storage.service';
 
-const uploadRouter = Router();
+const uploadsRouter = Router({ mergeParams: true });
 
 // ---- router-scoped upload middleware (only affects /upload routes) ----
 export const UPLOAD_TMP_DIR = normalizeAbsolutePath(process.env.UPLOAD_TMP_DIR ?? path.resolve(process.cwd(), 'data', 'tmp'));
@@ -15,7 +15,7 @@ if (!fs.existsSync(UPLOAD_TMP_DIR)) {
     fs.mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
 }
 
-uploadRouter.use(
+uploadsRouter.use(
     fileUpload({
         useTempFiles: true,
         tempFileDir: UPLOAD_TMP_DIR,
@@ -26,7 +26,7 @@ uploadRouter.use(
     })
 );
 
-// POST /upload
-uploadRouter.post('/', createUpload);
+// POST /sessions/:sid/uploads
+uploadsRouter.post('/', createUpload);
 
-export default uploadRouter;
+export default uploadsRouter;

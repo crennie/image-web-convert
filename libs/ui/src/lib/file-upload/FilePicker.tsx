@@ -1,7 +1,7 @@
 'use client';
 
 import { ChangeEvent, useCallback, useRef } from "react";
-import FileUploadCardLayout from "./FileUploadCardLayout";
+import { FileCardLayout } from "../files/FileCardLayout";
 import { FaPlus } from "react-icons/fa";
 
 interface FilePickerProps {
@@ -35,7 +35,7 @@ export function FilePicker({ clearErrors, onFilesPicked, onPreOpen }: FilePicker
     );
 
     return (
-        <FileUploadCardLayout>
+        <FileCardLayout>
             <input ref={inputRef} id="file-uploads" name="file-uploads" type="file" multiple={true} onChange={onChange}
                 className="hidden" />
             <label tabIndex={0} htmlFor="file-uploads" className="flex flex-col gap-3 items-center justify-center w-full h-full cursor-pointer text-primary"
@@ -45,7 +45,7 @@ export function FilePicker({ clearErrors, onFilesPicked, onPreOpen }: FilePicker
                 <span className="text-lg">Add file(s)</span>
                 <FaPlus className="size-10" />
             </label>
-        </FileUploadCardLayout>
+        </FileCardLayout>
     )
 }
 

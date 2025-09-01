@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
-import Button from "../Button";
+import { Button } from "../Button";
 
 interface ValidationErrorsProps {
     errors: string[];

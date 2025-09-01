@@ -1,4 +1,4 @@
-import Button from "../Button";
+import { Button}  from "../Button";
 
 interface DownloadActionsProps {
     onDownload: () => void;
@@ -6,9 +6,9 @@ interface DownloadActionsProps {
 export function DownloadActions({ onDownload }: DownloadActionsProps) {
     return (
         <div className="flex">
-            <Button type="button" variant="secondary" className="w-55"
+            <Button type="button" variant="primary" className="w-fit"
                 onClick={onDownload}>
-                Download Successful Uploads (.zip)
+                Download Converted Files (.zip)
             </Button>
         </div>
     )

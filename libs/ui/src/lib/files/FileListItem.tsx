@@ -1,0 +1,76 @@
+'use client';
+
+import { useCallback, useState } from "react";
+import { FileCardLayout } from "./FileCardLayout";
+import { Button } from "../Button";
+import { FaDownload, FaTimes } from "react-icons/fa";
+import { cn } from "../utils";
+
+export type FileItem = {
+    id: string;
+    file: File;
+    previewUrl?: string;
+    errors?: string[];
+}
+
+interface FileListItemProps {
+    item: FileItem;
+    showDownload?: boolean;
+    showRemove?: boolean;
+    onRemove?: (item: FileItem) => void;
+    onDownload?: (item: FileItem) => void;
+}
+
+export function FileListItem({
+    item,
+    showDownload = false,
+    showRemove = false,
+    onRemove,
+    onDownload,
+}: FileListItemProps) {
+    const [previewOk, setPreviewOk] = useState(true);
+    const [isLoading, setIsLoading] = useState(false); // TODO: per-item UI loading until preview is ready?
+    const handleImgError = useCallback(() => {
+        setPreviewOk(false);
+        return item.file;
+    }, [item]);
+
+    const cardClickProps = showDownload && onDownload ? { onClick: () => onDownload(item) } : {};
+    return (
+        <FileCardLayout
+            className={cn("bg-muted", showDownload && onDownload ? "cursor-pointer" : null)}
+            {...cardClickProps}
+        >
+            {isLoading ? <>LOADING...</> : null}
+            {!isLoading ? (
+                <>
+                    {showRemove ? (
+                        <Button variant="ghost" className="absolute right-2 top-2 text-destructive"
+                            onClick={() => onRemove?.(item)}
+                        >
+                            <FaTimes className="size-8" />
+                        </Button>) : null
+                    }
+                    {showDownload ? (
+                        <Button variant="ghost" className="absolute right-2 top-2 text-blue-500"
+                            onClick={() => onDownload?.(item)}
+                        >
+                            <FaDownload className="size-8" />
+                        </Button>) : null
+                    }
+                    {previewOk ?
+                        <img
+                            onError={handleImgError}
+                            src={item.previewUrl} alt={item.file.name} /> :
+                        <>No preview available</>
+                    }
+                    <div className="bg-background rounded-t-lg absolute bottom-0 max-w-[80%] truncate px-3">
+                        {item.file.name}
+                    </div>
+                </>
+            ) : null}
+        </FileCardLayout>
+    )
+}
+
+export default FileListItem;

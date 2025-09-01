@@ -1,0 +1,77 @@
+
+import { useCallback } from "react";
+import { DownloadActions } from "./DownloadActions";
+import { useFileDownloads } from "./hooks/useFileDownloads";
+import { ApiUploadAccepted, ApiUploadRejected } from "@image-web-convert/schemas";
+import { FileItem } from "../files/FileListItem";
+import { FileList } from "../files/FileList";
+import { FaTimes } from "react-icons/fa";
+
+interface FileDownloadProps {
+    items: FileItem[];
+    uploadedFiles: ApiUploadAccepted[];
+    rejectedFiles: ApiUploadRejected[];
+}
+
+export function FileDownload({ items, uploadedFiles, rejectedFiles }: FileDownloadProps) {
+    const { downloadFiles, downloadSingleFile } = useFileDownloads();
+    const handleDownloadAll = useCallback(async () => {
+        const createArchiveName = () => `image_web_convert_${new Date().toJSON().slice(0, 16).replace(/[\-\:T]/g, '_')}.zip`;
+        await downloadFiles(uploadedFiles.map(f => f.id), createArchiveName());
+
+    }, [downloadFiles, uploadedFiles]);
+
+    const handleDownloadOne = useCallback(async (item: FileItem) => {
+        // TODO: HACK FOR NOW -> MATCH UP ITEM BY INDEX -> NEED TO DO SOME ACTUAL
+        // ASSOCIATION
+        const matchingItem = items.find(it => it.id === item.id);
+        const matchingUpload = matchingItem ? uploadedFiles[items.indexOf(matchingItem)] : null;
+        if (matchingUpload) {
+            await downloadSingleFile(matchingUpload.id);
+        } else {
+            // TODO: Throw error or something
+        }
+    }, [uploadedFiles, items, downloadSingleFile]);
+
+    console.log('items', items);
+    console.log('uploaded', uploadedFiles);
+    console.log('rejected', rejectedFiles);
+
+    // TODO: Need a display that will only display the valid uploaded files
+    // Download right now shows all FileItems
+
+    // TODO: For now, display the converted name, webp
+    const downloadItems = items.map(item => ({
+        ...item,
+        file: { ...item.file, name: item.file.name.replace(/(\.[^./?#]+)?([?#]|$)/, '.webp$2') }
+    }))
+
+    return (
+        <>
+            <DownloadActions onDownload={handleDownloadAll} />
+            <div className="mt-4">
+                <h2 className="text-xl">Successful Conversions</h2>
+                <div className="flex flex-wrap gap-6 mt-2">
+                    <FileList items={downloadItems} showDownload={true} onDownload={handleDownloadOne} />
+                </div>
+                {rejectedFiles.length ? (
+                    <div className="mt-8">
+                        <h2 className="text-xl flex">
+                            <FaTimes className="pr-2 size-8 text-destructive" />
+                            Conversion Errors
+                        </h2>
+                        <div className="">
+                            <ul className="list-disc pl-8">
+                                {rejectedFiles.map((rejected, i) => (
+                                    <li key={i} className="">{rejected.fileName} - {rejected.error}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                ) : null}
+            </div>
+        </>
+    )
+}
+
+export default FileDownload;

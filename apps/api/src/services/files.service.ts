@@ -2,7 +2,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import archiver from 'archiver';
 import type { Response } from 'express';
-import { readMeta, pathForStored, normalizeAbsolutePath, UploadMeta } from './storage.service';
+import { readMeta, pathForStored, normalizeAbsolutePath } from './storage.service';
+import { ApiUploadMeta } from '@image-web-convert/schemas';
 
 export type ResolvedDownload = {
     id: string;
@@ -11,20 +12,28 @@ export type ResolvedDownload = {
     archiveName: string;         // filename to use inside a ZIP (unique, order-preserving)
     contentType: string;         // e.g., 'image/webp'
     contentDisposition: string;  // precomputed header for single downloads
-    meta: UploadMeta;            // sidecar metadata (not added to ZIP per requirements)
+    meta: ApiUploadMeta;            // sidecar metadata (not added to ZIP per requirements)
 };
 
-export async function resolveFilesByIds(ids: string[]): Promise<{ found: ResolvedDownload[]; missing: string[] }> {
+interface ResolvedFilesResponse {
+    found: ResolvedDownload[];
+    missing: string[];
+}
+
+export async function resolveFilesByIds(sid: string, ids: string[]): Promise<ResolvedFilesResponse> {
     const found: ResolvedDownload[] = [];
     const missing: string[] = [];
 
     for (const id of ids) {
-        const meta = await readMeta(id);
+        // TODO: If having two meta types, need way to pull 
+        // "ApiUploadMeta" from all meta contents "UploadMeta".
+        const meta = await readMeta(sid, id);
         if (!meta) {
             missing.push(id);
             continue;
         }
-        const absPath = normalizeAbsolutePath(pathForStored(id, meta.output.storedName));
+        // Path must be absolute when sending in response
+        const absPath = normalizeAbsolutePath(pathForStored(sid, meta.output.storedName));
         if (!fs.existsSync(absPath)) {
             missing.push(id);
             continue;
@@ -84,9 +93,10 @@ export async function streamZip(
 }
 
 /* ----------------------------- helpers ----------------------------- */
-function buildDownloadName(meta: UploadMeta): string {
+function buildDownloadName(meta: ApiUploadMeta): string {
     const base = path.parse(meta.original.name).name || meta.id;
     const safeBase = base.replace(/[/\\?%*:|"<>]/g, '_');
+    // Hard-code webp, it's the only type of conversion output available
     return `${safeBase}.webp`;
 }
 

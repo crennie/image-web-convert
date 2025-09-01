@@ -1,15 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileUploadItem } from "../FileUpload";
 import useValidation, { ValidateFilesRejected } from "./useValidation";
+import { FileItem } from "../../files/FileListItem";
 
 function rejectedErrorMsg(rejectedItem: ValidateFilesRejected) {
     return `${rejectedItem.file.name} - ${rejectedItem.reason}`;
 }
 
-export function useFileUpload() {
-    const [items, setItems] = useState<FileUploadItem[]>([]);
+export function useFileItems() {
+    const [items, setItems] = useState<FileItem[]>([]);
     const [errors, setErrors] = useState<string[]>([]);
     const { validateFiles } = useValidation();
     // Keep a ref-based registry of previews
@@ -45,7 +45,7 @@ export function useFileUpload() {
         }
     }, []);
 
-    const removeItem = useCallback((item: FileUploadItem) => {
+    const removeItem = useCallback((item: FileItem) => {
         disposeFilePreviews(item.id);
         setItems(prev => prev.filter(item_ => item_.id !== item.id));
     }, [disposeFilePreviews]);
@@ -73,4 +73,4 @@ export function useFileUpload() {
     }
 }
 
-export default useFileUpload;
+export default useFileItems;

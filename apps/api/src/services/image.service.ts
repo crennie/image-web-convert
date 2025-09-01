@@ -94,7 +94,7 @@ export async function processImageToWebp({
             height: info.height,
             sizeBytes: data.byteLength,
             colorSpace: 'srgb',
-            animated: false, // Phase 1: first frame only
+            animated: false,
             exifStripped: true,
         },
         inputMeta: {

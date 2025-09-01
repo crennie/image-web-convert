@@ -24,6 +24,7 @@ export const DEFAULT_IMG_OPTS: ImageProcessingOptions = {
     limitInputPixels: 200_000_000, // ~200MP
 };
 
+// TODO: Share this in schemas?
 // Allow-list of true image MIME types we’ll accept in Phase 1
 export const ALLOWED_IMAGE_MIME = new Set<string>([
     'image/jpeg',

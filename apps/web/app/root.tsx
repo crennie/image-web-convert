@@ -8,7 +8,7 @@ import {
     type LinksFunction,
     isRouteErrorResponse,
 } from 'react-router';
-import { Nav } from '@image-web-convert/ui';
+import { Nav, SessionProvider } from '@image-web-convert/ui';
 import "../styles.css";
 
 export function ErrorBoundary(...args: any[]) {
@@ -71,7 +71,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <body className="bg-background text-foreground min-h-screen">
                 <div className="pt-[65px]">
                     <Nav className="h-[65px]" />
-                    {children}
+                    <SessionProvider>
+                        {children}
+                    </SessionProvider>
                 </div>
                 <ScrollRestoration />
                 <Scripts />
