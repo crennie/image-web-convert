@@ -15,6 +15,11 @@ const EnvSchema = z.object({
         .string()
         .transform((v) => (String(v).toLowerCase() === 'false' ? false : v))
         .default('false') as z.ZodType<string | false>,
+
+    ENABLE_OTEL: z
+        .string()
+        .transform((v) => (String(v).toLowerCase() === 'false' ? false : v))
+        .default('false') as z.ZodType<string | false>,
 });
 
 export type Env = z.infer<typeof EnvSchema>;

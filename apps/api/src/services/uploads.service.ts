@@ -1,21 +1,18 @@
 import type { UploadedFile } from 'express-fileupload';
-import { SaveResult, saveUploadFile } from './storage.service';
+import { saveUploadFile } from './storage.service';
+import { ApiUploadAccepted, ApiUploadRejected } from '@image-web-convert/schemas';
 
-export type SaveAccepted = SaveResult;
+interface SaveUploadsResponse {
+    accepted: ApiUploadAccepted[];
+    rejected: ApiUploadRejected[];
+}
 
-export type SaveRejected = {
-    fileName: string;
-    error: string;
-};
-
-export async function saveUploads(
-    uploads: UploadedFile[]
-): Promise<{ accepted: SaveAccepted[]; rejected: SaveRejected[] }> {
-    const promises = uploads.map((uf) => saveUploadFile(uf));
+export async function saveUploads(sid: string, uploads: UploadedFile[]): Promise<SaveUploadsResponse> {
+    const promises = uploads.map((uf) => saveUploadFile(sid, uf));
     const settled = await Promise.allSettled(promises);
 
-    const accepted: SaveAccepted[] = [];
-    const rejected: SaveRejected[] = [];
+    const accepted: ApiUploadAccepted[] = [];
+    const rejected: ApiUploadRejected[] = [];
 
     settled.forEach((result, i) => {
         if (result.status === 'fulfilled') {

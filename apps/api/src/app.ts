@@ -25,9 +25,11 @@ export async function createApp(deps?: AppDeps): Promise<express.Express> {
     const app = express();
 
     // 0) Init OpenTelemetry logging
-    const logger = await getLogger(); // pass to logContext(logger)
-    app.use(await logContext(logger)); // logs + req.id + correlation
-    app.use(requestContext()); // sets X-Request-Id, X-Trace-Id
+    if (env.ENABLE_OTEL) {
+        const logger = await getLogger(); // pass to logContext(logger)
+        app.use(await logContext(logger)); // logs + req.id + correlation
+        app.use(requestContext()); // sets X-Request-Id, X-Trace-Id
+    }
 
     // 1) Process-level
     app.set('trust proxy', 1);
@@ -70,6 +72,7 @@ export async function createApp(deps?: AppDeps): Promise<express.Express> {
         cors({
             origin: env.CORS_ORIGIN,
             credentials: false,
+            exposedHeaders: ['Content-Disposition', 'Content-Length'],
         })
     );
 
@@ -95,8 +98,8 @@ export async function createApp(deps?: AppDeps): Promise<express.Express> {
     });
     app.use(limiter);
 
-    
-    // --------- API (File Upload/Download) Handler ----
+
+    // --------- API (Session/File Upload/Download) Handler ----
     app.use('/api', apiRouter);
 
     // ---------- Health & readiness ----------
@@ -121,41 +124,6 @@ export async function createApp(deps?: AppDeps): Promise<express.Express> {
         }
         return res.json({ status: 'ready' });
     });
-
-    // app.post('/upload', async (req, res) => {
-
-    //     if (!req.files || Object.keys(req.files).length === 0 || !req.files.uploads) {
-    //         return res.status(400).send('No files were uploaded.');
-    //     }
-
-    //     // The name of the input field (i.e. "sampleFile") is used to retrieve the uploaded file
-    //     const handleFileUpload = async (uploadFile: UploadedFile) => {
-    //         // mv() places the file on the server, it should also be in tmp
-    //         await uploadFile.mv(uploadPath);
-    //         return 'File uploaded';
-    //     };
-
-    //     req.files.uploads = !Array.isArray(req.files.uploads) ? [req.files.uploads] : req.files.uploads;
-
-    //     console.log('=============', req.files.uploads);
-
-    //     const results = await Promise.allSettled(req.files.uploads.map(handleFileUpload));
-    //     // TODO: update the response with detailed file error / download info for each
-    //     if (results.some(p => p.status === 'rejected')) {
-    //         console.log('-------------------------', results);
-    //         res.status(500).json({
-    //             status: 'error',
-    //             message: 'Some files failed to upload',
-    //         });
-    //     } else {
-    //         res.json({
-    //             status: 'ok',
-    //             message: 'File uploaded',
-    //             downloadUrl: 'FOO',
-    //         });
-    //     }
-    //     return res;
-    // });
 
     // ---------- 404 & error handlers ----------
     app.use((req, res) => {

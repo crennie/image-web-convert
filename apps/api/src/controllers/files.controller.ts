@@ -1,23 +1,25 @@
 import type { NextFunction, Request, Response } from 'express';
 import { readMeta, } from '../services/storage.service';
 import { resolveFilesByIds, streamZip } from '../services/files.service';
+import { validateRequestWithToken } from '../services/auth.service';
+import { ApiUploadsErrorSessionUsed } from '@image-web-convert/schemas';
 
-// function dispositionForDownload(originalName: string): string {
-//     // RFC 5987 filename* for UTF-8 + ASCII fallback
-//     const fallback = originalName.replace(/[/\\?%*:|"<>]/g, '_') || 'download';
-//     return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(originalName)}`;
-// }
-// function dispositionForDownload(originalName: string): string {
-//     const base = path.parse(originalName).name || 'download';
-//     const fallback = `${base}.webp`.replace(/[/\\?%*:|"<>]/g, '_');
-//     return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(`${base}.webp`)}`;
-// }
-
-// GET /files/:id  -> download/stream processed image (WebP)
+// GET /sessions/:sid/files/:fileId  -> download/stream processed image (WebP)
 export async function show(req: Request, res: Response) {
-    const { id } = req.params;
+    const { sid, fileId } = req.params;
+    const validateResponse = await validateRequestWithToken(req, res);
+    if (validateResponse.valid === false) {
+        return res.status(validateResponse.status).json(validateResponse.apiError);
+    } else {
+        // Extra 409 sealed check for downloads
+        if (!validateResponse.info.sealedAt) {
+            // TODO: Update error message?
+            const response: ApiUploadsErrorSessionUsed = { type: "session_used", message: "" };
+            return res.status(409).json(response);
+        }
+    }
 
-    const { found, missing } = await resolveFilesByIds([id]);
+    const { found, missing } = await resolveFilesByIds(sid, [fileId]);
     if (found.length === 0) {
         return res.status(404).json({ status: 'error', message: `Requested file not found: "${missing?.[0] ?? ''}` });
     }
@@ -28,22 +30,48 @@ export async function show(req: Request, res: Response) {
     return res.sendFile(file.absPath);
 }
 
-// GET /files/:id/meta  -> metadata JSON (includes original + output info)
+// GET /sessions/:sid/files/:fileId/meta  -> metadata JSON (includes original + output info)
 export async function meta(req: Request, res: Response) {
-    const m = await readMeta(req.params.id);
+    const { sid, fileId } = req.params;
+    const validateResponse = await validateRequestWithToken(req, res);
+    if (validateResponse.valid === false) {
+        return res.status(validateResponse.status).json(validateResponse.apiError);
+    } else {
+        // Extra 409 sealed check for downloads
+        if (!validateResponse.info.sealedAt) {
+            // TODO: Update error message?
+            const response: ApiUploadsErrorSessionUsed = { type: "session_used", message: "" };
+            return res.status(409).json(response);
+        }
+    }
+
+    const m = await readMeta(sid, fileId);
     if (!m) return res.status(404).json({ status: 'error', message: 'Not found' });
     return res.json(m);
 }
 
-// POST /files/download
+// POST /sessions/:sid/files/download
 export async function downloadMany(req: Request, res: Response, next: NextFunction) {
+    const { sid } = req.params;
+    const validateResponse = await validateRequestWithToken(req, res);
+    if (validateResponse.valid === false) {
+        return res.status(validateResponse.status).json(validateResponse.apiError);
+    } else {
+        // Extra 409 sealed check for downloads
+        if (!validateResponse.info.sealedAt) {
+            // TODO: Update error message?
+            const response: ApiUploadsErrorSessionUsed = { type: "session_used", message: "" };
+            return res.status(409).json(response);
+        }
+    }
+
     const ids: unknown = req.body?.ids;
     if (!Array.isArray(ids) || ids.length === 0 || !ids.every((v) => typeof v === 'string')) {
         res.status(400).json({ status: 'error', message: 'Body must include { ids: string[] }' });
         return
     }
 
-    const { found, missing } = await resolveFilesByIds(ids);
+    const { found, missing } = await resolveFilesByIds(sid, ids);
     if (found.length === 0) {
         res.status(404).json({ status: 'error', message: 'None of the requested files were found', missing });
         return;
@@ -61,40 +89,3 @@ export async function downloadMany(req: Request, res: Response, next: NextFuncti
     }
     return Promise<void>;
 }
-
-// // GET /files/:id -> stream/download with original filename
-// export async function show2(req: Request, res: Response) {
-//     const { id } = req.params;
-//     const meta = await readMeta(id);
-//     if (!meta) {
-//         return res.status(404).json({ status: 'error', message: 'Not found' });
-//     }
-
-//     const absPath = normalizeAbsolutePath(pathForStored(id, meta.storedName));
-//     if (!fs.existsSync(absPath)) {
-//         return res.status(404).json({ status: 'error', message: 'File missing' });
-//     }
-
-//     res.setHeader('Content-Type', meta.mimeType || 'application/octet-stream');
-//     res.setHeader('Content-Disposition', dispositionForDownload(meta.originalName));
-//     res.setHeader('Content-Length', String(meta.size));
-
-//     return res.sendFile(absPath, (err) => {
-//         if (err) {
-//             // Avoid "headers already sent" issues: only attempt JSON if not started
-//             if (!res.headersSent) {
-//                 res.status(500).json({ status: 'error', message: 'Failed to send file' });
-//             }
-//         }
-//     });
-// }
-
-// // GET /files/:id/meta -> metadata JSON
-// export async function meta2(req: Request, res: Response) {
-//     const { id } = req.params;
-//     const m = await readMeta(id);
-//     if (!m) {
-//         return res.status(404).json({ status: 'error', message: 'Not found' });
-//     }
-//     return res.json(m);
-// }

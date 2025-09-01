@@ -1,6 +1,6 @@
 import { FaCheck } from "react-icons/fa";
-import Button from "../Button";
-import ValidationErrors from "./ValidationErrors";
+import { Button } from "../Button";
+import { ValidationErrors } from "./ValidationErrors";
 
 interface UploadActionsProps {
     uploadFilesCount: number;

@@ -1,10 +1,12 @@
 import { Router } from 'express';
-import uploadRouter from '../routes/upload.routes';
+import sessionsRouter from '../routes/sessions.routes';
+import uploadsRouter from '../routes/uploads.routes';
 import filesRouter from '../routes/files.routes';
 
 const apiRouter = Router();
 
-apiRouter.use('/upload', uploadRouter);
-apiRouter.use('/files', filesRouter);
+apiRouter.use('/sessions', sessionsRouter);
+apiRouter.use('/sessions/:sid/uploads', uploadsRouter);
+apiRouter.use('/sessions/:sid/files', filesRouter);
 
 export default apiRouter;

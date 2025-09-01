@@ -62,7 +62,8 @@
                 ],
                 "options": {
                     "buildTarget": "@image-web-convert/api:build",
-                    "runBuildTargetDependencies": false
+                    "runBuildTargetDependencies": false,
+                    "watch": true
                 },
                 "configurations": {
                     "development": {

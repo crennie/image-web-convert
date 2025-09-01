@@ -1,5 +1,9 @@
+'use client';
+
 import { useCallback } from "react";
-import { FileUploadConfig, FileUploadItem } from "../FileUpload";
+import { FileUploadConfig } from "../FileUpload";
+import { displayBytes, uiId } from "../../utils";
+import { FileItem } from "../../files/FileListItem";
 
 
 // Helper functions
@@ -12,47 +16,30 @@ function fileDupKey(file: File): string {
 //     return name.slice(i).toLowerCase(); // includes the dot, e.g. ".png"
 // }
 
-function formatBytes(n: number): string {
-    if (!isFinite(n)) return '∞';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let i = 0, v = n;
-    while (v >= 1024 && i < units.length - 1) {
-        v /= 1024; i++;
-    }
-    return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
-}
-
-function safeUuid(): string {
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
-    // Fallback
-    return 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
 // Once file has passed the synchronous checks, turn it into an upload item
-function processFile(file: File): FileUploadItem {
-    const id = safeUuid();
+function processFile(file: File): FileItem {
+    const id = uiId();
     const previewUrl = URL.createObjectURL(file);
     return {
         id,
         file: file,
         previewUrl,
-        status: 'ready',
     };
 }
 
 interface ValidateFilesProps {
     incoming: File[];
-    existing: FileUploadItem[];
+    existing: FileItem[];
     config?: FileUploadConfig;
 }
 
-export type ValidateFilesRejected = {
+export interface ValidateFilesRejected {
     file: File;
     reason: string;
 }
 
 interface ValidateFilesReturn {
-    accepted: FileUploadItem[];
+    accepted: FileItem[];
     rejected: ValidateFilesRejected[];
 }
 
@@ -67,7 +54,7 @@ export function useValidation() {
         } = config;
 
         const rejected: ValidateFilesRejected[] = [];
-        const accepted: FileUploadItem[] = [];
+        const accepted: FileItem[] = [];
 
         // Get current files state
         // Build duplicate lookup for existing items
@@ -108,14 +95,14 @@ export function useValidation() {
 
             // Per-file size
             if (file.size > maxPerFileSizeBytes) {
-                const reason = `Exceeds per-file size limit (${formatBytes(maxPerFileSizeBytes)}).`;
+                const reason = `Exceeds per-file size limit (${displayBytes(maxPerFileSizeBytes)}).`;
                 rejected.push({ file, reason });
                 continue;
             }
 
             // Total size (current + accepted in this call + this file)
             if (currentTotalBytes + runningAddedBytes + file.size > maxTotalBytes) {
-                const reason = `Adding this file would exceed the total size limit (${formatBytes(maxTotalBytes)}).`;
+                const reason = `Adding this file would exceed the total size limit (${displayBytes(maxTotalBytes)}).`;
                 rejected.push({ file, reason });
                 continue;
             }

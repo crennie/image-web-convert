@@ -13,6 +13,9 @@
     "references": [
         {
             "path": "../../libs/observability/tsconfig.lib.json"
+        },
+        {
+            "path": "../../libs/schemas/tsconfig.lib.json"
         }
     ]
 }
