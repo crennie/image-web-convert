@@ -23,16 +23,3 @@ export const DEFAULT_IMG_OPTS: ImageProcessingOptions = {
     animatedPolicy: 'first-frame',
     limitInputPixels: 200_000_000, // ~200MP
 };
-
-// TODO: Share this in schemas?
-// Allow-list of true image MIME types we’ll accept in Phase 1
-export const ALLOWED_IMAGE_MIME = new Set<string>([
-    'image/jpeg',
-    'image/png',
-    'image/webp',
-    'image/gif',   // treated as first frame by default policy
-    'image/avif',  // requires libheif support in sharp/libvips
-    'image/heic',  // optional; include only if your build supports it
-    'image/heif',  // optional; include only if your build supports it
-    'image/tiff',
-]);

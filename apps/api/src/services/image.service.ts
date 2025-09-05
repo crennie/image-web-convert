@@ -1,22 +1,28 @@
 import sharp from 'sharp';
+import fs from 'node:fs/promises';
 import { fileTypeFromFile } from 'file-type';
-import { DEFAULT_IMG_OPTS, type ImageProcessingOptions, ALLOWED_IMAGE_MIME } from './image.config';
+import { DEFAULT_IMG_OPTS, type ImageProcessingOptions } from './image.config';
+import convert from 'heic-convert';
+import { ALLOWED_IMAGE_MIME } from '@image-web-convert/schemas';
+
+// file path or in-memory buffer when adding intermediary conversions (e.g. heic-convert)
+type SharpSource = string | ArrayBuffer;
 
 export type ProcessInput = {
-    inputPath: string;                 // absolute path to temp file
+    inputPath: string; // absolute path to temp file
     options?: Partial<ImageProcessingOptions>;
 };
 
 export type ProcessOutput = {
-    buffer: Buffer;                    // encoded WebP bytes
+    buffer: Buffer;
     outputMime: 'image/webp';
     info: {
         width: number;
         height: number;
         sizeBytes: number;
         colorSpace: 'srgb';
-        animated: boolean;               // true if input reported multi-page and we decided to keep animation (Phase 1: always false)
-        exifStripped: true;              // Phase 1 policy
+        animated: boolean; // true if input reported multi-page and we decided to keep animation (Phase 1: always false, either first frame or rejected)
+        exifStripped: true;
     };
     inputMeta: {
         mime?: string;
@@ -32,6 +38,7 @@ export type ProcessOutput = {
  * Notes:
  * - Sharp omits metadata by default (don’t call withMetadata()).
  * - Default policy keeps only the first frame for animated inputs.
+ * - Container images (.e.g HEIC family) only have the first image processed
  */
 export async function processImageToWebp({
     inputPath,
@@ -47,9 +54,16 @@ export async function processImageToWebp({
             `Unsupported or unrecognized image type${sniffedMime ? `: ${sniffedMime}` : ''}`
         );
     }
+    
+    // 2) Convert HEIC to sharp-processable format
+    let sharpInput: SharpSource = inputPath;
+    if (ft.mime.includes('/heic') || ft.mime.includes('/heif')) {
+        const buffer = await fs.readFile(inputPath);
+        sharpInput = await convert({ buffer, format: 'JPEG', quality: 0.9 })
+    }
 
-    // 2) Load + read metadata safely
-    const baseSharp = sharp(inputPath, {
+    // 3) Load + read metadata safely
+    const baseSharp = sharp(sharpInput, {
         // Phase 1: we do NOT preserve full animation; first frame only
         animated: false,
         limitInputPixels: opts.limitInputPixels,
@@ -62,8 +76,8 @@ export async function processImageToWebp({
         throw new Error('Animated images are not supported in this mode');
     }
 
-    // 3) Build transform: orient -> sRGB -> resize if too large -> webp
-    let pipeline = sharp(inputPath, { animated: false, limitInputPixels: opts.limitInputPixels })
+    // 4) Build transform: orient -> sRGB -> resize if too large -> webp
+    let pipeline = sharp(sharpInput, { animated: false, limitInputPixels: opts.limitInputPixels })
         .rotate() // apply EXIF orientation, then EXIF is dropped
         .toColourspace(opts.normalizeColorSpace);
 
@@ -83,7 +97,7 @@ export async function processImageToWebp({
         // alphaQuality defaults okay; can tweak if lots of transparent assets
     });
 
-    // 4) Encode
+    // 5) Encode
     const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
 
     return {
