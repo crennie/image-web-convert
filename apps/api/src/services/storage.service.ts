@@ -25,7 +25,6 @@ export async function saveUploadFile(sid: string, uf: UploadedFile): Promise<Api
     const inputPath = uf.tempFilePath;
     if (!inputPath) {
         // TODO: Throw an error
-
     }
 
     const originalName = sanitizeBaseName(uf.name || 'upload');

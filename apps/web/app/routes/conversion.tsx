@@ -4,6 +4,7 @@ import { startTransition, useCallback, useEffect, useState } from 'react';
 import { Button, FileDownload, FileProgress, FileUpload, PageLayout, useFileItems, useSession } from '@image-web-convert/ui';
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { useFileUploads, useFileProgress } from '@image-web-convert/ui';
+import { FILE_UPLOAD_CONFIG } from '@image-web-convert/ui';
 
 function fallbackRender({ error, resetErrorBoundary }: FallbackProps) {
     return (
@@ -37,12 +38,15 @@ function PageInstructions({ pageState }: { pageState: ConversionPageState }) {
 }
 
 export function ConversionPage() {
+    const config = FILE_UPLOAD_CONFIG;
     const [pageState, setPageState] = useState<ConversionPageState>('select');
-    const { items, addItems, removeItem, errors, clearErrors } = useFileItems();
+    const { items, addItems, removeItem, errors, clearErrors } = useFileItems({
+        config,
+    });
     const { startSession } = useSession();
     const { uploadedFiles, uploadFilesForm, rejectedFiles } = useFileUploads();
     const { progress, progressComplete, startProgress } = useFileProgress();
-
+    
     const startUploads = useCallback(async (formData: FormData) => {
         startTransition(() => {
             setPageState('upload');
@@ -84,6 +88,7 @@ export function ConversionPage() {
                     >
                         {pageState === 'select' ? (
                             <FileUpload
+                                config={config}
                                 items={items}
                                 addItems={addItems}
                                 removeItem={removeItem}

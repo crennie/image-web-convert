@@ -6,19 +6,15 @@ import { FilePicker } from "./FilePicker";
 import { FileList } from "../files/FileList";
 import { FileItem } from "../files/FileListItem";
 import { useFileItems } from "./hooks/useFileItems";
-
-export interface FileUploadConfig {
-    accept?: string | string; // e.g. "image/*,.png,.jpg" or ["image/*", ".png"]
-    maxCount?: number; // max number of files allowed
-    maxPerFileSizeBytes?: number; // per-file size cap
-    maxTotalBytes?: number; // total size cap across all items
-}
+import { FileUploadConfig } from "./file-upload.config";
 
 type FileUploadProps = Omit<ReturnType<typeof useFileItems>, 'addErrors' | 'clearFiles'> & {
+    config?: FileUploadConfig,
     onUploadStart: (formData: FormData) => void;
 }
 
 export function FileUpload({
+    config,
     items,
     addItems,
     removeItem,
@@ -26,10 +22,12 @@ export function FileUpload({
     clearErrors,
     onUploadStart,
 }: FileUploadProps) {
-    const handleFilesPicked = useCallback((files: File[]) => {
+    const handleSelectFiles = useCallback((files: File[]) => {
         if (files.length < 1) return;
+        // Clear existing errors when new files are selected
+        clearErrors();
         addItems(files);
-    }, [addItems]);
+    }, [clearErrors, addItems]);
 
     const handleRemove = useCallback((item: FileItem) => {
         removeItem(item);
@@ -51,7 +49,7 @@ export function FileUpload({
         >
             <UploadActions uploadFilesCount={items.length} errors={errors} />
             <div className="flex flex-wrap gap-6 mt-4">
-                <FilePicker clearErrors={clearErrors} onFilesPicked={handleFilesPicked} />
+                <FilePicker config={config} onSelectFiles={handleSelectFiles} />
                 <FileList items={items} showRemove={true} onRemove={handleRemove} />
             </div>
         </form>

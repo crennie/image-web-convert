@@ -1,50 +1,41 @@
 'use client';
 
-import { ChangeEvent, useCallback, useRef } from "react";
 import { FileCardLayout } from "../files/FileCardLayout";
 import { FaPlus } from "react-icons/fa";
+import { useDropzone } from "./hooks/useDropzone";
+import { cn } from "../utils";
+import { FileUploadConfig } from "./file-upload.config";
 
 interface FilePickerProps {
-    clearErrors: () => void;
-    onFilesPicked: (files: File[]) => void;
-    onPreOpen?: () => void;
+    config?: FileUploadConfig;
+    onSelectFiles: (files: File[]) => void;
 }
 
-export function FilePicker({ clearErrors, onFilesPicked, onPreOpen }: FilePickerProps) {
-    const inputRef = useRef<HTMLInputElement>(null);
-    const onChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-        const files: File[] = [...e.target.files ?? []];
-        e.currentTarget.value = ""; // Directly reset input field so browser recognizes same file chosen twice in a row
-        onFilesPicked(files);
-    }, [onFilesPicked]);
-
-    // Runs right before opening the dialog (mouse or keyboard).
-    const handlePreOpen = useCallback(() => onPreOpen?.(), [onPreOpen]);
-
-    // Keyboard: Space/Enter on the label won't always activate the input.
-    // We forward it manually and prevent default to avoid scrolling on Space.
-    const handleLabelKeyDown = useCallback(
-        (e: React.KeyboardEvent<HTMLLabelElement>) => {
-            if (e.key === " " || e.key === "Enter") {
-                e.preventDefault();
-                handlePreOpen();
-                inputRef.current?.click();
-            }
-        },
-        [handlePreOpen]
-    );
+export function FilePicker({ config, onSelectFiles }: FilePickerProps) {
+    const { isDragActive, open, rootProps, inputProps } = useDropzone({
+        config,
+        multiple: true,
+        enablePaste: true,
+        disabled: false,
+        onSelectFiles,
+    });
 
     return (
-        <FileCardLayout>
-            <input ref={inputRef} id="file-uploads" name="file-uploads" type="file" multiple={true} onChange={onChange}
-                className="hidden" />
-            <label tabIndex={0} htmlFor="file-uploads" className="flex flex-col gap-3 items-center justify-center w-full h-full cursor-pointer text-primary"
-                onClick={clearErrors}
-                onKeyDown={handleLabelKeyDown}
-            >
-                <span className="text-lg">Add file(s)</span>
+        <FileCardLayout
+            {...rootProps}
+            className={cn(`relative flex min-h-40 items-center justify-center rounded-2xl border-2 border-dashed p-6 transition cursor-pointer`,
+                isDragActive ? "border-blue-500 bg-blue-500/5" : "border-muted-foreground/30"
+            )}
+            onClick={open}
+        >
+            <input id="file-uploads" {...inputProps} />
+            <div className="flex flex-col items-center text-center text-lg">
                 <FaPlus className="size-10" />
-            </label>
+                Drag images here or click to browse
+                {isDragActive && (
+                    <div className="absolute inset-0 pointer-events-none rounded-2xl ring-2 ring-blue-500/40" />
+                )}
+            </div>
         </FileCardLayout>
     )
 }

@@ -29,7 +29,7 @@ export function FileListItem({
     onDownload,
 }: FileListItemProps) {
     const [previewOk, setPreviewOk] = useState(true);
-    const [isLoading, setIsLoading] = useState(false); // TODO: per-item UI loading until preview is ready?
+    const [isLoading] = useState(false); // TODO: per-item UI loading until preview is ready?
     const handleImgError = useCallback(() => {
         setPreviewOk(false);
         return item.file;

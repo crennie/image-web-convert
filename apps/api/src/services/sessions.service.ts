@@ -3,20 +3,11 @@ import fs from 'node:fs/promises';
 import { UPLOAD_DIR } from './storage.service';
 import { secureId } from '../utils';
 import { generateAccessToken } from "../auth/authUtils";
+import { SESSION_IMAGE_CONFIG } from '@image-web-convert/schemas';
 
 //const isProd = process.env.NODE_ENV === 'production';
 
-// Defaults (can later be moved to env schema)
-const DEFAULT_TTL_MINUTES = Number(process.env.SESSION_TTL_MINUTES ?? 15); // 15 minutes
-const DEFAULT_MAX_FILES = Number(process.env.SESSION_MAX_FILES ?? 100);
-const DEFAULT_MAX_TOTAL_BYTES = Number(process.env.SESSION_MAX_TOTAL_BYTES ?? 500_000_000); // ~500MB
-
 // --- Session file contents ---
-export type SessionLimits = {
-    maxFiles: number;
-    maxTotalBytes: number;
-};
-
 export type SessionCounts = {
     files: number;
     totalBytes: number;
@@ -26,7 +17,6 @@ export type SessionInfo = {
     createdAt: string;   // ISO
     expiresAt: string;   // ISO
     sealedAt: string | null; // set when upload batch completes
-    limits: SessionLimits;
     counts: SessionCounts;
     tokenHash: string;
 };
@@ -39,20 +29,15 @@ interface CreateSessionResponse {
 
 export async function create(): Promise<CreateSessionResponse> {
     const sid = secureId();
-    const ttl = DEFAULT_TTL_MINUTES;
+    const ttl = SESSION_IMAGE_CONFIG.ttlMinutes;
     const now = new Date();
     const expires = new Date(now.getTime() + ttl * 60_000);
     const { token, hash } = generateAccessToken();
-    const limits: SessionLimits = {
-        maxFiles: DEFAULT_MAX_FILES,
-        maxTotalBytes: DEFAULT_MAX_TOTAL_BYTES,
-    };
     const info: SessionInfo = {
         id: sid,
         createdAt: now.toISOString(),
         expiresAt: expires.toISOString(),
         sealedAt: null,
-        limits,
         counts: { files: 0, totalBytes: 0 },
         tokenHash: hash,
     };
