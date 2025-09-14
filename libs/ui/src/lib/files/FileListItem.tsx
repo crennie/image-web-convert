@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useState } from "react";
+import { startTransition, useCallback, useState } from "react";
 import { FileCardLayout } from "./FileCardLayout";
 import { Button } from "../Button";
 import { FaDownload, FaTimes } from "react-icons/fa";
+import Spinner from "../Spinner";
 import { cn } from "../utils";
 
 export type FileItem = {
@@ -18,7 +19,7 @@ interface FileListItemProps {
     showDownload?: boolean;
     showRemove?: boolean;
     onRemove?: (item: FileItem) => void;
-    onDownload?: (item: FileItem) => void;
+    onDownload?: (item: FileItem) => Promise<void>;
 }
 
 export function FileListItem({
@@ -30,12 +31,25 @@ export function FileListItem({
 }: FileListItemProps) {
     const [previewOk, setPreviewOk] = useState(true);
     const [isLoading] = useState(false); // TODO: per-item UI loading until preview is ready?
+    const [showDownloadLoader, setShowDownloadLoader] = useState(false);
+
     const handleImgError = useCallback(() => {
         setPreviewOk(false);
         return item.file;
     }, [item]);
 
-    const cardClickProps = showDownload && onDownload ? { onClick: () => onDownload(item) } : {};
+    // Add icon animation to download functionality
+    const handleDownloadClick = useCallback(async () => {
+        if (typeof onDownload === 'function') {
+            if (showDownloadLoader) return; // Use loader to gate/debounce downloads
+            startTransition(() => setShowDownloadLoader(true));
+            await onDownload?.(item);
+            setShowDownloadLoader(false)
+        }
+    }, [item, onDownload, showDownloadLoader]);
+
+    const cardClickProps = showDownload && typeof onDownload === 'function' ?
+        { onClick: handleDownloadClick } : {};
     return (
         <FileCardLayout
             className={cn("bg-muted", showDownload && onDownload ? "cursor-pointer" : null)}
@@ -53,9 +67,12 @@ export function FileListItem({
                     }
                     {showDownload ? (
                         <Button variant="ghost" className="absolute right-2 top-2 text-blue-500"
-                            onClick={() => onDownload?.(item)}
+                            onClick={handleDownloadClick}
                         >
-                            <FaDownload className="size-8" />
+                            {
+                                showDownloadLoader ? <Spinner className="size-8 text-blue-500" />
+                                    : <FaDownload className="size-8" />
+                            }
                         </Button>) : null
                     }
                     {previewOk ?
@@ -68,8 +85,9 @@ export function FileListItem({
                         {item.file.name}
                     </div>
                 </>
-            ) : null}
-        </FileCardLayout>
+            ) : null
+            }
+        </FileCardLayout >
     )
 }
 

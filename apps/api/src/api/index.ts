@@ -3,7 +3,7 @@ import sessionsRouter from '../routes/sessions.routes';
 import uploadsRouter from '../routes/uploads.routes';
 import filesRouter from '../routes/files.routes';
 
-const apiRouter = Router();
+const apiRouter: Router = Router();
 
 apiRouter.use('/sessions', sessionsRouter);
 apiRouter.use('/sessions/:sid/uploads', uploadsRouter);

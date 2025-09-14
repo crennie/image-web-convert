@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { createSession } from '../controllers/sessions.controller';
 import rateLimit from 'express-rate-limit';
 
-const sessionsRouter = Router();
+const sessionsRouter: Router = Router();
 
 // Stricter limiter only for POST /sessions - 3 sessions / minute
 // TODO: Configurable? What about for unit testing?

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { UPLOAD_DIR } from './storage.service';
-import { secureId } from '../utils';
+import { secureId } from "@image-web-convert/node-shared";
 import { generateAccessToken } from "../auth/authUtils";
 import { SESSION_IMAGE_CONFIG } from '@image-web-convert/schemas';
 

@@ -16,7 +16,7 @@ export interface ImageProcessingOptions {
 export const DEFAULT_IMG_OPTS: ImageProcessingOptions = {
     outputFormat: 'webp',
     quality: 85,
-    effort: 5,
+    effort: 6,
     maxDimension: 8192,
     normalizeColorSpace: 'srgb',
     stripMetadata: true,

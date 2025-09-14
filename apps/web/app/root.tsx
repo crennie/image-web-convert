@@ -68,7 +68,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Meta />
                 <Links />
             </head>
-            <body className="bg-background text-foreground min-h-screen">
+            <body className="body-background text-foreground min-h-screen overscroll-none">
                 <div className="pt-[65px]">
                     <Nav className="h-[65px]" />
                     <SessionProvider>

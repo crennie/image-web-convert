@@ -30,7 +30,7 @@ export type UploadMeta = {
     };
 
     exifStripped: true;
-    animated: boolean;           // Phase 1: false
+    animated: boolean;
     uploadedAt: string;
 };
 
@@ -41,11 +41,17 @@ export type ApiUploadAccepted = {
     url: string;                 // e.g. `/files/:id`
     metaUrl: string;             // e.g. `/files/:id/meta`
     meta: ApiUploadMeta;
+    
+    // Client session upload metadata
+    clientId?: string;
 }
 
 export type ApiUploadRejected = {
     fileName: string;
     error: string;
+
+    // Client session upload metadata
+    clientId?: string;
 }
 
 export type ApiUploadsResponse = {

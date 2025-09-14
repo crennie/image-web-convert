@@ -28,6 +28,13 @@ export async function create(req: Request, res: Response) {
         }
     }
 
+    // Associate the files with the client id, so uploader/returns can be synced
+    let clientIds = [];
+    if (req.body?.manifest?.length) {
+        clientIds = JSON.parse(req.body.manifest);
+        if (!clientIds.length) clientIds = [];
+    }
+
     try {
         const uploads = extractUploads(req.files as FileArray);
         if (uploads.length === 0) {
@@ -37,7 +44,7 @@ export async function create(req: Request, res: Response) {
 
         // Delegates to service layer (saves files, maps names -> UUIDs, writes metadata, etc.)
         // Expected shape: { accepted: any[]; rejected: { fileName: string; error: string }[] }
-        const { accepted, rejected } = await saveUploads(sid, uploads);
+        const { accepted, rejected } = await saveUploads(sid, uploads, clientIds);
 
         // Update counts
         validateResponse.info.counts.files += accepted.length;

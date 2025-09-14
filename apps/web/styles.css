@@ -21,7 +21,7 @@
 
     --destructive: oklch(0.577 0.245 27.325);
 
-    --muted: oklch(0.9745 0.0239 127.57)
+    --muted: oklch(0.9745 0.0239 127.57);
 }
 
 .dark {
@@ -36,7 +36,7 @@
 
     --destructive: oklch(0.577 0.245 27.325);
 
-    --muted: oklch(0.9745 0.0239 127.57)
+    --muted: oklch(0.9745 0.0239 127.57);
 }
 
 @theme inline {
@@ -48,4 +48,29 @@
     --color-secondary-foreground: var(--secondary-foreground);
     --color-destructive: var(--destructive);
     --color-muted: var(--muted);
+}
+
+@layer base {
+    .body-background {
+        background-size: 20px 20px;
+        background-image: radial-gradient(
+            var(--color-primary),
+            0.4px,
+            var(--color-background) 0.4px
+        );
+    }
+    .navbar-background {
+        background-color: var(--color-background);
+        opacity: 0.8;
+        background-image: radial-gradient(
+                var(--color-primary) 0.4px,
+                transparent 0.4px
+            ),
+            radial-gradient(
+                var(--color-primary) 0.4px,
+                var(--color-background) 0.4px
+            );
+        background-size: 25px 25px;
+        background-position: 0 0, 10px 10px;
+    }
 }

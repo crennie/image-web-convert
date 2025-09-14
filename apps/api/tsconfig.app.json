@@ -16,6 +16,9 @@
         },
         {
             "path": "../../libs/schemas/tsconfig.lib.json"
+        },
+        {
+            "path": "../../libs/node-shared/tsconfig.lib.json"
         }
     ]
 }

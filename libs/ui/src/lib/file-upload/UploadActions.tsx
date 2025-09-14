@@ -10,7 +10,7 @@ interface UploadActionsProps {
 export function UploadActions({ uploadFilesCount, errors }: UploadActionsProps) {
     return (
         <div className="flex flex-col lg:flex-row gap-6">
-            <div className="flex items-center gap-6 min-h-10 text-primary shrink-0">
+            <div className="flex items-center gap-6 min-h-10 text-primary shrink-0 justify-center sm:justify-start">
                 <Button type="submit" variant="primary" className="w-55"
                     disabled={!uploadFilesCount}>
                     Start File Uploads

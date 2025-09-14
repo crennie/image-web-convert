@@ -1,24 +1,26 @@
 'use client';
 
 import { startTransition, useCallback, useEffect, useState } from 'react';
-import { Button, FileDownload, FileProgress, FileUpload, PageLayout, useFileItems, useSession } from '@image-web-convert/ui';
+import { Button, FileDownload, FileProgress, FileUpload, PageLayout, UploadFilesError, useFileItems, useSession } from '@image-web-convert/ui';
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { useFileUploads, useFileProgress } from '@image-web-convert/ui';
 import { FILE_UPLOAD_CONFIG } from '@image-web-convert/ui';
 
-function fallbackRender({ error, resetErrorBoundary }: FallbackProps) {
+function FallbackRender({ error, resetErrorBoundary }: FallbackProps) {
     return (
         <div role="alert">
             <p>Something went wrong:</p>
-            <pre className="text-destructive">{error.message}</pre>
-            <Button variant="primary" onClick={() => resetErrorBoundary()}>
+            <div className="text-lg text-destructive">{error.message}</div>
+            <Button variant="primary" className="mt-4"
+                onClick={resetErrorBoundary}
+            >
                 Try again
             </Button>
         </div>
     );
 }
 
-type ConversionPageState = 'select' | 'upload' | 'upload_complete' | 'download';
+type ConversionPageState = 'select' | 'upload' | 'upload_complete' | 'upload_error' | 'download';
 
 function PageInstructions({ pageState }: { pageState: ConversionPageState }) {
     if (pageState === 'select') return <>
@@ -33,36 +35,45 @@ function PageInstructions({ pageState }: { pageState: ConversionPageState }) {
     if (pageState === 'download') return <>
         Successfully converted files are now available to be downloaded until session expiry (about <strong>60 minutes</strong> from now). Save your files to keep a copy.
     </>
-    
+
     return null;
 }
 
 export function ConversionPage() {
     const config = FILE_UPLOAD_CONFIG;
+    const [uploadError, setUploadError] = useState<string | null>(null);
     const [pageState, setPageState] = useState<ConversionPageState>('select');
-    const { items, addItems, removeItem, errors, clearErrors } = useFileItems({
-        config,
-    });
-    const { startSession } = useSession();
+    const { items, addItems, removeItem, clearFiles, errors, clearErrors } = useFileItems({ config });
+    const { startSession, clearSession } = useSession();
     const { uploadedFiles, uploadFilesForm, rejectedFiles } = useFileUploads();
-    const { progress, progressComplete, startProgress } = useFileProgress();
-    
+    const { progress, progressComplete, startProgress, cancelProgress } = useFileProgress();
+
     const startUploads = useCallback(async (formData: FormData) => {
+        // UI transition to upload state
         startTransition(() => {
             setPageState('upload');
             startProgress();
         });
-
-        // Create session then upload
-        const newSession = await startSession();
-        const res = await uploadFilesForm(formData, newSession);
-
-        if (!res) {
-            // TODO: Display upload errors somewhere
-        } else {
+        // API actions - create session then upload
+        try {
+            const newSession = await startSession();
+            await uploadFilesForm(formData, newSession);
             startTransition(() => setPageState('upload_complete'));
+        } catch (err) {
+            if (err instanceof UploadFilesError) setUploadError(err.message);
+            cancelProgress();
+            clearSession();
+            setPageState('upload_error');
         }
-    }, [startSession, startProgress, uploadFilesForm]);
+    }, [startSession, startProgress, uploadFilesForm, cancelProgress, clearSession]);
+
+    const resetAfterError = useCallback(() => {
+        clearSession();
+        setUploadError(null);
+        clearErrors();
+        clearFiles();
+        setPageState('select');
+    }, [clearSession, clearErrors, clearFiles]);
 
     useEffect(() => {
         // Move to download state once uploads complete
@@ -74,18 +85,12 @@ export function ConversionPage() {
     return (
         <PageLayout>
             <div className="flex flex-col gap-4">
-                <div className="mt-6">
-                    <PageInstructions pageState={pageState} />
-                </div>
+                <ErrorBoundary fallbackRender={FallbackRender} onReset={resetAfterError}>
+                    <div className="mt-6">
+                        <PageInstructions pageState={pageState} />
+                    </div>
 
-                <div className="mt-2">
-                    <ErrorBoundary
-                        fallbackRender={fallbackRender}
-                        onReset={(details) => {
-                            // TODO: Reset the state of your app so the error doesn't happen again
-
-                        }}
-                    >
+                    <div className="mt-2">
                         {pageState === 'select' ? (
                             <FileUpload
                                 config={config}
@@ -100,9 +105,12 @@ export function ConversionPage() {
                             <FileProgress items={items} progress={progress} />
                         ) : pageState === 'download' ? (
                             <FileDownload items={items} uploadedFiles={uploadedFiles} rejectedFiles={rejectedFiles} />
+                        ) : pageState === "upload_error" ? (
+                            <FallbackRender error={{ message: uploadError || "Error uploading files" }}
+                                resetErrorBoundary={resetAfterError} />
                         ) : null}
-                    </ErrorBoundary>
-                </div>
+                    </div>
+                </ErrorBoundary>
             </div>
         </PageLayout>
     );

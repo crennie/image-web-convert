@@ -7,8 +7,8 @@ interface SaveUploadsResponse {
     rejected: ApiUploadRejected[];
 }
 
-export async function saveUploads(sid: string, uploads: UploadedFile[]): Promise<SaveUploadsResponse> {
-    const promises = uploads.map((uf) => saveUploadFile(sid, uf));
+export async function saveUploads(sid: string, uploads: UploadedFile[], clientIds: string[] = []):Promise<SaveUploadsResponse> {
+    const promises = uploads.map((uf, idx) => saveUploadFile(sid, uf, clientIds[idx]));
     const settled = await Promise.allSettled(promises);
 
     const accepted: ApiUploadAccepted[] = [];
@@ -21,6 +21,7 @@ export async function saveUploads(sid: string, uploads: UploadedFile[]): Promise
             rejected.push({
                 fileName: uploads[i]?.name ?? '(unknown)',
                 error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+                clientId: clientIds[i],
             });
         }
     });

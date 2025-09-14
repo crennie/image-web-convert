@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import path from "node:path";
 
 type IdEncoding = 'hex' | 'base64url';
 
@@ -15,4 +16,8 @@ export function secureId(bytes = 16, encoding: IdEncoding = 'hex'): string {
 
     if (encoding === 'hex') return buf.toString('hex');
     return buf.toString('base64url')
+}
+
+export function normalizeAbsolutePath(envVal: string): string {
+    return path.isAbsolute(envVal) ? envVal : path.resolve(process.cwd(), envVal);
 }

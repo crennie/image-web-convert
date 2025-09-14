@@ -30,20 +30,6 @@ export const ALLOWED_IMAGE_EXT = Array.from(
 
 export const INPUT_ACCEPT_ATTR = Array.from(new Set([...ALLOWED_IMAGE_MIME_CONST, ...ALLOWED_IMAGE_EXT])).join(",");
 
-export type SessionImageConfig = {
-    ttlMinutes: number;
-    maxFiles: number;
-    maxTotalBytes: number;
-    maxBytesPerFile: number;
-}
-
-export const SESSION_IMAGE_CONFIG: SessionImageConfig = {
-    ttlMinutes: Number((typeof process !== "undefined" ? process?.env?.SESSION_TTL_MINUTES : undefined) ?? 15),
-    maxFiles: Number((typeof process !== "undefined" ? process?.env?.SESSION_MAX_FILES : undefined) ?? 20),
-    maxBytesPerFile: Number((typeof process !== "undefined" ? process?.env?.SESSION_PER_FILE_BYTES : undefined) ?? 20_000_000), // 20MB per file
-    maxTotalBytes: Number((typeof process !== "undefined" ? process?.env?.SESSION_MAX_TOTAL_BYTES : undefined) ?? 500_000_000), // 500MB total
-}
-
 export const getFileExt = (name: string) => {
     const i = name.lastIndexOf(".");
     return i >= 0 ? name.slice(i).toLowerCase() : "";

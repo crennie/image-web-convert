@@ -5,6 +5,29 @@ import { ApiUploadAccepted, ApiUploadRejected, ApiUploadsResponse } from "@image
 import { Session } from "../../session/SessionContext";
 import { getAuthHeaders } from "../../utils";
 
+interface CustomErrorFields {
+    statusCode?: number;
+    details?: Record<string, unknown>; // For more complex error details
+}
+
+export class UploadFilesError extends Error {
+    statusCode?: number;
+    details?: Record<string, unknown>;
+
+    constructor(message: string, fields?: CustomErrorFields) {
+        super(message); // Call the parent Error constructor
+        // backwards-compatible explicit proto setting, for "instanceof" in legacy envs
+        Object.setPrototypeOf(this, UploadFilesError.prototype);
+
+        this.name = 'UploadFilesError'; // Set a custom name for the error
+        // Assign the extra fields if provided
+        if (fields) {
+            this.statusCode = fields.statusCode;
+            this.details = fields.details;
+        }
+    }
+}
+
 export function useFileUploads() {
     const [uploadedFiles, setUploadedFiles] = useState<ApiUploadAccepted[]>([]);
     const [rejectedFiles, setRejectedFiles] = useState<ApiUploadRejected[]>([]);
@@ -20,24 +43,18 @@ export function useFileUploads() {
                 headers: getAuthHeaders(session),
                 body: formData,
             });
-
             if (response.ok) {
                 const result: ApiUploadsResponse = await response.json();
-                console.log('Upload successful:', result);
-
                 setUploadedFiles(result.accepted);
                 setRejectedFiles(result.rejected);
-                // TODO: Handle successful upload (e.g., clear selected files, display success message)
                 return result;
             } else {
-                console.error('Upload failed:', response.statusText);
-                // TODO: // Handle upload failure
-                return null;
+                throw new UploadFilesError(`Upload failed: ${response.statusText}`,
+                    { statusCode: response.status });
             }
         } catch (error) {
-            console.error('Error during upload:', error);
-            // TODO: // Handle upload failure
-            return null;
+            if (error instanceof UploadFilesError) throw error;
+            throw new UploadFilesError(`Upload failed: ${error}`);
         }
     }, []);
 

@@ -5,7 +5,7 @@ interface FileListProps {
     showRemove?: boolean;
     showDownload?: boolean;
     onRemove?: (item: FileItem) => void;
-    onDownload?: (item: FileItem) => void;
+    onDownload?: (item: FileItem) => Promise<void>;
 }
 
 export function FileList({ items, showRemove=false, showDownload=false, onRemove, onDownload }: FileListProps) {

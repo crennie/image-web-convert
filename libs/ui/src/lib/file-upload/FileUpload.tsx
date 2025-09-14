@@ -37,7 +37,10 @@ export function FileUpload({
         e.preventDefault();
         // Prepare form data
         const formData = new FormData();
-        items.forEach(item => formData.append('uploads', item.file));
+        items.forEach(item => formData.append('uploads', item.file as File));
+        const manifest = items.map(item => item.id);
+        formData.append('manifest', JSON.stringify(manifest))
+
         onUploadStart(formData);
     }, [onUploadStart, items]);
 
@@ -48,7 +51,7 @@ export function FileUpload({
             className=""
         >
             <UploadActions uploadFilesCount={items.length} errors={errors} />
-            <div className="flex flex-wrap gap-6 mt-4">
+            <div className="flex flex-wrap gap-6 mt-8 justify-center sm:justify-start">
                 <FilePicker config={config} onSelectFiles={handleSelectFiles} />
                 <FileList items={items} showRemove={true} onRemove={handleRemove} />
             </div>

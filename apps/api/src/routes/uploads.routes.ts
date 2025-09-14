@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import { Router } from 'express';
 import fileUpload from 'express-fileupload';
 import { create as createUpload } from '../controllers/uploads.controller';
-import { normalizeAbsolutePath } from '../services/storage.service';
+import { normalizeAbsolutePath } from '@image-web-convert/node-shared';
 
-const uploadsRouter = Router({ mergeParams: true });
+const uploadsRouter: Router = Router({ mergeParams: true });
 
 // ---- router-scoped upload middleware (only affects /upload routes) ----
 export const UPLOAD_TMP_DIR = normalizeAbsolutePath(process.env.UPLOAD_TMP_DIR ?? path.resolve(process.cwd(), 'data', 'tmp'));
