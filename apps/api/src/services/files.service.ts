@@ -2,8 +2,9 @@ import path from 'node:path';
 import fs from 'node:fs';
 import archiver from 'archiver';
 import type { Response } from 'express';
-import { readMeta, pathForStored, normalizeAbsolutePath } from './storage.service';
+import { readMeta, pathForStored } from './storage.service';
 import { ApiUploadMeta } from '@image-web-convert/schemas';
+import { normalizeAbsolutePath } from '@image-web-convert/node-shared';
 
 export type ResolvedDownload = {
     id: string;

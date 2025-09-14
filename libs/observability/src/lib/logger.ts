@@ -1,6 +1,12 @@
+import path from 'node:path';
+import fssync from 'node:fs';
 import type pino from 'pino';
 import { loadObservabilityConfig } from './config.js';
 import { getTraceCorrelation } from './instrumentation.js';
+import { normalizeAbsolutePath } from '@image-web-convert/node-shared';
+
+const DEFAULT_OTEL_LOG_FILE = path.resolve(process.cwd(), 'logs', 'app.log');
+export const OTEL_LOG_FILE = normalizeAbsolutePath(process.env.OTEL_LOG_FILE || DEFAULT_OTEL_LOG_FILE);
 
 export type GetLoggerOptions = {
     level?: pino.LevelWithSilent;
@@ -10,6 +16,11 @@ export type GetLoggerOptions = {
 };
 
 let instance: pino.Logger | null = null;
+
+// ensure logging dir exists
+if (!fssync.existsSync(path.dirname(OTEL_LOG_FILE))) {
+    fssync.mkdirSync(path.dirname(OTEL_LOG_FILE), { recursive: true });
+}
 
 export async function getLogger(
     options: GetLoggerOptions = {}
@@ -27,20 +38,18 @@ export async function getLogger(
         base: { service: name, env: cfg.environment },
     };
 
-    if (pretty) {
-        pinoOpts.transport = {
-            target: 'pino-pretty',
-            options: {
-                colorize: true,
-                translateTime: 'SYS:standard',
-                singleLine: false,
-                ignore: 'pid,hostname',
-            },
-        };
-    }
+    pinoOpts.transport = {
+        target: pretty ? "pino-pretty" : "pino/file",
+        options: {
+            translateTime: 'SYS:standard',
+            destination: OTEL_LOG_FILE,
+            singleLine: false,
+            ignore: 'pid,hostname',
+        }
+    };
 
     const { default: pino_ } = await import('pino');
-    instance = pino_(pinoOpts);
+    instance = pino_(pinoOpts, pino_.destination({ dest: OTEL_LOG_FILE, append: true, sync: true }));
     return instance;
 }
 

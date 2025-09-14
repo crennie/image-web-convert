@@ -12,8 +12,6 @@ import {
     errorTranslator,
 } from '@image-web-convert/observability';
 import apiRouter from './api/index.js';
-// import fileUpload, { UploadedFile } from 'express-fileupload';
-// import { UPLOAD_TMP_DIR } from './upload.js';
 
 export type AppDeps = {
     // future: inject logger, metrics, etc.

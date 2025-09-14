@@ -22,11 +22,17 @@ export function useFileProgress() {
             });
         }, intervalTimeMs);
     }, []);
+    const cancelProgress = useCallback(() => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        setProgress(0);
+        setProgressComplete(false);
+    }, []);
 
     return {
         progressComplete,
         progress,
         startProgress,
+        cancelProgress,
     }
 }
 

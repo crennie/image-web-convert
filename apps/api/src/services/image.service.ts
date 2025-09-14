@@ -54,12 +54,20 @@ export async function processImageToWebp({
             `Unsupported or unrecognized image type${sniffedMime ? `: ${sniffedMime}` : ''}`
         );
     }
-    
+
     // 2) Convert HEIC to sharp-processable format
     let sharpInput: SharpSource = inputPath;
     if (ft.mime.includes('/heic') || ft.mime.includes('/heif')) {
-        const buffer = await fs.readFile(inputPath);
-        sharpInput = await convert({ buffer, format: 'JPEG', quality: 0.9 })
+        const buf = await fs.readFile(inputPath);
+        // Convert buffer to UIntarray for heic convert
+        try {
+            //
+            const buffer = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) as unknown as ArrayBufferLike;
+            sharpInput = await convert({ buffer, format: 'JPEG', quality: 0.9 });
+        } catch (err) {
+            //req.log.error({ err });
+            console.log(err);
+        }
     }
 
     // 3) Load + read metadata safely

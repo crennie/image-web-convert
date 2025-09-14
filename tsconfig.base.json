@@ -19,6 +19,7 @@
         "target": "es2022",
         "customConditions": ["development"],
         "paths": {
+            "@image-web-convert/node-shared": ["libs/node-shared"],
             "@image-web-convert/observability": ["libs/observability"],
             "@image-web-convert/schemas": ["libs/schemas"],
             "@image-web-convert/ui": ["libs/ui"]

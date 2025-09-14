@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import fssync from 'node:fs';
 import type { UploadedFile } from 'express-fileupload';
 import { processImageToWebp } from './image.service';
-import { secureId } from '../utils';
+import { normalizeAbsolutePath, secureId } from "@image-web-convert/node-shared";
 import { ApiUploadAccepted, UploadMeta } from '@image-web-convert/schemas';
 import { sessionDir } from './sessions.service';
 
@@ -19,7 +19,7 @@ if (!fssync.existsSync(UPLOAD_DIR)) {
     fssync.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-export async function saveUploadFile(sid: string, uf: UploadedFile): Promise<ApiUploadAccepted> {
+export async function saveUploadFile(sid: string, uf: UploadedFile, clientId = ''): Promise<ApiUploadAccepted> {
 
     // Ensure we have a temp file path (express-fileupload with useTempFiles: true)
     const inputPath = uf.tempFilePath;
@@ -75,6 +75,7 @@ export async function saveUploadFile(sid: string, uf: UploadedFile): Promise<Api
         url: `/files/${id}`,
         metaUrl: `/files/${id}/meta`,
         meta,
+        clientId,
     };
 }
 
@@ -111,10 +112,6 @@ export async function readMeta(sid: string, fileId: string): Promise<UploadMeta 
     } catch {
         return null;
     }
-}
-
-export function normalizeAbsolutePath(envVal: string): string {
-    return path.isAbsolute(envVal) ? envVal : path.resolve(process.cwd(), envVal);
 }
 
 export function pathForStored(sid: string, storedName: string): string {

@@ -1,5 +1,5 @@
+import { secureId } from "@image-web-convert/node-shared";
 import crypto from "node:crypto";
-import { secureId } from "../utils";
 
 export function generateAccessToken(): { token: string; hash: string } {
     const token = secureId(32, "hex")

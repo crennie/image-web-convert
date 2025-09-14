@@ -12,7 +12,7 @@ export type Session = {
 type SessionContextValue = {
     session: Session | null;
     startSession: (ttlSeconds?: number) => Promise<Session>;
-    clear: () => void;
+    clearSession: () => void;
 };
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
@@ -47,14 +47,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         return startPromiseRef.current;
     }, [session]);
 
-    const clear = useCallback(() => {
+    const clearSession = useCallback(() => {
         setSession(null);
     }, []);
 
 
     const value = useMemo<SessionContextValue>(
-        () => ({ session, startSession, clear }),
-        [session, startSession, clear]
+        () => ({ session, startSession, clearSession }),
+        [session, startSession, clearSession]
     );
 
     return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

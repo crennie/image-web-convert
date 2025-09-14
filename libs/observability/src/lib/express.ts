@@ -17,7 +17,6 @@ import { loadObservabilityConfig } from './config.js';
 export async function logContext(baseLogger: pino.Logger): Promise<HttpLogger> {
     const cfg = loadObservabilityConfig();
     const httpLogger = baseLogger.child({ component: 'http' });
-
     const { pinoHttp } = await import('pino-http');
 
     return pinoHttp({

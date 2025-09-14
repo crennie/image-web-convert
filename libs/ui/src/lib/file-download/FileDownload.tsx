@@ -1,5 +1,5 @@
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { DownloadActions } from "./DownloadActions";
 import { useFileDownloads } from "./hooks/useFileDownloads";
 import { ApiUploadAccepted, ApiUploadRejected } from "@image-web-convert/schemas";
@@ -15,6 +15,7 @@ interface FileDownloadProps {
 
 export function FileDownload({ items, uploadedFiles, rejectedFiles }: FileDownloadProps) {
     const { downloadFiles, downloadSingleFile } = useFileDownloads();
+
     const handleDownloadAll = useCallback(async () => {
         const createArchiveName = () => `image_web_convert_${new Date().toJSON().slice(0, 16).replace(/[\-\:T]/g, '_')}.zip`;
         await downloadFiles(uploadedFiles.map(f => f.id), createArchiveName());
@@ -22,37 +23,38 @@ export function FileDownload({ items, uploadedFiles, rejectedFiles }: FileDownlo
     }, [downloadFiles, uploadedFiles]);
 
     const handleDownloadOne = useCallback(async (item: FileItem) => {
-        // TODO: HACK FOR NOW -> MATCH UP ITEM BY INDEX -> NEED TO DO SOME ACTUAL
-        // ASSOCIATION
-        const matchingItem = items.find(it => it.id === item.id);
-        const matchingUpload = matchingItem ? uploadedFiles[items.indexOf(matchingItem)] : null;
+        const matchingUpload = uploadedFiles.find(uf => uf.clientId === item.id);
         if (matchingUpload) {
             await downloadSingleFile(matchingUpload.id);
         } else {
-            // TODO: Throw error or something
+            alert("Error downloading file");
         }
-    }, [uploadedFiles, items, downloadSingleFile]);
+    }, [uploadedFiles, downloadSingleFile]);
+
+    const successfulUploadItems = useMemo(() =>
+        items.filter(item => uploadedFiles.find(uf => uf.clientId === item.id))
+            .map(item => ({
+                ...item,
+                file: { ...item.file, name: item.file.name.replace(/(\.[^./?#]+)?([?#]|$)/, '.webp$2') }
+            }))
+        , [items, uploadedFiles]);
 
     console.log('items', items);
     console.log('uploaded', uploadedFiles);
     console.log('rejected', rejectedFiles);
 
-    // TODO: Need a display that will only display the valid uploaded files
-    // Download right now shows all FileItems
-
-    // TODO: For now, display the converted name, webp
-    const downloadItems = items.map(item => ({
-        ...item,
-        file: { ...item.file, name: item.file.name.replace(/(\.[^./?#]+)?([?#]|$)/, '.webp$2') }
-    }))
-
     return (
         <>
-            <DownloadActions onDownload={handleDownloadAll} />
-            <div className="mt-4">
+            <DownloadActions disabled={!uploadedFiles.length} onDownload={handleDownloadAll} />
+            <div className="mt-8">
                 <h2 className="text-xl">Successful Conversions</h2>
                 <div className="flex flex-wrap gap-6 mt-2">
-                    <FileList items={downloadItems} showDownload={true} onDownload={handleDownloadOne} />
+                    {
+                        uploadedFiles.length ?
+                            <FileList items={successfulUploadItems} showDownload={true} onDownload={handleDownloadOne} />
+
+                            : <p className="mt-2">No files were able to be converted. See Conversion Errors section for more information.</p>
+                    }
                 </div>
                 {rejectedFiles.length ? (
                     <div className="mt-8">

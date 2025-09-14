@@ -6,6 +6,7 @@ interface NavProps {
 export function Nav({ className }: NavProps) {
     return (
         <nav className={cn(
+            "navbar-background",
             "fixed top-0 w-full bg-background border-b border-primary",
             "px-6 flex justify-between items-center",
             className
