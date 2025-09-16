@@ -53,7 +53,8 @@ interface FileProgressProps {
 export function FileProgress({ items, progress }: FileProgressProps) {
     const [steps, setSteps] = useState(DEFAULT_PROGRESS_STEPS);
 
-    console.log(steps);
+    // TODO: Implement some polling or server-side events for uploads
+    //console.log(steps);
     useEffect(() => {
         setSteps(prev => {
             if (!prev?.length) return prev;
@@ -76,7 +77,7 @@ export function FileProgress({ items, progress }: FileProgressProps) {
     }, [progress]);
 
     return (
-        <div className="flex max-w-3xl mx-auto mt-10">
+        <div className="flex max-w-3xl mt-10">
             <div className="grid grid-cols-2 w-full">
                 <div className="pr-2 text-lg">
                     <h2 className="text-lg font-bold">Converting Files</h2>
