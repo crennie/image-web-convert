@@ -65,6 +65,7 @@ export async function processImageToWebp({
             const buffer = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) as unknown as ArrayBufferLike;
             sharpInput = await convert({ buffer, format: 'JPEG', quality: 0.9 });
         } catch (err) {
+            // TODO: Add error logging in services
             //req.log.error({ err });
             console.log(err);
         }

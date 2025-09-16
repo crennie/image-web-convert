@@ -1,81 +1,102 @@
-# ImageWebConvert
+# Image Web Convert
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+## Overview
 
-✨ Your new, shiny [Nx workspace](https://nx.dev) is almost ready ✨.
+Image Web Convert is a tool for preparing images for the modern web.  
+It strips personal metadata, normalizes color profiles, and converts files into web-friendly formats that load quickly on any device.
 
-[Learn more about this workspace setup and its capabilities](https://nx.dev/getting-started/tutorials/react-monorepo-tutorial?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or run `npx nx graph` to visually explore what was created. Now, let's get you up to speed!
+*Note: This is a personal project maintained in my spare time. While feedback is welcome, it may not receive the same level of support as a production-ready library.*
 
-## Finish your CI setup
+<!-- TODO: Add UI screenshots here -->
+*UI Screenshots to be added here*
 
-[Click here to finish setting up your workspace!](https://cloud.nx.app/connect/jubP7qJQPP)
+---
 
-## Run tasks
+## Installation / Setup
 
-To run the dev server for your app, use:
+**TBD** — installation instructions will be added soon.
 
-```sh
-npx nx serve web
-```
+**Requirements:**  
 
-To create a production bundle:
+This project is developed and tested using Node.js 22 LTS. Other versions may work, but Node 22 is the recommended runtime.
 
-```sh
-npx nx build web
-```
+npm (v10+ recommended)
 
-To see all available targets to run for a project, run:
+---
 
-```sh
-npx nx show project web
-```
+## Usage
 
-These targets are either [inferred automatically](https://nx.dev/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
+**TBD** — usage examples and UI instructions will be documented here.
 
-[More about running tasks in the docs &raquo;](https://nx.dev/features/run-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+---
 
-## Add new projects
+## Development
 
-While you could add new projects to your workspace manually, you might want to leverage [Nx plugins](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) and their [code generation](https://nx.dev/features/generate-code?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) feature.
+This project is structured as an Nx monorepo.
 
-Use the plugin's generator to create new projects.
+- **Run the project locally**
+  ```sh
+  npm run <target>
+  ```
+  (Targets are orchestrated by Nx; see each app/package `project.json`.)
 
-To generate a new application, use:
+  Docker setup: **TBD**.
 
-```sh
-npx nx g @nx/react:app demo
-```
+- **Run tests / linting**
+  ```sh
+  npx nx test <project>
+  npx nx lint <project>
+  ```
 
-To generate a new library, use:
+### Contributing
 
-```sh
-npx nx g @nx/react:lib mylib
-```
+Contributions are currently closed. This project is maintained as a personal project.
+If you have constructive feedback or comments, please open an issue or reach out. Feedback is always welcome, but pull requests are not being accepted at this time.
 
-You can use `npx nx list` to get a list of installed plugins. Then, run `npx nx list <plugin-name>` to learn about more specific capabilities of a particular plugin. Alternatively, [install Nx Console](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) to browse plugins and generators in your IDE.
+---
 
-[Learn more about Nx plugins &raquo;](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) | [Browse the plugin registry &raquo;](https://nx.dev/plugin-registry?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+## Roadmap / Features
 
-[Learn more about Nx on CI](https://nx.dev/ci/intro/ci-with-nx#ready-get-started-with-your-provider?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+*Subject to change as development progresses.*
 
-## Install Nx Console
+### Completed
 
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
+- [x] Browser uploads with session-based workflow
+- [x] Browser downloads - individual files and zip files
+- [x] Conversion to web-ready formats with metadata stripping
+- [x] HEIC/HEIF input support (iphone images)
+- [x] Open Telemetry logging middleware
 
-[Install Nx Console &raquo;](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+### Planned
 
-## Useful links
+- [ ] Dockerization
+- [ ] Additional output formats besides WEBP, such as AVIF.
+- [ ] Multiple output sizes per file per conversion
+- [ ] Configurable output presets (quality, dimensions, available formats, etc)
+- [ ] User-selectable file conversion options
+- [ ] Uploaded/temp file cleanup job, to ensure no retained data
+- [ ] App workflow polish (UI error states/handling, polling uploads for better progress)
+- [ ] E2E test suites for happy path and main error cases
 
-Learn more:
+---
 
--   [Learn more about this workspace setup](https://nx.dev/getting-started/tutorials/react-monorepo-tutorial?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
--   [Learn about Nx on CI](https://nx.dev/ci/intro/ci-with-nx?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
--   [Releasing Packages with Nx release](https://nx.dev/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
--   [What are Nx plugins?](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+## License
 
-And join the Nx community:
+Licensed under the MIT License. See [LICENSE](./LICENSE) for details.
 
--   [Discord](https://go.nx.dev/community)
--   [Follow us on X](https://twitter.com/nxdevtools) or [LinkedIn](https://www.linkedin.com/company/nrwl)
--   [Our Youtube channel](https://www.youtube.com/@nxdevtools)
--   [Our blog](https://nx.dev/blog?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+---
+
+## Security
+
+Please see [SECURITY.md](./SECURITY.md) for how to report potential vulnerabilities.
+
+---
+
+## Acknowledgements
+
+This project is built with:
+- [Express](https://expressjs.com/) — backend API
+- [Sharp](https://sharp.pixelplumbing.com/) — high-performance image processing
+- [Nx](https://nx.dev/) — monorepo tooling
+- [React](https://react.dev/) — front-end interface
+- [Tailwind CSS](https://tailwindcss.com/) — styling

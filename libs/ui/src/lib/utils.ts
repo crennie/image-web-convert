@@ -23,6 +23,28 @@ export function displayBytes(numBytes: number): string {
     return `${n.toFixed(n >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+export function displayMinutes(ms: number) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+}
+
+export function displayDateTime(date: Date, options = { displaySeconds: false }) {
+    const formatOpts: Intl.DateTimeFormatOptions = {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: true,
+    };
+    if (options.displaySeconds) formatOpts.second = 'numeric';
+
+    const formatter = new Intl.DateTimeFormat('en-US', formatOpts);
+    const formattedDateTime = formatter.format(date);
+    return formattedDateTime;
+}
+
 export function getAuthHeaders(session: Session) {
     return { Authorization: `Bearer ${session.token}` };
 }
