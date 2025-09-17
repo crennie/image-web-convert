@@ -1,6 +1,6 @@
 'use client';
 
-import { startTransition, useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 import { FileCardLayout } from "./FileCardLayout";
 import { Button } from "../Button";
 import { FaDownload, FaTimes } from "react-icons/fa";
@@ -40,11 +40,14 @@ export function FileListItem({
 
     // Add icon animation to download functionality
     const handleDownloadClick = useCallback(async () => {
-        if (typeof onDownload === 'function') {
-            if (showDownloadLoader) return; // Use loader to gate/debounce downloads
-            startTransition(() => setShowDownloadLoader(true));
-            await onDownload?.(item);
-            setShowDownloadLoader(false)
+        if (typeof onDownload !== 'function') return;
+        if (showDownloadLoader) return; // Use loader to gate/debounce downloads
+
+        setShowDownloadLoader(true);
+        try {
+            await onDownload(item);
+        } finally {
+            setShowDownloadLoader(false);
         }
     }, [item, onDownload, showDownloadLoader]);
 
@@ -67,7 +70,10 @@ export function FileListItem({
                     }
                     {showDownload ? (
                         <Button variant="ghost" className="absolute right-2 top-2 text-blue-500"
-                            onClick={handleDownloadClick}
+                            onClick={e => {
+                                e.stopPropagation(); // prevents bubbling to the card handler
+                                void handleDownloadClick();
+                            }}
                         >
                             {
                                 showDownloadLoader ? <Spinner className="size-8 text-blue-500" />

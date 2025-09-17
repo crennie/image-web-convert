@@ -2,8 +2,10 @@
     "extends": "../../tsconfig.base.json",
     "compilerOptions": {
         "outDir": "./out-tsc/vitest",
+        "lib": ["DOM", "DOM.Iterable"],
         "types": [
             "vitest/globals",
+            "@testing-library/jest-dom",
             "vitest/importMeta",
             "vite/client",
             "node",

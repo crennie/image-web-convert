@@ -1,29 +1,25 @@
 import { Link } from "react-router";
-import { AnchorHTMLAttributes, ReactNode } from "react";
-import { cn } from "./utils";
+import { AnchorHTMLAttributes, forwardRef, ReactNode } from "react";
+import { ButtonProps, getButtonStyles } from "./Button";
 
 type NavButtonProps = Required<Pick<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>> & AnchorHTMLAttributes<HTMLAnchorElement> & {
     children: ReactNode;
-    variant?: 'primary' | 'secondary';
+    variant?: ButtonProps['variant'];
 }
 
-export function NavButton({ children, ...props }: NavButtonProps) {
-    // TODO: Add button variants
-    // TODO: Add some way to share CSS/styling between this and regular button?
+export const NavButton = forwardRef<HTMLAnchorElement, NavButtonProps>(function NavButton(
+    { children, variant, className, href, ...props }: NavButtonProps, ref
+) {
     return (
         <Link
-            to={props.href}
+            ref={ref}
+            to={href}
+            className={getButtonStyles({ variant, className })}
             {...props}
-            className={cn(
-                props.variant === 'primary' ? 'bg-primary text-primary-foreground' : null,
-                props.variant === 'secondary' ? 'bg-secondary text-secondary-foreground' : null,
-                "text-lg py-3 px-8 rounded-full decoration-0 cursor-pointer",
-                "",
-                props.className)}
         >
             {children}
         </Link>
     );
-}
+});
 
 export default NavButton;
