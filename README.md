@@ -65,7 +65,7 @@ If you have constructive feedback or comments, please open an issue or reach out
 - [x] Browser downloads - individual files and zip files
 - [x] Conversion to web-ready formats with metadata stripping
 - [x] HEIC/HEIF input support (iphone images)
-- [x] Open Telemetry logging middleware
+- [x] OpenTelemetry logging middleware
 
 ### Planned
 
@@ -76,6 +76,7 @@ If you have constructive feedback or comments, please open an issue or reach out
 - [ ] User-selectable file conversion options
 - [ ] Uploaded/temp file cleanup job, to ensure no retained data
 - [ ] App workflow polish (UI error states/handling, polling uploads for better progress)
+- [ ] Unit test coverage
 - [ ] E2E test suites for happy path and main error cases
 
 ---

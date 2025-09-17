@@ -8,7 +8,7 @@ interface PageLayoutProps {
 
 export function PageLayout({ children, className }: PageLayoutProps) {
     return (
-        <main className={cn("min-[100vh] px-6 sm:px-12 pb-12", className)}>
+        <main className={cn("min-h-[50vh] px-6 sm:px-12 pb-12", className)}>
             {children}
         </main>
     )

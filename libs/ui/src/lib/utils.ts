@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { Session } from './session/SessionContext';
+import type { Session } from './session/SessionContext';
 
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))

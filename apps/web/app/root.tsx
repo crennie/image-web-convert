@@ -12,7 +12,6 @@ import { Nav, SessionProvider } from '@image-web-convert/ui';
 import "../styles.css";
 
 export function ErrorBoundary(...args: any[]) {
-    console.log(args);
     const error = args[0].error;
     if (isRouteErrorResponse(error)) {
         return (

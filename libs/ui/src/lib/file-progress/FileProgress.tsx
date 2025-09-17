@@ -77,7 +77,7 @@ export function FileProgress({ items, progress }: FileProgressProps) {
     }, [progress]);
 
     return (
-        <div className="flex max-w-3xl mt-10">
+        <div id="file-upload-progress" className="flex max-w-3xl mt-10">
             <div className="grid grid-cols-2 w-full">
                 <div className="pr-2 text-lg">
                     <h2 className="text-lg font-bold">Converting Files</h2>

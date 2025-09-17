@@ -44,7 +44,7 @@ export function FileDownload({ items, uploadedFiles, rejectedFiles }: FileDownlo
     console.log('rejected', rejectedFiles);
 
     return (
-        <>
+        <div id="file-downloads">
             <DownloadActions disabled={!uploadedFiles.length} onDownload={handleDownloadAll} />
             <div className="mt-8">
                 <h2 className="text-xl">Successful Conversions</h2>
@@ -72,7 +72,7 @@ export function FileDownload({ items, uploadedFiles, rejectedFiles }: FileDownlo
                     </div>
                 ) : null}
             </div>
-        </>
+        </div>
     )
 }
 

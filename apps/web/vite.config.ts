@@ -32,13 +32,33 @@ export default defineConfig(() => ({
         watch: false,
         globals: true,
         environment: 'jsdom',
+        setupFiles: ['./app/setupTests.tsx'],
         include: [
-            '{src,tests}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
+            'app/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
         ],
         reporters: ['default'],
         coverage: {
             reportsDirectory: './test-output/vitest/coverage',
             provider: 'v8' as const,
+            exclude: [
+                // Config files
+                "**/{vite,postcss,tailwind,eslint,jest,tsup,webpack,rollup}*.{js,ts,mjs,cjs}",
+                "*.config.{js,ts,mjs,cjs}",
+                "**/*.config.{js,ts,mjs,cjs}",
+                
+                // React router
+                ".react-router/**",
+                "app/entry.client.tsx",
+                "app/entry.server.tsx",
+                
+                // Build files
+                "build/**/",
+                "dist/**/",
+
+                // App files without unit tests
+                "app/routes.tsx",
+                "app/routes/**/index.{ts,tsx}",
+            ],
         },
     },
 }));

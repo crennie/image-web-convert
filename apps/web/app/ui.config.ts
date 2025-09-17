@@ -5,7 +5,7 @@
 import { ALLOWED_IMAGE_EXT, SESSION_IMAGE_CONFIG } from "@image-web-convert/schemas";
 import { displayBytes, displayMinutes } from "@image-web-convert/ui";
 
-type UiSettingsDisplay = {
+export type UiSettingsDisplay = {
     uploadedFileLifespan: string;
     supportedExtensions: readonly string[];
     maxFileSize: string;
