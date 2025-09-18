@@ -1,0 +1,37 @@
+/// <reference types="vitest" />
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+    root: __dirname,
+    cacheDir: '../../node_modules/.vite/libs/node-shared',
+
+    // No Vite plugins needed for a Node/Express test target.
+
+    test: {
+        name: '@image-web-convert/node-shared',
+        environment: 'node',
+        globals: true,
+        watch: false,
+        include: [
+            'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts}',
+            '**/__tests__/**/*.{js,ts}'
+        ],
+        setupFiles: [],
+        reporters: ['default'],
+        coverage: {
+            provider: 'v8',
+            reportsDirectory: './test-output/vitest/coverage',
+            exclude: [
+                // Config & build artifacts
+                '**/*.{config,conf}.{js,ts,mjs,cjs}',
+                '**/{vite,postcss,tailwind,eslint,jest,tsup,webpack,rollup}*.{js,ts,mjs,cjs}',
+                'dist/**',
+                'build/**',
+                // Type declarations & generated files
+                '**/*.d.ts'
+            ]
+        },
+        // If your repo uses path aliases in tsconfig, uncomment this and install vite-tsconfig-paths
+        // alias: {},
+    },
+});

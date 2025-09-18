@@ -9,8 +9,8 @@ export function generateAccessToken(): { token: string; hash: string } {
 
 export function extractBearerToken(authorization?: string): string | null {
     if (!authorization) return null;
-    const [scheme, token] = authorization.split(" ");
-    return scheme?.toLowerCase() === "bearer" && token ? token : null;
+    const match = authorization.match(/^\s*?Bearer\s+(\S+)\s*?$/i);
+    return match ? match[1] : null;
 }
 
 export function hashAccessToken(token: string): string {
@@ -18,6 +18,11 @@ export function hashAccessToken(token: string): string {
 }
 
 export function timingSafeEqHex(aHex: string, bHex: string): boolean {
+    // must be even length and only 0-9a-f
+    const hexPattern = /^[0-9a-fA-F]+$/;
+    if (!hexPattern.test(aHex) || !hexPattern.test(bHex)) return false;
+    if (aHex.length % 2 !== 0 || bHex.length % 2 !== 0) return false;
+
     const a = Buffer.from(aHex, "hex");
     const b = Buffer.from(bHex, "hex");
     if (a.length !== b.length) return false;

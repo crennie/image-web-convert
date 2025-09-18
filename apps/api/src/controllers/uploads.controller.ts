@@ -61,6 +61,7 @@ export async function create(req: Request, res: Response) {
         const response: ApiUploadsResponse = { status, accepted, rejected }
 
         return res.status(http).json(response);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
         const response: ApiUploadsErrorFiles = { type: "upload_error", message: err?.message || 'Upload failed' };
         return res

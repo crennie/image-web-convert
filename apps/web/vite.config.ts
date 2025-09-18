@@ -45,12 +45,12 @@ export default defineConfig(() => ({
                 "**/{vite,postcss,tailwind,eslint,jest,tsup,webpack,rollup}*.{js,ts,mjs,cjs}",
                 "*.config.{js,ts,mjs,cjs}",
                 "**/*.config.{js,ts,mjs,cjs}",
-                
+
                 // React router
                 ".react-router/**",
                 "app/entry.client.tsx",
                 "app/entry.server.tsx",
-                
+
                 // Build files
                 "build/**/",
                 "dist/**/",
@@ -58,6 +58,10 @@ export default defineConfig(() => ({
                 // App files without unit tests
                 "app/routes.tsx",
                 "app/routes/**/index.{ts,tsx}",
+
+                // Type declarations & generated files
+                'out-tsc/**',
+                '**/*.d.ts',
             ],
         },
     },
