@@ -7,13 +7,16 @@
             "path": "../../libs/schemas"
         },
         {
-            "path": "../../libs/observability"
-        },
-        {
             "path": "../../libs/node-shared"
         },
         {
+            "path": "../../libs/observability"
+        },
+        {
             "path": "./tsconfig.app.json"
+        },
+        {
+            "path": "./tsconfig.spec.json"
         }
     ]
 }

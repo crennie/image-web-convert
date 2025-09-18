@@ -89,7 +89,7 @@ describe('displayDateTime', () => {
 
 describe('getAuthHeaders', () => {
     it('returns a Bearer auth header for a session token', () => {
-        const headers = getAuthHeaders({ token: 'abc123' });
+        const headers = getAuthHeaders({ token: 'abc123', sessionId: 'sid', expiresAt: '00:00' });
         expect(headers).toEqual({ Authorization: 'Bearer abc123' });
     });
 });

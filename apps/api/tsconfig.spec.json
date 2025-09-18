@@ -1,19 +1,17 @@
 {
     "extends": "../../tsconfig.base.json",
     "compilerOptions": {
-        "baseUrl": ".",
-        "rootDir": "src",
-        "outDir": "dist",
-        "tsBuildInfoFile": "dist/tsconfig.lib.tsbuildinfo",
-        "emitDeclarationOnly": false,
-        "module": "nodenext",
-        "moduleResolution": "nodenext",
-        "types": ["node"]
+        "outDir": "./out-tsc/vitest",
+        "lib": ["ES2022"],
+        "types": [
+            "vitest/globals",
+            "vitest/importMeta",
+            "vite/client",
+            "vitest",
+            "node"
+        ]
     },
-    "include": ["src/**/*.ts"],
-    "exclude": [
-        "out-tsc",
-        "dist",
+    "include": [
         "vite.config.ts",
         "vite.config.mts",
         "vitest.config.ts",
@@ -28,7 +26,13 @@
         "src/**/*.spec.jsx",
         "eslint.config.js",
         "eslint.config.cjs",
-        "eslint.config.mjs"
+        "eslint.config.mjs",
+        "src/**/*.d.ts",
+        "**/__tests__/**/*.{ts,js}"
     ],
-    "references": []
+    "references": [
+        {
+            "path": "./tsconfig.app.json"
+        }
+    ]
 }

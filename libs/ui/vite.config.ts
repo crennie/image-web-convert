@@ -50,6 +50,19 @@ export default defineConfig(() => ({
         include: [
             '{src,tests}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
         ],
+        exclude: [
+            // Config & build artifacts
+            '**/*.{config,conf}.{js,ts,mjs,cjs}',
+            '**/{vite,postcss,tailwind,eslint,jest,tsup,webpack,rollup}*.{js,ts,mjs,cjs}',
+            'dist/**',
+            'build/**',
+            'node_modules/**',
+            '.next/**',
+
+            // Type declarations & generated files
+            'out-tsc/**',
+            '**/*.d.ts',
+        ],
         reporters: ['default'],
         coverage: {
             reportsDirectory: './test-output/vitest/coverage',

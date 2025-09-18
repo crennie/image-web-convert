@@ -67,7 +67,6 @@ export async function processImageToWebp({
         } catch (err) {
             // TODO: Add error logging in services
             //req.log.error({ err });
-            console.log(err);
         }
     }
 
@@ -108,7 +107,7 @@ export async function processImageToWebp({
 
     // 5) Encode
     const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
-
+ 
     return {
         buffer: data,
         outputMime: 'image/webp',
