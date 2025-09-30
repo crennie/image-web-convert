@@ -80,9 +80,45 @@ export async function saveUploadFile(sid: string, uf: UploadedFile, clientId = '
 }
 
 // ---------- Helpers ----------
+// function sanitizeBaseName(name: string): string {
+//     return path.basename(name).replace(/[/\\?%*:|"<>]/g, '_');
+// }
+// storage.service.ts
 function sanitizeBaseName(name: string): string {
-    return path.basename(name).replace(/[/\\?%*:|"<>]/g, '_');
+    // 1) Attempt to repair mojibake like "â¯" → U+202F
+    const repaired = tryFixLatin1Utf8(name);
+
+    // 2) Unicode normalize; convert NBSPs to regular space
+    const normalized = repaired
+        .normalize('NFC')
+        .replace(/\u00A0|\u202F/g, ' '); // NBSP & NARROW NBSP → space
+
+    // 3) Take just the base segment
+    const base = path.basename(normalized);
+
+    // 4) Remove control chars; replace illegal path chars with underscore
+    const noControls = base.replace(/\p{C}/gu, '');
+    const safe = noControls.replace(/[/\\?%*:|"<>]/g, '_');
+
+    // 5) Collapse whitespace and trim
+    return safe.replace(/\s+/g, ' ').trim();
 }
+
+function tryFixLatin1Utf8(s: string): string {
+    // Heuristic: if the string *looks* like Latin-1 bytes of a UTF-8 string,
+    // decoding those bytes as UTF-8 yields a stable round-trip.
+    try {
+        const maybe = Buffer.from(s, 'latin1').toString('utf8');
+        // Only accept if round-trip back to latin1 yields the original bytes
+        if (Buffer.from(maybe, 'utf8').toString('latin1') === s) {
+            return maybe;
+        }
+    } catch {
+        // ignore
+    }
+    return s;
+}
+
 
 /**
  * Utility to delete the original temp file after successful processing.

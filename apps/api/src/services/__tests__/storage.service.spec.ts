@@ -107,6 +107,41 @@ describe('pathForStored', () => {
     });
 });
 
+describe('sanitizeBasename', () => {
+    it('repairs mojibake filenames and sanitizes', async () => {
+        // Arrange temp input file
+        const sessionPath = path.join(tmpRoot, h.sid);
+        await fs.mkdir(sessionPath, { recursive: true });
+
+        const tmp = path.join(tmpRoot, 'in.png');
+        await fs.writeFile(tmp, Buffer.from('x'));
+
+        // Mojibake input (latin1-decoded UTF-8 for U+202F)
+        const bad = 'Screenshot 2025-09-18 at 9.36.20â¯AM.png';
+        const upload = mkUpload(bad, tmp);
+
+        const res = await storage.saveUploadFile(h.sid, upload, '');
+        const meta = await storage.readMeta(h.sid, res.id);
+        expect(meta?.original.name).toBe('Screenshot 2025-09-18 at 9.36.20 AM.png'); // NBSP→space, cleaned
+    });
+
+    it('keeps proper UTF-8 names (U+202F) but normalizes spacing', async () => {
+        // Arrange temp input file
+        const sessionPath = path.join(tmpRoot, h.sid);
+        await fs.mkdir(sessionPath, { recursive: true });
+        
+        const tmp = path.join(tmpRoot, 'in2.png');
+        await fs.writeFile(tmp, Buffer.from('x'));
+
+        const good = 'Screenshot 2025-09-18 at 9.36.20 AM.png'; // real U+202F
+        const upload = mkUpload(good, tmp);
+
+        const res = await storage.saveUploadFile(h.sid, upload, '');
+        const meta = await storage.readMeta(h.sid, res.id);
+        expect(meta?.original.name).toBe('Screenshot 2025-09-18 at 9.36.20 AM.png'); // NBSP normalized to space
+    });
+})
+
 describe('saveUploadFile', () => {
     it('processes, writes .webp, writes metadata JSON, deletes temp file, returns ApiUploadAccepted', async () => {
         // Arrange temp input file

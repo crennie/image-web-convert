@@ -16,6 +16,16 @@ export default defineConfig({
             'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts}',
             '**/__tests__/**/*.{js,ts}'
         ],
+        exclude: [
+            'dist/**',
+            'build/**',
+            'node_modules/**',
+            '.next/**',
+            
+            // Type declarations & generated files
+            'out-tsc/**',
+            '**/*.d.ts',
+        ],
         setupFiles: ['./src/setupTests.ts'],
         reporters: ['default'],
         coverage: {
