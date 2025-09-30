@@ -30,6 +30,7 @@
         "app/**/*.spec.jsx",
         "app/**/*.d.ts"
     ],
+    "exclude": ["out-tsc", "dist"],
     "references": [
         {
             "path": "./tsconfig.app.json"

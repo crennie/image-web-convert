@@ -119,7 +119,14 @@ describe("processImageToWebp (unit)", () => {
         const converted = Buffer.from("jpegdata"); // heic-convert result consumed by sharp
         mockedFT.mockResolvedValueOnce(sniff);
         mockedReadFile.mockResolvedValueOnce(heicBuffer);
-        mockedHeicConvert.mockResolvedValueOnce(converted);
+        //mockedHeicConvert.mockResolvedValueOnce(converted);
+
+        const convertedAb = converted.buffer.slice(
+            converted.byteOffset,
+            converted.byteOffset + converted.byteLength
+        );
+
+        mockedHeicConvert.mockResolvedValueOnce(convertedAb as ArrayBuffer);
 
         const meta = { width: 500, height: 300, hasAlpha: false, pages: 1 };
         const out = { data: Buffer.from([9, 9, 9]), info: { width: 400, height: 240 } };
@@ -137,12 +144,12 @@ describe("processImageToWebp (unit)", () => {
         // sharp was called twice, both with the converted buffer
         expect(mockedSharp).toHaveBeenNthCalledWith(
             1,
-            converted,
+            convertedAb,
             expect.objectContaining({ animated: false, failOn: "error", limitInputPixels: 268435456 })
         );
         expect(mockedSharp).toHaveBeenNthCalledWith(
             2,
-            converted,
+            convertedAb,
             expect.objectContaining({ animated: false, limitInputPixels: 268435456 })
         );
 

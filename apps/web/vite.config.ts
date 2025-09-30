@@ -36,6 +36,15 @@ export default defineConfig(() => ({
         include: [
             'app/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
         ],
+        exclude: [
+            // Build files
+            "build/**/",
+            "dist/**/",
+
+            // Type declarations & generated files
+            'out-tsc/**',
+            '**/*.d.ts',
+        ],
         reporters: ['default'],
         coverage: {
             reportsDirectory: './test-output/vitest/coverage',
