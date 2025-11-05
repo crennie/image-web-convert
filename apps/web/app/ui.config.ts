@@ -20,5 +20,4 @@ export const UI_SETTINGS_DISPLAY: UiSettingsDisplay = {
     supportedExtensions: ALLOWED_IMAGE_EXT,
     maxFileSize: displayBytes(SESSION_IMAGE_CONFIG.maxBytesPerFile),
     maxTotalSize: displayBytes(SESSION_IMAGE_CONFIG.maxTotalBytes),
-    
 };

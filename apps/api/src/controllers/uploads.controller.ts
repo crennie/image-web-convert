@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import type { FileArray, UploadedFile } from 'express-fileupload';
 import { saveUploads } from '../services/uploads.service';
-import { ApiUploadsErrorFiles, ApiUploadsErrorMissingFiles, ApiUploadsErrorSessionUsed, ApiUploadsResponse } from '@image-web-convert/schemas';
+import { ALLOWED_OUTPUT_MIME, ApiUploadsErrorFiles, ApiUploadsErrorMime, ApiUploadsErrorMissingFiles, ApiUploadsErrorSessionUsed, ApiUploadsResponse, isOutputMimeType, OutputMimeType } from '@image-web-convert/schemas';
 import { writeSessionInfo } from '../services/sessions.service';
 import { validateRequestWithToken } from '../services/auth.service';
 
@@ -28,7 +28,15 @@ export async function create(req: Request, res: Response) {
         }
     }
 
+    // Use the request body manifest
+    const outputMime = JSON.parse(req.body?.outputMime ?? '') ?? '';
+    if (!isOutputMimeType(outputMime)) {
+        const response: ApiUploadsErrorMime = { type: "invalid_output_mime", message: "" };
+        return res.status(400).json(response);
+    }
+
     // Associate the files with the client id, so uploader/returns can be synced
+    // Use the request body manifest
     let clientIds = [];
     if (req.body?.manifest?.length) {
         clientIds = JSON.parse(req.body.manifest);
@@ -44,7 +52,7 @@ export async function create(req: Request, res: Response) {
 
         // Delegates to service layer (saves files, maps names -> UUIDs, writes metadata, etc.)
         // Expected shape: { accepted: any[]; rejected: { fileName: string; error: string }[] }
-        const { accepted, rejected } = await saveUploads(sid, uploads, clientIds);
+        const { accepted, rejected } = await saveUploads(sid, outputMime, uploads, clientIds);
 
         // Update counts
         validateResponse.info.counts.files += accepted.length;
@@ -61,7 +69,7 @@ export async function create(req: Request, res: Response) {
         const response: ApiUploadsResponse = { status, accepted, rejected }
 
         return res.status(http).json(response);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
         const response: ApiUploadsErrorFiles = { type: "upload_error", message: err?.message || 'Upload failed' };
         return res

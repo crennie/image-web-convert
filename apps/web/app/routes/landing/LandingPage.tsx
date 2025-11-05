@@ -37,7 +37,7 @@ export function LandingPage({ SettingsDisplay = UI_SETTINGS_DISPLAY }: LandingPa
                         <div className="w-full md:w-1/3">
                             <h3 className="font-semibold text-lg underline">Step 1</h3>
                             <div>
-                                Select your image files and click <strong>Start</strong>.
+                                Select your image files, output format, and click <strong>Start</strong>.
                                 <ul className="list-disc pl-4">
                                     <li>Supported images: <br />{SettingsDisplay.supportedExtensions
                                         .map((ext, i) => <span key={i}>

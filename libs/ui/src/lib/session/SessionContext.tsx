@@ -33,7 +33,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             }
 
             const result: ApiCreateSessionResponse = await response.json();
-            console.log('Session created:', result);
             const session = {
                 sessionId: result.sid,
                 token: result.token,

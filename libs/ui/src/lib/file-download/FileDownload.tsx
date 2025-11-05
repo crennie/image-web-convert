@@ -8,13 +8,14 @@ import { FileList } from "../files/FileList";
 import { FaTimes } from "react-icons/fa";
 
 interface FileDownloadProps {
+    conversionExt: string;
     items: FileItem[];
     uploadedFiles: ApiUploadAccepted[];
     rejectedFiles: ApiUploadRejected[];
 }
 
-export function FileDownload({ items, uploadedFiles, rejectedFiles }: FileDownloadProps) {
-    const { downloadFiles, downloadSingleFile } = useFileDownloads();
+export function FileDownload({ conversionExt, items, uploadedFiles, rejectedFiles }: FileDownloadProps) {
+    const { downloadFiles, downloadSingleFile } = useFileDownloads({ conversionExt });
 
     const handleDownloadAll = useCallback(async () => {
         const createArchiveName = () => `image_web_convert_${new Date().toJSON().slice(0, 16).replace(/[\-\:T]/g, '_')}.zip`;
@@ -35,13 +36,9 @@ export function FileDownload({ items, uploadedFiles, rejectedFiles }: FileDownlo
         items.filter(item => uploadedFiles.find(uf => uf.clientId === item.id))
             .map(item => ({
                 ...item,
-                file: { ...item.file, name: item.file.name.replace(/(\.[^./?#]+)?([?#]|$)/, '.webp$2') }
+                file: { ...item.file, name: item.file.name.replace(/(\.[^./?#]+)?([?#]|$)/, `.${conversionExt}$2`) }
             }))
-        , [items, uploadedFiles]);
-
-    console.log('items', items);
-    console.log('uploaded', uploadedFiles);
-    console.log('rejected', rejectedFiles);
+        , [items, uploadedFiles, conversionExt]);
 
     return (
         <div id="file-downloads">

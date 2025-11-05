@@ -3,19 +3,21 @@ import fs from 'node:fs/promises';
 import { fileTypeFromFile } from 'file-type';
 import { DEFAULT_IMG_OPTS, type ImageProcessingOptions } from './image.config';
 import convert from 'heic-convert';
-import { ALLOWED_IMAGE_MIME } from '@image-web-convert/schemas';
+import { ALLOWED_IMAGE_MIME, OutputMimeType } from '@image-web-convert/schemas';
 
 // file path or in-memory buffer when adding intermediary conversions (e.g. heic-convert)
 type SharpSource = string | ArrayBuffer;
 
 export type ProcessInput = {
     inputPath: string; // absolute path to temp file
+    outputMime: OutputMimeType;
     options?: Partial<ImageProcessingOptions>;
 };
 
 export type ProcessOutput = {
     buffer: Buffer;
-    outputMime: 'image/webp';
+    // outputMime: 'image/webp';
+    outputMime: OutputMimeType,
     info: {
         width: number;
         height: number;
@@ -34,14 +36,15 @@ export type ProcessOutput = {
 };
 
 /**
- * Process a temp image file to WebP with PII-stripping and sRGB normalization.
+ * Process a temp image file to given output format with PII-stripping and sRGB normalization.
  * Notes:
  * - Sharp omits metadata by default (don’t call withMetadata()).
  * - Default policy keeps only the first frame for animated inputs.
  * - Container images (.e.g HEIC family) only have the first image processed
  */
-export async function processImageToWebp({
+export async function processImageToMimeType({
     inputPath,
+    outputMime,
     options,
 }: ProcessInput): Promise<ProcessOutput> {
     const opts: ImageProcessingOptions = { ...DEFAULT_IMG_OPTS, ...options };
@@ -99,18 +102,39 @@ export async function processImageToWebp({
         });
     }
 
-    pipeline = pipeline.webp({
-        quality: opts.quality,
-        effort: opts.effort,
-        // alphaQuality defaults okay; can tweak if lots of transparent assets
-    });
+    // Run conversion utility based on target output mime type
+
+    // TODO: Add default (or configurable) conversion settings for each type
+    // Different web conversions use different ranges, e.g. avif effort is 0-9, while png effort is 1-10
+    if (outputMime === 'image/webp') {
+        pipeline = pipeline.webp({
+            quality: opts.quality,
+            effort: opts.effort,
+            // alphaQuality defaults okay; can tweak if lots of transparent assets
+        });
+    } else if (outputMime === 'image/avif') {
+        pipeline = pipeline.avif({
+            quality: opts.quality,
+            effort: opts.effort,
+        });
+    } else if (outputMime === 'image/jpeg') {
+        pipeline = pipeline.png({
+            quality: opts.quality,
+            effort: opts.effort,
+        });
+    } else if (outputMime === 'image/png') {
+        pipeline = pipeline.png({
+            quality: opts.quality,
+            effort: opts.effort,
+        });
+    }
 
     // 5) Encode
     const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
- 
+
     return {
         buffer: data,
-        outputMime: 'image/webp',
+        outputMime,
         info: {
             width: info.width,
             height: info.height,

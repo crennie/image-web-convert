@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import archiver from 'archiver';
 import type { Response } from 'express';
 import { readMeta, pathForStored } from './storage.service';
-import { ApiUploadMeta } from '@image-web-convert/schemas';
+import { ApiUploadMeta, MIME_TO_EXT, OutputMimeType } from '@image-web-convert/schemas';
 import { normalizeAbsolutePath } from '@image-web-convert/node-shared';
 
 export type ResolvedDownload = {
@@ -11,9 +11,9 @@ export type ResolvedDownload = {
     absPath: string;             // absolute FS path to the processed asset
     downloadName: string;        // suggested filename for single downloads (e.g., "<originalBase>.webp")
     archiveName: string;         // filename to use inside a ZIP (unique, order-preserving)
-    contentType: string;         // e.g., 'image/webp'
+    contentType: OutputMimeType; // e.g., 'image/webp'
     contentDisposition: string;  // precomputed header for single downloads
-    meta: ApiUploadMeta;            // sidecar metadata (not added to ZIP per requirements)
+    meta: ApiUploadMeta;         // sidecar metadata (not added to ZIP per requirements)
 };
 
 interface ResolvedFilesResponse {
@@ -26,8 +26,6 @@ export async function resolveFilesByIds(sid: string, ids: string[]): Promise<Res
     const missing: string[] = [];
 
     for (const id of ids) {
-        // TODO: If having two meta types, need way to pull 
-        // "ApiUploadMeta" from all meta contents "UploadMeta".
         const meta = await readMeta(sid, id);
         if (!meta) {
             missing.push(id);
@@ -97,8 +95,8 @@ export async function streamZip(
 function buildDownloadName(meta: ApiUploadMeta): string {
     const base = path.parse(meta.original.name).name || meta.id;
     const safeBase = base.replace(/[/\\?%*:|"<>]/g, '_');
-    // Hard-code webp, it's the only type of conversion output available
-    return `${safeBase}.webp`;
+    const extension = MIME_TO_EXT[meta.output.mime]?.[0];
+    return `${safeBase}.${extension}`;
 }
 
 function buildContentDisposition(filename: string): string {

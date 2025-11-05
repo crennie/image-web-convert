@@ -18,6 +18,12 @@ export type ApiUploadsErrorSessionUsed = {
     message?: string;
 }
 
+export type ApiUploadsErrorMime = {
+    type: "invalid_output_mime";
+    message?: string;
+}
+
+
 export type ApiUploadsErrorMissingFiles = {
     type: "missing_files";
     message?: string;

@@ -9,19 +9,31 @@ const ALLOWED_IMAGE_MIME_CONST = [
     "image/heif-sequence",
     "image/tiff",
 ] as const;
-
 export const ALLOWED_IMAGE_MIME = new Set<string>(ALLOWED_IMAGE_MIME_CONST);
 
-export const MIME_TO_EXT: Record<(typeof ALLOWED_IMAGE_MIME_CONST)[number], readonly string[]> = {
-    "image/jpeg": [".jpg", ".jpeg", ".jfif"],
-    "image/png": [".png"],
-    "image/webp": [".webp"],
-    "image/gif": [".gif"],
-    "image/avif": [".avif"],
-    "image/heic": [".heic", ".heics"],
-    "image/heif": [".heif", ".heifs"],
-    "image/heif-sequence": [".heifs", ".heics"],
-    "image/tiff": [".tif", ".tiff"],
+export const ALLOWED_OUTPUT_MIME_CONST = [
+    "image/webp",
+    "image/jpeg",
+    "image/png",
+    "image/avif",
+] as const;
+export const ALLOWED_OUTPUT_MIME = new Set<string>(ALLOWED_OUTPUT_MIME_CONST);
+export type OutputMimeType = (typeof ALLOWED_OUTPUT_MIME_CONST)[number];
+// Guard function for parsing from requests
+export function isOutputMimeType(x: string): x is OutputMimeType {
+    return (ALLOWED_OUTPUT_MIME_CONST as readonly string[]).includes(x);
+}
+
+export const MIME_TO_EXT: Record<(typeof ALLOWED_IMAGE_MIME_CONST | typeof ALLOWED_OUTPUT_MIME_CONST)[number], readonly string[]> = {
+    "image/jpeg": ["jpg", "jpeg", "jfif"],
+    "image/png": ["png"],
+    "image/webp": ["webp"],
+    "image/gif": ["gif"],
+    "image/avif": ["avif"],
+    "image/heic": ["heic", "heics"],
+    "image/heif": ["heif", "heifs"],
+    "image/heif-sequence": ["heifs", "heics"],
+    "image/tiff": ["tif", "tiff"],
 };
 
 export const ALLOWED_IMAGE_EXT = Array.from(

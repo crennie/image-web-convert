@@ -1,14 +1,14 @@
 import type { UploadedFile } from 'express-fileupload';
 import { saveUploadFile } from './storage.service';
-import { ApiUploadAccepted, ApiUploadRejected } from '@image-web-convert/schemas';
+import { ApiUploadAccepted, ApiUploadRejected, OutputMimeType } from '@image-web-convert/schemas';
 
 interface SaveUploadsResponse {
     accepted: ApiUploadAccepted[];
     rejected: ApiUploadRejected[];
 }
 
-export async function saveUploads(sid: string, uploads: UploadedFile[], clientIds: string[] = []):Promise<SaveUploadsResponse> {
-    const promises = uploads.map((uf, idx) => saveUploadFile(sid, uf, clientIds[idx]));
+export async function saveUploads(sid: string, outputMime: OutputMimeType, uploads: UploadedFile[], clientIds: string[] = []):Promise<SaveUploadsResponse> {
+    const promises = uploads.map((uf, idx) => saveUploadFile(sid, outputMime, uf, clientIds[idx]));
     const settled = await Promise.allSettled(promises);
 
     const accepted: ApiUploadAccepted[] = [];
