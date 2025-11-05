@@ -1,3 +1,4 @@
+import { OutputMimeType } from "../image.js";
 
 export type ApiCreateSessionResponse = {
     sid: string;
@@ -21,7 +22,7 @@ export type UploadMeta = {
     // Processed (stored) file info
     output: {
         storedName: string;        // `${id}.webp`
-        mime: 'image/webp';
+        mime: OutputMimeType;
         sizeBytes: number;
         width: number;
         height: number;
@@ -41,7 +42,7 @@ export type ApiUploadAccepted = {
     url: string;                 // e.g. `/files/:id`
     metaUrl: string;             // e.g. `/files/:id/meta`
     meta: ApiUploadMeta;
-    
+
     // Client session upload metadata
     clientId?: string;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback } from "react";
+import { FormEvent, useCallback, useMemo } from "react";
 import { UploadActions } from "./UploadActions";
 import { FilePicker } from "./FilePicker";
 import { FileList } from "../files/FileList";
@@ -8,9 +8,10 @@ import { FileItem } from "../files/FileListItem";
 import { useFileItems } from "./hooks/useFileItems";
 import { FileUploadConfig } from "./file-upload.config";
 
-type FileUploadProps = Omit<ReturnType<typeof useFileItems>, 'addErrors' | 'clearFiles'> & {
+type FileUploadProps = Omit<ReturnType<typeof useFileItems>, 'addErrors'> & {
     config?: FileUploadConfig,
     onUploadStart: (formData: FormData) => void;
+    setConversionExt: (ext: string) => void;
 }
 
 export function FileUpload({
@@ -18,10 +19,14 @@ export function FileUpload({
     items,
     addItems,
     removeItem,
+    clearFiles,
     errors,
     clearErrors,
     onUploadStart,
+    setConversionExt
 }: FileUploadProps) {
+    const outputMimeOptions = useMemo(() => config?.outputMimeOptions ?? [], [config?.outputMimeOptions]);
+
     const handleSelectFiles = useCallback((files: File[]) => {
         if (files.length < 1) return;
         // Clear existing errors when new files are selected
@@ -33,16 +38,26 @@ export function FileUpload({
         removeItem(item);
     }, [removeItem]);
 
-    const handleSubmit = useCallback((e: FormEvent) => {
+    const handleSubmit = useCallback((e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        // Prepare form data
+        // Prepare form data, building a new form object from scratch and extracting form values as needed
         const formData = new FormData();
         items.forEach(item => formData.append('uploads', item.file as File));
         const manifest = items.map(item => item.id);
         formData.append('manifest', JSON.stringify(manifest))
 
+        // "outputMime" should be passed in from the upload form
+        const outputMime = (new FormData(e.currentTarget)).get('outputMime') ?? '';
+        formData.append('outputMime', JSON.stringify(outputMime))
+
+        setConversionExt(outputMimeOptions?.find(opt => opt.value === outputMime)?.display ?? '');
         onUploadStart(formData);
-    }, [onUploadStart, items]);
+    }, [onUploadStart, items, outputMimeOptions, setConversionExt]);
+
+    const handleClearFiles = useCallback(() => {
+        clearFiles();
+        clearErrors();
+    }, [clearErrors, clearFiles]);
 
     return (
         <form
@@ -50,8 +65,14 @@ export function FileUpload({
             onSubmit={handleSubmit}
             className=""
         >
-            <UploadActions uploadFilesCount={items.length} errors={errors} />
-            <div className="flex flex-wrap gap-6 mt-8 justify-center sm:justify-start">
+            <UploadActions
+                outputMimeOptions={outputMimeOptions}
+                uploadFilesCount={items.length}
+                onClearFiles={handleClearFiles}
+                errors={errors}
+            />
+            <hr className="my-8" />
+            <div className="flex flex-wrap gap-6 justify-center sm:justify-start">
                 <FilePicker config={config} onSelectFiles={handleSelectFiles} />
                 <FileList items={items} showRemove={true} onRemove={handleRemove} />
             </div>

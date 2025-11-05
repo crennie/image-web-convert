@@ -52,6 +52,7 @@
 
 @layer base {
     .body-background {
+        background-color: var(--color-background);
         background-size: 20px 20px;
         background-image: radial-gradient(
             var(--color-primary),

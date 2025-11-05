@@ -43,11 +43,6 @@ describe('FileListItem', () => {
 
         const { getByRole } = render(<FileListItem item={item} showRemove onRemove={onRemove} />);
 
-        // Remove button renders an "X" icon (FaTimes) inside the button
-        // const buttons = screen.getAllByRole('button');
-        // expect(buttons.length).toBe(1);
-        // console.log(buttons);
-
         await user.click(getByRole('button'));
 
         expect(onRemove).toHaveBeenCalledTimes(1);

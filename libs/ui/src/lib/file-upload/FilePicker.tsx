@@ -23,8 +23,8 @@ export function FilePicker({ config, onSelectFiles }: FilePickerProps) {
     return (
         <FileCardLayout
             {...rootProps}
-            className={cn(`relative flex min-h-40 items-center justify-center rounded-2xl border-2 border-dashed p-6 transition cursor-pointer`,
-                isDragActive ? "border-blue-500 bg-blue-500/5" : "border-muted-foreground/30"
+            className={cn(`relative flex min-h-40 items-center justify-center rounded-2xl border-2 border-dashed p-6 transition cursor-pointer hover:border-solid`,
+                isDragActive ? "border-solid border-blue-500 bg-blue-500/5" : "border-muted-foreground/30"
             )}
             onClick={open}
         >

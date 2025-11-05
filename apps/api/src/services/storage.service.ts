@@ -2,9 +2,9 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import fssync from 'node:fs';
 import type { UploadedFile } from 'express-fileupload';
-import { processImageToWebp } from './image.service';
+import { processImageToMimeType } from './image.service';
 import { normalizeAbsolutePath, secureId } from "@image-web-convert/node-shared";
-import { ApiUploadAccepted, UploadMeta } from '@image-web-convert/schemas';
+import { ApiUploadAccepted, MIME_TO_EXT, OutputMimeType, UploadMeta } from '@image-web-convert/schemas';
 import { sessionDir } from './sessions.service';
 
 // ---------- Config (monorepo-root defaults; docker-friendly overrides) ----------
@@ -19,7 +19,7 @@ if (!fssync.existsSync(UPLOAD_DIR)) {
     fssync.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-export async function saveUploadFile(sid: string, uf: UploadedFile, clientId = ''): Promise<ApiUploadAccepted> {
+export async function saveUploadFile(sid: string, outputMime: OutputMimeType, uf: UploadedFile, clientId = ''): Promise<ApiUploadAccepted> {
 
     // Ensure we have a temp file path (express-fileupload with useTempFiles: true)
     const inputPath = uf.tempFilePath;
@@ -30,14 +30,17 @@ export async function saveUploadFile(sid: string, uf: UploadedFile, clientId = '
     const originalName = sanitizeBaseName(uf.name || 'upload');
 
     // 1) Process to WebP (PII-stripped, sRGB, optional resize)
-    const processed = await processImageToWebp({
+    // Run different processing 
+    const processed = await processImageToMimeType({
         inputPath,
+        outputMime,
         // options: {} // use defaults for Phase 1
     });
 
     // 2) Create anonymous UUID for each stored file
     const id = secureId();
-    const storedName = `${id}.webp`;
+    const extension = MIME_TO_EXT[outputMime]?.[0];
+    const storedName = `${id}.${extension}`;
     await fs.writeFile(pathForStored(sid, storedName), processed.buffer);
 
     // 3) Build and write sidecar metadata

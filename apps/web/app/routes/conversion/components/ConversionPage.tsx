@@ -9,6 +9,7 @@ import { ErrorBoundary } from "react-error-boundary";
 
 export function ConversionPage() {
     const config = FILE_UPLOAD_CONFIG;
+    const [conversionExt, setConversionExt] = useState<string | null>(null);
     const [uploadError, setUploadError] = useState<string | null>(null);
     const [pageState, setPageState] = useState<ConversionState>('select');
     const { items, addItems, removeItem, clearFiles, errors, clearErrors } = useFileItems({ config });
@@ -65,14 +66,16 @@ export function ConversionPage() {
                                 items={items}
                                 addItems={addItems}
                                 removeItem={removeItem}
+                                clearFiles={clearFiles}
                                 errors={errors}
                                 clearErrors={clearErrors}
                                 onUploadStart={startUploads}
+                                setConversionExt={setConversionExt}
                             />
                         ) : pageState === 'upload' || pageState === 'upload_complete' ? (
                             <FileProgress items={items} progress={progress} />
                         ) : pageState === 'download' ? (
-                            <FileDownload items={items} uploadedFiles={uploadedFiles} rejectedFiles={rejectedFiles} />
+                            <FileDownload conversionExt={conversionExt ?? ''} items={items} uploadedFiles={uploadedFiles} rejectedFiles={rejectedFiles} />
                         ) : pageState === "upload_error" ? (
                             <ConversionErrorBoundary error={{ message: uploadError || "Error uploading files" }}
                                 resetErrorBoundary={resetAfterError} />

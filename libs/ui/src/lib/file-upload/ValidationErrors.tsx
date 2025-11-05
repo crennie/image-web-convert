@@ -19,7 +19,7 @@ export function ValidationErrors({ errors }: ValidationErrorsProps) {
     const displayError = errors[displayIndex];
 
     return (
-        <div className="flex items-center gap-1 text-destructive">
+        <div className="flex items-center gap-2 text-destructive">
             <div className="flex shrink-0">
                 <div className="mx-auto">{displayIndex + 1} / {errors.length}</div>
             </div>

@@ -54,7 +54,6 @@ export function FileProgress({ items, progress }: FileProgressProps) {
     const [steps, setSteps] = useState(DEFAULT_PROGRESS_STEPS);
 
     // TODO: Implement some polling or server-side events for uploads
-    //console.log(steps);
     useEffect(() => {
         setSteps(prev => {
             if (!prev?.length) return prev;

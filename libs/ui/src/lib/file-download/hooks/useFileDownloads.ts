@@ -21,7 +21,7 @@ function getFilenameFromContentDisposition(cd: string): string | null {
     return null;
 }
 
-export function useFileDownloads() {
+export function useFileDownloads({ conversionExt }: { conversionExt: string }) {
     const { session } = useSession();
 
     const downloadFiles = useCallback(async (fileIds: string[], archiveName: string) => {
@@ -98,7 +98,7 @@ export function useFileDownloads() {
 
         // Derive filename from Content-Disposition if present; else use fallback
         const cd = response.headers.get('content-disposition') || '';
-        const filename = getFilenameFromContentDisposition(cd) || `${fileId}.webp`;
+        const filename = getFilenameFromContentDisposition(cd) || `${fileId}.${conversionExt}`;
 
         // Trigger browser download
         const url = URL.createObjectURL(blob);
