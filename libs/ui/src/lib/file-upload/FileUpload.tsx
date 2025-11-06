@@ -10,8 +10,7 @@ import { FileUploadConfig } from "./file-upload.config";
 
 type FileUploadProps = Omit<ReturnType<typeof useFileItems>, 'addErrors'> & {
     config?: FileUploadConfig,
-    onUploadStart: (formData: FormData) => void;
-    setConversionExt: (ext: string) => void;
+    onUploadStart: (formData: FormData, setConversionExt: string) => void;
 }
 
 export function FileUpload({
@@ -23,7 +22,6 @@ export function FileUpload({
     errors,
     clearErrors,
     onUploadStart,
-    setConversionExt
 }: FileUploadProps) {
     const outputMimeOptions = useMemo(() => config?.outputMimeOptions ?? [], [config?.outputMimeOptions]);
 
@@ -40,6 +38,8 @@ export function FileUpload({
 
     const handleSubmit = useCallback((e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        const pageForm = new FormData(e.currentTarget);
+
         // Prepare form data, building a new form object from scratch and extracting form values as needed
         const formData = new FormData();
         items.forEach(item => formData.append('uploads', item.file as File));
@@ -47,12 +47,14 @@ export function FileUpload({
         formData.append('manifest', JSON.stringify(manifest))
 
         // "outputMime" should be passed in from the upload form
-        const outputMime = (new FormData(e.currentTarget)).get('outputMime') ?? '';
+        const outputMime = pageForm.get('outputMime') ?? '';
         formData.append('outputMime', JSON.stringify(outputMime))
 
-        setConversionExt(outputMimeOptions?.find(opt => opt.value === outputMime)?.display ?? '');
-        onUploadStart(formData);
-    }, [onUploadStart, items, outputMimeOptions, setConversionExt]);
+        // conversionExt is used to display the filename on the download page
+        const conversionExt = pageForm.get('conversionExt') ?? '';
+
+        onUploadStart(formData, String(conversionExt));
+    }, [onUploadStart, items]);
 
     const handleClearFiles = useCallback(() => {
         clearFiles();
