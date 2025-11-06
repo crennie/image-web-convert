@@ -17,9 +17,10 @@ export function ConversionPage() {
     const { uploadedFiles, uploadFilesForm, rejectedFiles } = useFileUploads();
     const { progress, progressComplete, startProgress, cancelProgress } = useFileProgress();
 
-    const startUploads = useCallback(async (formData: FormData) => {
+    const startUploads = useCallback(async (formData: FormData, conversionExt: string) => {
         // UI transition to upload state
         startTransition(() => {
+            setConversionExt(conversionExt)
             setPageState('upload');
             startProgress();
         });
@@ -70,7 +71,6 @@ export function ConversionPage() {
                                 errors={errors}
                                 clearErrors={clearErrors}
                                 onUploadStart={startUploads}
-                                setConversionExt={setConversionExt}
                             />
                         ) : pageState === 'upload' || pageState === 'upload_complete' ? (
                             <FileProgress items={items} progress={progress} />

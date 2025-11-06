@@ -118,9 +118,8 @@ export async function processImageToMimeType({
             effort: opts.effort,
         });
     } else if (outputMime === 'image/jpeg') {
-        pipeline = pipeline.png({
+        pipeline = pipeline.jpeg({
             quality: opts.quality,
-            effort: opts.effort,
         });
     } else if (outputMime === 'image/png') {
         pipeline = pipeline.png({
