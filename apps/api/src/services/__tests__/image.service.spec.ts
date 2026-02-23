@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { fileTypeFromFile } from "file-type";
 import { readFile } from "node:fs/promises";
 import heicConvert from "heic-convert";
-import { processImageToWebp } from "../image.service";
+import { processImageToMimeType } from "../image.service";
 
 // ---- Module mocks ----
 vi.mock("sharp", () => {
@@ -84,7 +84,7 @@ function setupSharp(meta: any, bufferResult: { data: Buffer; info: { width: numb
     return { metaChain, pipeChain };
 }
 
-describe("processImageToWebp (unit)", () => {
+describe("processImageToMimeType (unit)", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -96,7 +96,7 @@ describe("processImageToWebp (unit)", () => {
         mockedFT.mockResolvedValueOnce(undefined);
 
         await expect(
-            processImageToWebp({ inputPath: "/tmp/unknown.bin" })
+            processImageToMimeType({ outputMime: 'image/webp',inputPath: "/tmp/unknown.bin" })
         ).rejects.toThrow(/Unsupported or unrecognized image type/);
 
         expect(mockedSharp).not.toHaveBeenCalled();
@@ -106,7 +106,7 @@ describe("processImageToWebp (unit)", () => {
         mockedFT.mockResolvedValueOnce({ mime: "image/bmp", ext: '.bmp' }); // not in allowed Set
 
         await expect(
-            processImageToWebp({ inputPath: "/tmp/foo.bmp" })
+            processImageToMimeType({ outputMime: 'image/webp',inputPath: "/tmp/foo.bmp" })
         ).rejects.toThrow(/Unsupported or unrecognized image type: image\/bmp/);
 
         expect(mockedSharp).not.toHaveBeenCalled();
@@ -132,7 +132,7 @@ describe("processImageToWebp (unit)", () => {
         const out = { data: Buffer.from([9, 9, 9]), info: { width: 400, height: 240 } };
         const { metaChain, pipeChain } = setupSharp(meta, out);
 
-        const result = await processImageToWebp({ inputPath });
+        const result = await processImageToMimeType({ outputMime: 'image/webp',inputPath });
 
         // file-type + heic path
         expect(mockedFT).toHaveBeenCalledWith(inputPath);
@@ -198,7 +198,7 @@ describe("processImageToWebp (unit)", () => {
         const out = { data: Buffer.from([1, 2]), info: { width: 90, height: 45 } };
         setupSharp(meta, out);
 
-        const result = await processImageToWebp({ inputPath });
+        const result = await processImageToMimeType({ outputMime: 'image/webp',inputPath });
 
         // sharp was called with the original path both times
         expect(mockedSharp).toHaveBeenNthCalledWith(
@@ -224,7 +224,7 @@ describe("processImageToWebp (unit)", () => {
         const out = { data: Buffer.from([3, 3, 3, 3]), info: { width: 800, height: 600 } };
         setupSharp(meta, out);
 
-        const result = await processImageToWebp({ inputPath });
+        const result = await processImageToMimeType({ outputMime: 'image/webp',inputPath });
 
         expect(mockedHeicConvert).not.toHaveBeenCalled();
         expect(mockedReadFile).not.toHaveBeenCalled();
@@ -240,7 +240,7 @@ describe("processImageToWebp (unit)", () => {
         setupSharp(meta, out);
 
         await expect(
-            processImageToWebp({ inputPath: "/tmp/anim.gif" })
+            processImageToMimeType({ outputMime: 'image/webp', inputPath: "/tmp/anim.gif" })
         ).rejects.toThrow(/Animated images are not supported/);
 
         // should have only created baseSharp for metadata; pipeline never runs
@@ -254,7 +254,8 @@ describe("processImageToWebp (unit)", () => {
         const out = { data: Buffer.from([5, 5, 5]), info: { width: 1200, height: 800 } };
         const { pipeChain } = setupSharp(meta, out);
 
-        const result = await processImageToWebp({
+        const result = await processImageToMimeType({
+            outputMime: 'image/webp',
             inputPath: "/tmp/pic.jpg",
             options: { maxDimension: 0 },
         });
@@ -271,7 +272,8 @@ describe("processImageToWebp (unit)", () => {
         const out = { data: Buffer.from([8, 8]), info: { width: 1024, height: 768 } };
         const { pipeChain } = setupSharp(meta, out);
 
-        await processImageToWebp({
+        await processImageToMimeType({
+            outputMime: 'image/webp',
             inputPath: "/tmp/p.png",
             options: { maxDimension: 1024, quality: 95, effort: 6, normalizeColorSpace: "srgb" },
         });

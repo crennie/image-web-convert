@@ -103,7 +103,7 @@ interface ValidateFilesReturn {
 
 export function useValidation() {
 
-    const validateFiles = useCallback(({ incoming, existing, config = {} }: ValidateFilesProps): ValidateFilesReturn => {
+    const validateFiles = useCallback(({ incoming, existing, config }: ValidateFilesProps): ValidateFilesReturn => {
         const {
             accept,
             sessionImageConfig: {
@@ -111,7 +111,7 @@ export function useValidation() {
                 maxBytesPerFile = Infinity,
                 maxTotalBytes = Infinity,
             } = {}
-        } = config;
+        } = config ?? {};
 
         const rejected: ValidateFilesRejected[] = [];
         const accepted: FileItem[] = [];
@@ -141,7 +141,7 @@ export function useValidation() {
                 rejected.push({ file, reason });
                 continue;
             }
-            
+
             // Type / extension acceptance
             if (accept && !matchesAccept(file, accept)) {
                 const reason = 'Unsupported file type.'

@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import type { FileArray, UploadedFile } from 'express-fileupload';
 import { saveUploads } from '../services/uploads.service';
-import { ALLOWED_OUTPUT_MIME, ApiUploadsErrorFiles, ApiUploadsErrorMime, ApiUploadsErrorMissingFiles, ApiUploadsErrorSessionUsed, ApiUploadsResponse, isOutputMimeType, OutputMimeType } from '@image-web-convert/schemas';
+import { ApiUploadsErrorFiles, ApiUploadsErrorMime, ApiUploadsErrorMissingFiles, ApiUploadsErrorSessionUsed, ApiUploadsResponse, isOutputMimeType } from '@image-web-convert/schemas';
 import { writeSessionInfo } from '../services/sessions.service';
 import { validateRequestWithToken } from '../services/auth.service';
 

@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { ApiCreateSessionResponse } from '@image-web-convert/schemas';
+const VITE_API_URL = import.meta.env.VITE_API_URL;
 
 export type Session = {
     sessionId: string;
@@ -26,7 +27,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         if (startPromiseRef.current) return startPromiseRef.current;
 
         startPromiseRef.current = (async () => {
-            const response = await fetch("http://localhost:3000/api/sessions", { method: "POST", });
+            const response = await fetch(`${VITE_API_URL}/sessions`, { method: "POST", });
             if (!response.ok) {
                 startPromiseRef.current = null;
                 throw new Error(`Failed to create session (${response.status})`);

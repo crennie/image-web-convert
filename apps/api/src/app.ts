@@ -18,7 +18,9 @@ export type AppDeps = {
     test: string;
 };
 
-export async function createApp(deps?: AppDeps): Promise<express.Express> {
+export async function createApp(
+    // deps?: AppDeps
+): Promise<express.Express> {
     const env = loadEnv();
     const app = express();
 

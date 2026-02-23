@@ -13,7 +13,7 @@ export interface ImageProcessingOptions {
 
 // Defaults (tweak as needed)
 export const DEFAULT_IMG_OPTS: ImageProcessingOptions = {
-    quality: 85,
+    quality: 90,
     effort: 6,
     maxDimension: 8192,
     normalizeColorSpace: 'srgb',

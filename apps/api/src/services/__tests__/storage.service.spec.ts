@@ -4,7 +4,7 @@ import fssync from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import type { UploadedFile } from 'express-fileupload';
-import { processImageToWebp } from '../image.service';
+import { processImageToMimeType } from '../image.service';
 
 // ---- Hoisted, deterministic fixtures ----
 const h = vi.hoisted(() => {
@@ -34,7 +34,7 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock('../image.service', () => ({
-    processImageToWebp: vi.fn().mockResolvedValue(h.processed),
+    processImageToMimeType: vi.fn().mockResolvedValue(h.processed),
 }));
 
 // Compute tmpRoot after imports are ready
@@ -53,7 +53,10 @@ beforeAll(async () => {
     // 2) fresh module graph
     vi.resetModules();
 
-    // 3) mocks that storage.service depends on
+    // 3) Clear mocks
+    vi.clearAllMocks();
+
+    // 4) mocks that storage.service depends on
     vi.doMock('@image-web-convert/node-shared', async (importOriginal) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const actual = await importOriginal<typeof import('@image-web-convert/node-shared')>();
@@ -109,6 +112,7 @@ describe('pathForStored', () => {
 
 describe('sanitizeBasename', () => {
     it('repairs mojibake filenames and sanitizes', async () => {
+        const outputMime = "image/webp";
         // Arrange temp input file
         const sessionPath = path.join(tmpRoot, h.sid);
         await fs.mkdir(sessionPath, { recursive: true });
@@ -120,12 +124,13 @@ describe('sanitizeBasename', () => {
         const bad = 'Screenshot 2025-09-18 at 9.36.20â¯AM.png';
         const upload = mkUpload(bad, tmp);
 
-        const res = await storage.saveUploadFile(h.sid, upload, '');
+        const res = await storage.saveUploadFile(h.sid, outputMime, upload, '');
         const meta = await storage.readMeta(h.sid, res.id);
         expect(meta?.original.name).toBe('Screenshot 2025-09-18 at 9.36.20 AM.png'); // NBSP→space, cleaned
     });
 
     it('keeps proper UTF-8 names (U+202F) but normalizes spacing', async () => {
+        const outputMime = "image/webp";
         // Arrange temp input file
         const sessionPath = path.join(tmpRoot, h.sid);
         await fs.mkdir(sessionPath, { recursive: true });
@@ -136,7 +141,7 @@ describe('sanitizeBasename', () => {
         const good = 'Screenshot 2025-09-18 at 9.36.20 AM.png'; // real U+202F
         const upload = mkUpload(good, tmp);
 
-        const res = await storage.saveUploadFile(h.sid, upload, '');
+        const res = await storage.saveUploadFile(h.sid, outputMime, upload, '');
         const meta = await storage.readMeta(h.sid, res.id);
         expect(meta?.original.name).toBe('Screenshot 2025-09-18 at 9.36.20 AM.png'); // NBSP normalized to space
     });
@@ -144,6 +149,7 @@ describe('sanitizeBasename', () => {
 
 describe('saveUploadFile', () => {
     it('processes, writes .webp, writes metadata JSON, deletes temp file, returns ApiUploadAccepted', async () => {
+        const outputMime = "image/webp";
         // Arrange temp input file
         const sessionPath = path.join(tmpRoot, h.sid);
         await fs.mkdir(sessionPath, { recursive: true });
@@ -154,7 +160,7 @@ describe('saveUploadFile', () => {
         const upload = mkUpload('nice/photo:01?.jpg', tmpInput);
 
         // Act
-        const res = await storage.saveUploadFile(h.sid, upload, 'client-42');
+        const res = await storage.saveUploadFile(h.sid, outputMime, upload, 'client-42');
 
         // Assert return object
         expect(res.id).toBe(h.id);
@@ -196,7 +202,10 @@ describe('saveUploadFile', () => {
         await expect(fs.access(tmpInput)).rejects.toBeTruthy();
 
         // The processor was called with our temp path
-        expect(processImageToWebp).toHaveBeenCalledWith({ inputPath: tmpInput });
+        expect(processImageToMimeType).toHaveBeenCalledWith({
+            inputPath: tmpInput,
+            outputMime
+        });
     });
 });
 

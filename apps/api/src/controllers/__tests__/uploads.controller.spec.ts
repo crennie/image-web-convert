@@ -33,13 +33,17 @@ function makeReq(opts?: {
     sid?: string;
     files?: Record<string, UploadedFile | UploadedFile[]>;
     manifest?: string;
+    outputMime?: string;
 }): Request {
-    const { sid = "S123", files, manifest } = opts ?? {};
+    const { sid = "S123", files, manifest, outputMime = JSON.stringify("image/webp") } = opts ?? {};
     return {
         params: { sid },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         files: files as any,
-        body: manifest !== undefined ? { manifest } : {},
+        body: Object.assign(
+            manifest !== undefined ? { manifest } : {},
+            outputMime !== undefined ? { outputMime } : {},
+        ),
     } as unknown as Request;
 }
 
@@ -171,9 +175,10 @@ describe("uploads.controller.create", () => {
 
         // saveUploads called with flattened files array (length 3) and empty clientIds
         expect(mockedSave).toHaveBeenCalledTimes(1);
-        const [sidArg, filesArg, clientIdsArg] = mockedSave.mock.calls[0];
+        const [sidArg, outputMime, filesArg, clientIdsArg] = mockedSave.mock.calls[0];
         expect(sidArg).toBe("S123");
         expect(Array.isArray(filesArg)).toBe(true);
+        expect(outputMime).toBe("image/webp");
         expect((filesArg as UploadedFile[])).toHaveLength(3);
         expect(clientIdsArg).toEqual([]);
 
@@ -235,7 +240,7 @@ describe("uploads.controller.create", () => {
 
         await create(req, res);
 
-        const [, , clientIds] = mockedSave.mock.calls[0];
+        const [, , , clientIds] = mockedSave.mock.calls[0];
         expect(clientIds).toEqual(["c1", "c2"]);
     });
 

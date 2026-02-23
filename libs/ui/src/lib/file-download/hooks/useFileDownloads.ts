@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useSession } from "../../session/SessionContext";
 import { getAuthHeaders } from "../../utils";
+const VITE_API_URL = import.meta.env.VITE_API_URL;
 
 function getFilenameFromContentDisposition(cd: string): string | null {
     // Try RFC 5987 filename* first
@@ -31,7 +32,7 @@ export function useFileDownloads({ conversionExt }: { conversionExt: string }) {
         }
 
         // TODO: Add extra validation logic here?
-        const response = await fetch(`http://localhost:3000/api/sessions/${session.sessionId}/files/download`, {
+        const response = await fetch(`${VITE_API_URL}/sessions/${session.sessionId}/files/download`, {
             method: 'POST',
             headers: {
                 ...getAuthHeaders(session),
@@ -78,7 +79,7 @@ export function useFileDownloads({ conversionExt }: { conversionExt: string }) {
         }
 
         // TODO: Add extra validation logic here?
-        const response = await fetch(`http://localhost:3000/api/sessions/${session.sessionId}/files/${fileId}`, {
+        const response = await fetch(`${VITE_API_URL}/sessions/${session.sessionId}/files/${fileId}`, {
             method: 'GET',
             headers: getAuthHeaders(session),
         });
