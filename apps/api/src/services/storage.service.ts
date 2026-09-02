@@ -3,8 +3,16 @@ import fs from 'node:fs/promises';
 import fssync from 'node:fs';
 import type { UploadedFile } from 'express-fileupload';
 import { processImageToMimeType } from './image.service';
-import { normalizeAbsolutePath, secureId } from "@image-web-convert/node-shared";
-import { ApiUploadAccepted, MIME_TO_EXT, OutputMimeType, UploadMeta } from '@image-web-convert/schemas';
+import {
+    normalizeAbsolutePath,
+    secureId,
+} from '@image-web-convert/node-shared';
+import {
+    ApiUploadAccepted,
+    MIME_TO_EXT,
+    OutputMimeType,
+    UploadMeta,
+} from '@image-web-convert/schemas';
 import { sessionDir } from './sessions.service';
 
 // ---------- Config (monorepo-root defaults; docker-friendly overrides) ----------
@@ -12,15 +20,21 @@ import { sessionDir } from './sessions.service';
 //const isProd = process.env.NODE_ENV === 'production';
 
 const DEFAULT_UPLOAD_DIR = path.resolve(process.cwd(), 'data', 'uploads');
-export const UPLOAD_DIR = normalizeAbsolutePath(process.env.UPLOAD_DIR || DEFAULT_UPLOAD_DIR);
+export const UPLOAD_DIR = normalizeAbsolutePath(
+    process.env.UPLOAD_DIR || DEFAULT_UPLOAD_DIR,
+);
 
 // Ensure upload dir exists at module load
 if (!fssync.existsSync(UPLOAD_DIR)) {
     fssync.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-export async function saveUploadFile(sid: string, outputMime: OutputMimeType, uf: UploadedFile, clientId = ''): Promise<ApiUploadAccepted> {
-
+export async function saveUploadFile(
+    sid: string,
+    outputMime: OutputMimeType,
+    uf: UploadedFile,
+    clientId = '',
+): Promise<ApiUploadAccepted> {
     // Ensure we have a temp file path (express-fileupload with useTempFiles: true)
     const inputPath = uf.tempFilePath;
     if (!inputPath) {
@@ -30,7 +44,7 @@ export async function saveUploadFile(sid: string, outputMime: OutputMimeType, uf
     const originalName = sanitizeBaseName(uf.name || 'upload');
 
     // 1) Process to WebP (PII-stripped, sRGB, optional resize)
-    // Run different processing 
+    // Run different processing
     const processed = await processImageToMimeType({
         inputPath,
         outputMime,
@@ -75,8 +89,8 @@ export async function saveUploadFile(sid: string, outputMime: OutputMimeType, uf
 
     return {
         id,
-        url: `/files/${id}`,
-        metaUrl: `/files/${id}/meta`,
+        url: `/sessions/${sid}/files/${id}`,
+        metaUrl: `/sessions/${sid}/files/${id}/meta`,
         meta,
         clientId,
     };
@@ -92,9 +106,7 @@ function sanitizeBaseName(name: string): string {
     const repaired = tryFixLatin1Utf8(name);
 
     // 2) Unicode normalize; convert NBSPs to regular space
-    const normalized = repaired
-        .normalize('NFC')
-        .replace(/\u00A0|\u202F/g, ' '); // NBSP & NARROW NBSP → space
+    const normalized = repaired.normalize('NFC').replace(/\u00A0|\u202F/g, ' '); // NBSP & NARROW NBSP → space
 
     // 3) Take just the base segment
     const base = path.basename(normalized);
@@ -122,7 +134,6 @@ function tryFixLatin1Utf8(s: string): string {
     return s;
 }
 
-
 /**
  * Utility to delete the original temp file after successful processing.
  * Remove only on success
@@ -143,7 +154,10 @@ async function writeMeta(sid: string, meta: UploadMeta): Promise<void> {
 
 // ---------- External Helpers ----------
 
-export async function readMeta(sid: string, fileId: string): Promise<UploadMeta | null> {
+export async function readMeta(
+    sid: string,
+    fileId: string,
+): Promise<UploadMeta | null> {
     const metaPath = path.join(sessionDir(sid), `${fileId}.json`);
     try {
         const txt = await fs.readFile(metaPath, 'utf8');

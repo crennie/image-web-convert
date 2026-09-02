@@ -1,43 +1,67 @@
-export type ApiErrorToken = {
-    type: "invalid_token";
-    message?: string;
+import { z } from 'zod';
+
+function apiErrorSchema<T extends string>(type: T) {
+    return z.object({
+        type: z.literal(type),
+        message: z.string().optional(),
+    });
 }
 
-export type ApiErrorSessionNotFound = {
-    type: "session_not_found";
-    message?: string;
-}
+export const ApiErrorTokenSchema = apiErrorSchema('invalid_token');
+export type ApiErrorToken = z.infer<typeof ApiErrorTokenSchema>;
 
-export type ApiErrorSessionExpired = {
-    type: "session_expired";
-    message?: string;
-}
+export const ApiErrorSessionNotFoundSchema =
+    apiErrorSchema('session_not_found');
+export type ApiErrorSessionNotFound = z.infer<
+    typeof ApiErrorSessionNotFoundSchema
+>;
 
-export type ApiUploadsErrorSessionUsed = {
-    type: "session_used";
-    message?: string;
-}
+export const ApiErrorSessionExpiredSchema = apiErrorSchema('session_expired');
+export type ApiErrorSessionExpired = z.infer<
+    typeof ApiErrorSessionExpiredSchema
+>;
 
-export type ApiUploadsErrorMime = {
-    type: "invalid_output_mime";
-    message?: string;
-}
+export const ApiUploadsErrorSessionUsedSchema = apiErrorSchema('session_used');
+export type ApiUploadsErrorSessionUsed = z.infer<
+    typeof ApiUploadsErrorSessionUsedSchema
+>;
 
+export const ApiUploadsErrorMimeSchema = apiErrorSchema('invalid_output_mime');
+export type ApiUploadsErrorMime = z.infer<typeof ApiUploadsErrorMimeSchema>;
 
-export type ApiUploadsErrorMissingFiles = {
-    type: "missing_files";
-    message?: string;
-}
+export const ApiUploadsErrorMissingFilesSchema =
+    apiErrorSchema('missing_files');
+export type ApiUploadsErrorMissingFiles = z.infer<
+    typeof ApiUploadsErrorMissingFilesSchema
+>;
 
-export type ApiUploadsErrorFiles = {
-    type: "upload_error";
-    message?: string;
-}
+export const ApiUploadsErrorFilesSchema = apiErrorSchema('upload_error');
+export type ApiUploadsErrorFiles = z.infer<typeof ApiUploadsErrorFilesSchema>;
 
-export type ApiError =
-    | ApiErrorToken
-    | ApiErrorSessionNotFound
-    | ApiErrorSessionExpired
-    | ApiUploadsErrorSessionUsed
-    | ApiUploadsErrorMissingFiles
-    | ApiUploadsErrorFiles;
+export const ApiErrorInvalidRequestSchema = apiErrorSchema('invalid_request');
+export type ApiErrorInvalidRequest = z.infer<
+    typeof ApiErrorInvalidRequestSchema
+>;
+
+export const ApiErrorFileNotFoundSchema = apiErrorSchema('file_not_found');
+export type ApiErrorFileNotFound = z.infer<typeof ApiErrorFileNotFoundSchema>;
+
+export const ApiErrorSessionNotReadySchema =
+    apiErrorSchema('session_not_ready');
+export type ApiErrorSessionNotReady = z.infer<
+    typeof ApiErrorSessionNotReadySchema
+>;
+
+export const ApiErrorSchema = z.discriminatedUnion('type', [
+    ApiErrorTokenSchema,
+    ApiErrorSessionNotFoundSchema,
+    ApiErrorSessionExpiredSchema,
+    ApiUploadsErrorSessionUsedSchema,
+    ApiUploadsErrorMimeSchema,
+    ApiUploadsErrorMissingFilesSchema,
+    ApiUploadsErrorFilesSchema,
+    ApiErrorInvalidRequestSchema,
+    ApiErrorFileNotFoundSchema,
+    ApiErrorSessionNotReadySchema,
+]);
+export type ApiError = z.infer<typeof ApiErrorSchema>;

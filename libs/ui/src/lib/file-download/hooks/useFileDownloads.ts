@@ -1,15 +1,18 @@
 'use client';
 
-import { useCallback } from "react";
-import { useSession } from "../../session/SessionContext";
-import { getAuthHeaders } from "../../utils";
+import { useCallback } from 'react';
+import { useSession } from '../../session/SessionContext';
+import { getAuthHeaders } from '../../utils';
+import { ApiErrorSchema } from '@image-web-convert/schemas';
 const VITE_API_URL = import.meta.env.VITE_API_URL;
 
 function getFilenameFromContentDisposition(cd: string): string | null {
     // Try RFC 5987 filename* first
     const star = /filename\*\s*=\s*[^']*''([^;]+)/i.exec(cd);
     if (star && star[1]) {
-        try { return decodeURIComponent(star[1]); } catch {
+        try {
+            return decodeURIComponent(star[1]);
+        } catch {
             // TODO: Handle error?
         }
     }
@@ -25,100 +28,127 @@ function getFilenameFromContentDisposition(cd: string): string | null {
 export function useFileDownloads({ conversionExt }: { conversionExt: string }) {
     const { session } = useSession();
 
-    const downloadFiles = useCallback(async (fileIds: string[], archiveName: string) => {
-        if (!session) {
-            // TODO: Handle error
-            throw Error("No session found");
-        }
-
-        // TODO: Add extra validation logic here?
-        const response = await fetch(`${VITE_API_URL}/sessions/${session.sessionId}/files/download`, {
-            method: 'POST',
-            headers: {
-                ...getAuthHeaders(session),
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ ids: fileIds }),
-        });
-
-        // If the server returned JSON (error), surface it nicely
-        const ct = response.headers.get('content-type') || '';
-        if (!response.ok) {
-            if (ct.includes('application/json')) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err?.message || `Download failed (${response.status})`);
+    const downloadFiles = useCallback(
+        async (fileIds: string[], archiveName: string) => {
+            if (!session) {
+                // TODO: Handle error
+                throw Error('No session found');
             }
-            throw new Error(`Download failed (${response.status})`);
-        }
 
-        // Expect a zip stream
-        const blob = await response.blob();
+            // TODO: Add extra validation logic here?
+            const response = await fetch(
+                `${VITE_API_URL}/sessions/${session.sessionId}/files/download`,
+                {
+                    method: 'POST',
+                    headers: {
+                        ...getAuthHeaders(session),
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ ids: fileIds }),
+                },
+            );
 
-        // Use provided archiveName, else pull from content disposition, else fallback
-        const cd = response.headers.get('content-disposition') || '';
-        const filename = archiveName || getFilenameFromContentDisposition(cd) || 'images.zip';
-
-        // Trigger browser download
-        const url = URL.createObjectURL(blob);
-        try {
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename; // respected by most browsers
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-        } finally {
-            URL.revokeObjectURL(url);
-        }
-    }, [session]);
-
-    const downloadSingleFile = useCallback(async (fileId: string) => {
-        if (!session) {
-            // TODO: Handle error
-            throw Error("No session found");
-        }
-
-        // TODO: Add extra validation logic here?
-        const response = await fetch(`${VITE_API_URL}/sessions/${session.sessionId}/files/${fileId}`, {
-            method: 'GET',
-            headers: getAuthHeaders(session),
-        });
-
-        // If the server returned JSON (error), surface it nicely
-        const ct = response.headers.get('content-type') || '';
-        if (!response.ok) {
-            if (ct.includes('application/json')) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err?.message || `Download failed (${response.status})`);
+            // If the server returned JSON (error), surface it nicely
+            const ct = response.headers.get('content-type') || '';
+            if (!response.ok) {
+                if (ct.includes('application/json')) {
+                    const body = await response.json().catch(() => undefined);
+                    const error = ApiErrorSchema.safeParse(body);
+                    throw new Error(
+                        error.success && error.data.message
+                            ? error.data.message
+                            : `Download failed (${response.status})`,
+                    );
+                }
+                throw new Error(`Download failed (${response.status})`);
             }
-            throw new Error(`Download failed (${response.status})`);
-        }
 
-        // Expect a file stream
-        const blob = await response.blob();
+            // Expect a zip stream
+            const blob = await response.blob();
 
-        // Derive filename from Content-Disposition if present; else use fallback
-        const cd = response.headers.get('content-disposition') || '';
-        const filename = getFilenameFromContentDisposition(cd) || `${fileId}.${conversionExt}`;
+            // Use provided archiveName, else pull from content disposition, else fallback
+            const cd = response.headers.get('content-disposition') || '';
+            const filename =
+                archiveName ||
+                getFilenameFromContentDisposition(cd) ||
+                'images.zip';
 
-        // Trigger browser download
-        const url = URL.createObjectURL(blob);
-        try {
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename; // respected by most browsers
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-        } finally {
-            URL.revokeObjectURL(url);
-        }
-    }, [session]);
+            // Trigger browser download
+            const url = URL.createObjectURL(blob);
+            try {
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename; // respected by most browsers
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            } finally {
+                URL.revokeObjectURL(url);
+            }
+        },
+        [session],
+    );
+
+    const downloadSingleFile = useCallback(
+        async (fileId: string) => {
+            if (!session) {
+                // TODO: Handle error
+                throw Error('No session found');
+            }
+
+            // TODO: Add extra validation logic here?
+            const response = await fetch(
+                `${VITE_API_URL}/sessions/${session.sessionId}/files/${fileId}`,
+                {
+                    method: 'GET',
+                    headers: getAuthHeaders(session),
+                },
+            );
+
+            // If the server returned JSON (error), surface it nicely
+            const ct = response.headers.get('content-type') || '';
+            if (!response.ok) {
+                if (ct.includes('application/json')) {
+                    const body = await response.json().catch(() => undefined);
+                    const error = ApiErrorSchema.safeParse(body);
+                    throw new Error(
+                        error.success && error.data.message
+                            ? error.data.message
+                            : `Download failed (${response.status})`,
+                    );
+                }
+                throw new Error(`Download failed (${response.status})`);
+            }
+
+            // Expect a file stream
+            const blob = await response.blob();
+
+            // Derive filename from Content-Disposition if present; else use fallback
+            const cd = response.headers.get('content-disposition') || '';
+            const filename =
+                getFilenameFromContentDisposition(cd) ||
+                `${fileId}.${conversionExt}`;
+
+            // Trigger browser download
+            const url = URL.createObjectURL(blob);
+            try {
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename; // respected by most browsers
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            } finally {
+                URL.revokeObjectURL(url);
+            }
+        },
+        [session, conversionExt],
+    );
 
     return {
         downloadFiles,
         downloadSingleFile,
-    }
+    };
 }
 
 export default useFileDownloads;

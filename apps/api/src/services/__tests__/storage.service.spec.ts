@@ -40,7 +40,7 @@ vi.mock('../image.service', () => ({
 // Compute tmpRoot after imports are ready
 const tmpRoot = path.join(
     os.tmpdir(),
-    `iwc-api-storage-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    `iwc-api-storage-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 );
 
 // Need to pass in a new UPLOAD_DIR to session storage based on test root tmpRoot.
@@ -59,7 +59,10 @@ beforeAll(async () => {
     // 4) mocks that storage.service depends on
     vi.doMock('@image-web-convert/node-shared', async (importOriginal) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const actual = await importOriginal<typeof import('@image-web-convert/node-shared')>();
+        const actual =
+            await importOriginal<
+                typeof import('@image-web-convert/node-shared')
+            >();
         return {
             ...actual,
             normalizeAbsolutePath: (p: string) => p, // identity so env value is used as-is
@@ -84,17 +87,21 @@ afterAll(async () => {
     });
 });
 
-const mkUpload = (name: string, tempFilePath: string, size = 4321): UploadedFile =>
-({
-    name,
-    mimetype: 'image/jpeg',
-    size,
-    tempFilePath,
-    mv: vi.fn(),
-    md5: 'x',
-    encoding: '7bit',
-    truncated: false,
-} as unknown as UploadedFile);
+const mkUpload = (
+    name: string,
+    tempFilePath: string,
+    size = 4321,
+): UploadedFile =>
+    ({
+        name,
+        mimetype: 'image/jpeg',
+        size,
+        tempFilePath,
+        mv: vi.fn(),
+        md5: 'x',
+        encoding: '7bit',
+        truncated: false,
+    }) as unknown as UploadedFile;
 
 describe('storage.service config', () => {
     it('uses the temp UPLOAD_DIR for tests', () => {
@@ -112,7 +119,7 @@ describe('pathForStored', () => {
 
 describe('sanitizeBasename', () => {
     it('repairs mojibake filenames and sanitizes', async () => {
-        const outputMime = "image/webp";
+        const outputMime = 'image/webp';
         // Arrange temp input file
         const sessionPath = path.join(tmpRoot, h.sid);
         await fs.mkdir(sessionPath, { recursive: true });
@@ -126,15 +133,17 @@ describe('sanitizeBasename', () => {
 
         const res = await storage.saveUploadFile(h.sid, outputMime, upload, '');
         const meta = await storage.readMeta(h.sid, res.id);
-        expect(meta?.original.name).toBe('Screenshot 2025-09-18 at 9.36.20 AM.png'); // NBSP→space, cleaned
+        expect(meta?.original.name).toBe(
+            'Screenshot 2025-09-18 at 9.36.20 AM.png',
+        ); // NBSP→space, cleaned
     });
 
     it('keeps proper UTF-8 names (U+202F) but normalizes spacing', async () => {
-        const outputMime = "image/webp";
+        const outputMime = 'image/webp';
         // Arrange temp input file
         const sessionPath = path.join(tmpRoot, h.sid);
         await fs.mkdir(sessionPath, { recursive: true });
-        
+
         const tmp = path.join(tmpRoot, 'in2.png');
         await fs.writeFile(tmp, Buffer.from('x'));
 
@@ -143,13 +152,15 @@ describe('sanitizeBasename', () => {
 
         const res = await storage.saveUploadFile(h.sid, outputMime, upload, '');
         const meta = await storage.readMeta(h.sid, res.id);
-        expect(meta?.original.name).toBe('Screenshot 2025-09-18 at 9.36.20 AM.png'); // NBSP normalized to space
+        expect(meta?.original.name).toBe(
+            'Screenshot 2025-09-18 at 9.36.20 AM.png',
+        ); // NBSP normalized to space
     });
-})
+});
 
 describe('saveUploadFile', () => {
     it('processes, writes .webp, writes metadata JSON, deletes temp file, returns ApiUploadAccepted', async () => {
-        const outputMime = "image/webp";
+        const outputMime = 'image/webp';
         // Arrange temp input file
         const sessionPath = path.join(tmpRoot, h.sid);
         await fs.mkdir(sessionPath, { recursive: true });
@@ -160,12 +171,17 @@ describe('saveUploadFile', () => {
         const upload = mkUpload('nice/photo:01?.jpg', tmpInput);
 
         // Act
-        const res = await storage.saveUploadFile(h.sid, outputMime, upload, 'client-42');
+        const res = await storage.saveUploadFile(
+            h.sid,
+            outputMime,
+            upload,
+            'client-42',
+        );
 
         // Assert return object
         expect(res.id).toBe(h.id);
-        expect(res.url).toBe(`/files/${h.id}`);
-        expect(res.metaUrl).toBe(`/files/${h.id}/meta`);
+        expect(res.url).toBe(`/sessions/${h.sid}/files/${h.id}`);
+        expect(res.metaUrl).toBe(`/sessions/${h.sid}/files/${h.id}/meta`);
         expect(res.clientId).toBe('client-42');
 
         // Stored file exists with processed contents
@@ -204,7 +220,7 @@ describe('saveUploadFile', () => {
         // The processor was called with our temp path
         expect(processImageToMimeType).toHaveBeenCalledWith({
             inputPath: tmpInput,
-            outputMime
+            outputMime,
         });
     });
 });
