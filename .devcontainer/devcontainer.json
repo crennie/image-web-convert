@@ -1,0 +1,11 @@
+{
+    "name": "Image Web Convert",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": "..",
+        "args": {
+            "AGENT_BASE_IMAGE": "local-agentic-dev/codex-agent:dev"
+        }
+    },
+    "remoteUser": "vscode"
+}
