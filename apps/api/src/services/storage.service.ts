@@ -35,65 +35,70 @@ export async function saveUploadFile(
     uf: UploadedFile,
     clientId = '',
 ): Promise<ApiUploadAccepted> {
-    // Ensure we have a temp file path (express-fileupload with useTempFiles: true)
     const inputPath = uf.tempFilePath;
     if (!inputPath) {
-        // TODO: Throw an error
+        throw new Error('Upload is missing a temporary file path');
     }
 
     const originalName = sanitizeBaseName(uf.name || 'upload');
+    let storedPath: string | undefined;
+    let metaPath: string | undefined;
 
-    // 1) Process to WebP (PII-stripped, sRGB, optional resize)
-    // Run different processing
-    const processed = await processImageToMimeType({
-        inputPath,
-        outputMime,
-        // options: {} // use defaults for Phase 1
-    });
+    try {
+        const processed = await processImageToMimeType({
+            inputPath,
+            outputMime,
+        });
 
-    // 2) Create anonymous UUID for each stored file
-    const id = secureId();
-    const extension = MIME_TO_EXT[outputMime]?.[0];
-    const storedName = `${id}.${extension}`;
-    await fs.writeFile(pathForStored(sid, storedName), processed.buffer);
+        const id = secureId();
+        const extension = MIME_TO_EXT[outputMime]?.[0];
+        const storedName = `${id}.${extension}`;
+        storedPath = pathForStored(sid, storedName);
+        metaPath = path.join(sessionDir(sid), `${id}.json`);
+        await fs.writeFile(storedPath, processed.buffer);
 
-    // 3) Build and write sidecar metadata
-    const meta: UploadMeta = {
-        id,
-        original: {
-            name: originalName,
-            mime: processed.inputMeta.mime,
-            sizeBytes: uf.size,
-            width: processed.inputMeta.width,
-            height: processed.inputMeta.height,
-            pages: processed.inputMeta.pages,
-        },
-        output: {
-            storedName,
-            mime: processed.outputMime,
-            sizeBytes: processed.info.sizeBytes,
-            width: processed.info.width,
-            height: processed.info.height,
-            hasAlpha: processed.inputMeta.hasAlpha ?? false,
-            colorSpace: processed.info.colorSpace,
-        },
-        exifStripped: processed.info.exifStripped,
-        animated: processed.info.animated,
-        uploadedAt: new Date().toISOString(),
-    };
+        const meta: UploadMeta = {
+            id,
+            original: {
+                name: originalName,
+                mime: processed.inputMeta.mime,
+                sizeBytes: uf.size,
+                width: processed.inputMeta.width,
+                height: processed.inputMeta.height,
+                pages: processed.inputMeta.pages,
+            },
+            output: {
+                storedName,
+                mime: processed.outputMime,
+                sizeBytes: processed.info.sizeBytes,
+                width: processed.info.width,
+                height: processed.info.height,
+                hasAlpha: processed.inputMeta.hasAlpha ?? false,
+                colorSpace: processed.info.colorSpace,
+            },
+            exifStripped: processed.info.exifStripped,
+            animated: processed.info.animated,
+            uploadedAt: new Date().toISOString(),
+        };
 
-    await writeMeta(sid, meta);
+        await fs.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf8');
 
-    // 4) Delete the original temp file on success
-    if (inputPath) await deleteTempFile(inputPath);
-
-    return {
-        id,
-        url: `/sessions/${sid}/files/${id}`,
-        metaUrl: `/sessions/${sid}/files/${id}/meta`,
-        meta,
-        clientId,
-    };
+        return {
+            id,
+            url: `/sessions/${sid}/files/${id}`,
+            metaUrl: `/sessions/${sid}/files/${id}/meta`,
+            meta,
+            clientId,
+        };
+    } catch (error) {
+        await Promise.all([
+            deleteFileIfPresent(storedPath),
+            deleteFileIfPresent(metaPath),
+        ]);
+        throw error;
+    } finally {
+        await deleteFileIfPresent(inputPath);
+    }
 }
 
 // ---------- Helpers ----------
@@ -134,22 +139,13 @@ function tryFixLatin1Utf8(s: string): string {
     return s;
 }
 
-/**
- * Utility to delete the original temp file after successful processing.
- * Remove only on success
- */
-async function deleteTempFile(path: string): Promise<void> {
+async function deleteFileIfPresent(filePath?: string): Promise<void> {
+    if (!filePath) return;
     try {
-        await fs.unlink(path);
+        await fs.unlink(filePath);
     } catch {
-        // swallow (temp file may already be gone)
-        // TODO: Log in this case etc?
+        // The target may already have been removed.
     }
-}
-
-async function writeMeta(sid: string, meta: UploadMeta): Promise<void> {
-    const metaPath = path.join(sessionDir(sid), `${meta.id}.json`);
-    await fs.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf8');
 }
 
 // ---------- External Helpers ----------

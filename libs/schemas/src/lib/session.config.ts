@@ -1,13 +1,17 @@
-export type SessionImageConfig = {
-    ttlMinutes: number;
-    maxFiles: number;
-    maxTotalBytes: number;
-    maxBytesPerFile: number;
-}
+import { z } from 'zod';
 
-export const SESSION_IMAGE_CONFIG: SessionImageConfig = {
-    ttlMinutes: Number((typeof process !== "undefined" ? process?.env?.SESSION_TTL_MINUTES : undefined) ?? 15),
-    maxFiles: Number((typeof process !== "undefined" ? process?.env?.SESSION_MAX_FILES : undefined) ?? 20),
-    maxBytesPerFile: Number((typeof process !== "undefined" ? process?.env?.SESSION_PER_FILE_BYTES : undefined) ?? 20_000_000), // 20MB per file
-    maxTotalBytes: Number((typeof process !== "undefined" ? process?.env?.SESSION_MAX_TOTAL_BYTES : undefined) ?? 500_000_000), // 500MB total
-}
+export const SessionImageConfigSchema = z.object({
+    ttlMinutes: z.number().int().positive(),
+    maxFiles: z.number().int().positive(),
+    maxTotalBytes: z.number().int().positive(),
+    maxBytesPerFile: z.number().int().positive(),
+});
+export type SessionImageConfig = z.infer<typeof SessionImageConfigSchema>;
+
+/** Browser fallback while the effective backend configuration is loading. */
+export const DEFAULT_SESSION_IMAGE_CONFIG: SessionImageConfig = {
+    ttlMinutes: 15,
+    maxFiles: 20,
+    maxBytesPerFile: 20_000_000,
+    maxTotalBytes: 500_000_000,
+};

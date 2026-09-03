@@ -39,11 +39,23 @@ describe('public API schemas', () => {
                 sid: 'session-1',
                 expiresAt: '2026-09-02T12:15:00.000Z',
                 token: 'secret-token',
+                imageConfig: {
+                    ttlMinutes: 15,
+                    maxFiles: 20,
+                    maxBytesPerFile: 20_000_000,
+                    maxTotalBytes: 500_000_000,
+                },
             }),
         ).toEqual({
             sid: 'session-1',
             expiresAt: '2026-09-02T12:15:00.000Z',
             token: 'secret-token',
+            imageConfig: {
+                ttlMinutes: 15,
+                maxFiles: 20,
+                maxBytesPerFile: 20_000_000,
+                maxTotalBytes: 500_000_000,
+            },
         });
     });
 
@@ -125,6 +137,7 @@ describe('public API schemas', () => {
             'invalid_request',
             'file_not_found',
             'session_not_ready',
+            'upload_limit_exceeded',
         ];
 
         for (const type of types) {

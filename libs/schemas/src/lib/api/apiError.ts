@@ -52,6 +52,13 @@ export type ApiErrorSessionNotReady = z.infer<
     typeof ApiErrorSessionNotReadySchema
 >;
 
+export const ApiErrorUploadLimitExceededSchema = apiErrorSchema(
+    'upload_limit_exceeded',
+);
+export type ApiErrorUploadLimitExceeded = z.infer<
+    typeof ApiErrorUploadLimitExceededSchema
+>;
+
 export const ApiErrorSchema = z.discriminatedUnion('type', [
     ApiErrorTokenSchema,
     ApiErrorSessionNotFoundSchema,
@@ -63,5 +70,6 @@ export const ApiErrorSchema = z.discriminatedUnion('type', [
     ApiErrorInvalidRequestSchema,
     ApiErrorFileNotFoundSchema,
     ApiErrorSessionNotReadySchema,
+    ApiErrorUploadLimitExceededSchema,
 ]);
 export type ApiError = z.infer<typeof ApiErrorSchema>;

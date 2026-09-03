@@ -223,11 +223,76 @@ describe('saveUploadFile', () => {
             outputMime,
         });
     });
+
+    it('deletes the temporary file when image processing fails', async () => {
+        const sessionPath = path.join(tmpRoot, h.sid);
+        await fs.mkdir(sessionPath, { recursive: true });
+        const tmpInput = path.join(tmpRoot, 'processing-failure.jpg');
+        await fs.writeFile(tmpInput, Buffer.from('original-binary'));
+        vi.mocked(processImageToMimeType).mockRejectedValueOnce(
+            new Error('conversion failed'),
+        );
+
+        await expect(
+            storage.saveUploadFile(
+                h.sid,
+                'image/webp',
+                mkUpload('failure.jpg', tmpInput),
+            ),
+        ).rejects.toThrow('conversion failed');
+        await expect(fs.access(tmpInput)).rejects.toBeTruthy();
+    });
+
+    it('rolls back output and temp files when metadata persistence fails', async () => {
+        const sessionPath = path.join(tmpRoot, h.sid);
+        await fs.mkdir(sessionPath, { recursive: true });
+        const tmpInput = path.join(tmpRoot, 'metadata-failure.jpg');
+        await fs.writeFile(tmpInput, Buffer.from('original-binary'));
+        const realWriteFile = fs.writeFile.bind(fs);
+        const writeFile = vi.spyOn(fs, 'writeFile');
+        writeFile
+            .mockImplementationOnce(realWriteFile)
+            .mockRejectedValueOnce(new Error('metadata failed'));
+
+        try {
+            await expect(
+                storage.saveUploadFile(
+                    h.sid,
+                    'image/webp',
+                    mkUpload('failure.jpg', tmpInput),
+                ),
+            ).rejects.toThrow('metadata failed');
+        } finally {
+            writeFile.mockRestore();
+        }
+
+        await expect(fs.access(tmpInput)).rejects.toBeTruthy();
+        await expect(
+            fs.access(path.join(sessionPath, h.storedName)),
+        ).rejects.toBeTruthy();
+        await expect(
+            fs.access(path.join(sessionPath, `${h.id}.json`)),
+        ).rejects.toBeTruthy();
+    });
+
+    it('rejects uploads without a temporary file path', async () => {
+        await expect(
+            storage.saveUploadFile(
+                h.sid,
+                'image/webp',
+                mkUpload('missing.jpg', ''),
+            ),
+        ).rejects.toThrow('missing a temporary file path');
+    });
 });
 
 describe('readMeta', () => {
     it('returns parsed meta when file exists; null when it does not', async () => {
-        // Existing meta from the previous test run
+        await fs.mkdir(path.join(tmpRoot, h.sid), { recursive: true });
+        await fs.writeFile(
+            path.join(tmpRoot, h.sid, `${h.id}.json`),
+            JSON.stringify({ id: h.id }),
+        );
         const existing = await storage.readMeta(h.sid, h.id);
         expect(existing && existing.id).toBe(h.id);
 

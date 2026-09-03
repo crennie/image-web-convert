@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { OutputMimeTypeSchema } from '../image.js';
+import { SessionImageConfigSchema } from '../session.config.js';
 
 const IsoDateTimeSchema = z.string().datetime({ offset: true });
 
@@ -7,6 +8,7 @@ export const ApiCreateSessionResponseSchema = z.object({
     sid: z.string().min(1),
     expiresAt: IsoDateTimeSchema,
     token: z.string().min(1),
+    imageConfig: SessionImageConfigSchema,
 });
 export type ApiCreateSessionResponse = z.infer<
     typeof ApiCreateSessionResponseSchema

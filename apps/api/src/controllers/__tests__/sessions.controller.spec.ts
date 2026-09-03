@@ -1,9 +1,9 @@
-import type { Request, Response, NextFunction } from "express";
-import { createSession } from "../sessions.controller";
-import { create } from "../../services/sessions.service";
+import type { Request, Response, NextFunction } from 'express';
+import { createSession } from '../sessions.controller';
+import { create } from '../../services/sessions.service';
 import { MockInstance } from 'vitest';
 
-vi.mock("../../services/sessions.service", () => ({
+vi.mock('../../services/sessions.service', () => ({
     create: vi.fn(),
 }));
 
@@ -27,15 +27,21 @@ function makeNext(): NextFunction {
     return vi.fn() as unknown as NextFunction;
 }
 
-describe("createSession controller", () => {
+describe('createSession controller', () => {
     beforeEach(() => vi.clearAllMocks());
     afterEach(() => vi.restoreAllMocks());
 
-    it("responds 201 with { sid, expiresAt, token } when service succeeds", async () => {
+    it('responds 201 with { sid, expiresAt, token } when service succeeds', async () => {
         mockedCreate.mockResolvedValueOnce({
-            sid: "S123",
+            sid: 'S123',
             expiresAt: '2020-10-10',
-            accessToken: "tok_abc123",
+            accessToken: 'tok_abc123',
+            imageConfig: {
+                ttlMinutes: 15,
+                maxFiles: 20,
+                maxBytesPerFile: 20_000_000,
+                maxTotalBytes: 500_000_000,
+            },
         });
 
         const req = makeReq();
@@ -47,15 +53,21 @@ describe("createSession controller", () => {
         expect(mockedCreate).toHaveBeenCalledTimes(1);
         expect(res.status).toHaveBeenCalledWith(201);
         expect(res.json).toHaveBeenCalledWith({
-            sid: "S123",
+            sid: 'S123',
             expiresAt: '2020-10-10',
-            token: "tok_abc123",
+            token: 'tok_abc123',
+            imageConfig: {
+                ttlMinutes: 15,
+                maxFiles: 20,
+                maxBytesPerFile: 20_000_000,
+                maxTotalBytes: 500_000_000,
+            },
         });
         expect(next).not.toHaveBeenCalled();
     });
 
-    it("calls next(err) when service throws", async () => {
-        const err = new Error("boom");
+    it('calls next(err) when service throws', async () => {
+        const err = new Error('boom');
         mockedCreate.mockRejectedValueOnce(err);
 
         const req = makeReq();

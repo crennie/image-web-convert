@@ -1,7 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
-    create, isSessionExpired, readSessionInfo, sessionDir, sessionInfoPath, writeSessionInfo
+    create,
+    isSessionExpired,
+    readSessionInfo,
+    sessionDir,
+    sessionInfoPath,
+    writeSessionInfo,
 } from '../sessions.service';
 
 // Hoisted constants used inside module mocks.
@@ -10,7 +15,7 @@ const h = vi.hoisted(() => {
     const p = require('node:path');
     const uploadDir = p.join(
         os.tmpdir(),
-        `iwc-api-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        `iwc-api-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     return {
         uploadDir,
@@ -32,10 +37,15 @@ vi.mock('@image-web-convert/node-shared', () => ({
     secureId: () => h.fixedSid,
 }));
 vi.mock('../../auth/authUtils', () => ({
-    generateAccessToken: () => ({ token: h.token, hash: h.tokenHash })
+    generateAccessToken: () => ({ token: h.token, hash: h.tokenHash }),
 }));
-vi.mock('@image-web-convert/schemas', () => ({
-    SESSION_IMAGE_CONFIG: { ttlMinutes: h.ttlMinutes },
+vi.mock('../../env', () => ({
+    getSessionImageConfig: () => ({
+        ttlMinutes: h.ttlMinutes,
+        maxFiles: 20,
+        maxBytesPerFile: 20_000_000,
+        maxTotalBytes: 500_000_000,
+    }),
 }));
 
 beforeAll(async () => {
@@ -50,17 +60,17 @@ afterAll(async () => {
     vi.useRealTimers();
 });
 
-
 describe('session.service create()', () => {
     it('creates a new session dir, writes session.info.json, and returns sid/ttl/token/expiry', async () => {
         const result = await create();
         // Returns fixed sid/token and computed expiry
         expect(result.sid).toBe(h.fixedSid);
         const expectedExpires = new Date(
-            h.fixedNow.getTime() + h.ttlMinutes * 60_000
+            h.fixedNow.getTime() + h.ttlMinutes * 60_000,
         ).toISOString();
         expect(result.expiresAt).toBe(expectedExpires);
         expect(result.accessToken).toBe(h.token);
+        expect(result.imageConfig.ttlMinutes).toBe(h.ttlMinutes);
 
         // session.info.json exists with expected contents
         const infoPath = sessionInfoPath(h.fixedSid);
@@ -78,7 +88,6 @@ describe('session.service create()', () => {
         });
     });
 });
-
 
 describe('session.service helpers', () => {
     it('sessionDir builds path under UPLOAD_DIR', () => {

@@ -9,17 +9,19 @@ import React, {
     useState,
 } from 'react';
 import { ApiCreateSessionResponseSchema } from '@image-web-convert/schemas';
+import type { SessionImageConfig } from '@image-web-convert/schemas';
 const VITE_API_URL = import.meta.env.VITE_API_URL;
 
 export type Session = {
     sessionId: string;
     token: string;
     expiresAt: string;
+    imageConfig: SessionImageConfig;
 };
 
 type SessionContextValue = {
     session: Session | null;
-    startSession: (ttlSeconds?: number) => Promise<Session>;
+    startSession: () => Promise<Session>;
     clearSession: () => void;
 };
 
@@ -37,27 +39,30 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         if (startPromiseRef.current) return startPromiseRef.current;
 
         startPromiseRef.current = (async () => {
-            const response = await fetch(`${VITE_API_URL}/sessions`, {
-                method: 'POST',
-            });
-            if (!response.ok) {
-                startPromiseRef.current = null;
-                throw new Error(
-                    `Failed to create session (${response.status})`,
-                );
-            }
+            try {
+                const response = await fetch(`${VITE_API_URL}/sessions`, {
+                    method: 'POST',
+                });
+                if (!response.ok) {
+                    throw new Error(
+                        `Failed to create session (${response.status})`,
+                    );
+                }
 
-            const result = ApiCreateSessionResponseSchema.parse(
-                await response.json(),
-            );
-            const session = {
-                sessionId: result.sid,
-                token: result.token,
-                expiresAt: result.expiresAt,
-            };
-            setSession(session);
-            startPromiseRef.current = null;
-            return session;
+                const result = ApiCreateSessionResponseSchema.parse(
+                    await response.json(),
+                );
+                const session = {
+                    sessionId: result.sid,
+                    token: result.token,
+                    expiresAt: result.expiresAt,
+                    imageConfig: result.imageConfig,
+                };
+                setSession(session);
+                return session;
+            } finally {
+                startPromiseRef.current = null;
+            }
         })();
 
         return startPromiseRef.current;
