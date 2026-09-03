@@ -63,6 +63,7 @@ export function FileListItem({
                 <>
                     {showRemove ? (
                         <Button variant="ghost" className="absolute right-2 top-2 text-destructive"
+                            aria-label={`Remove ${item.file.name}`}
                             onClick={() => onRemove?.(item)}
                         >
                             <FaTimes className="size-8" />
