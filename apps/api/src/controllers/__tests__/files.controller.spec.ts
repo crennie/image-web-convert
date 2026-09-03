@@ -9,12 +9,17 @@ vi.mock('../../services/auth.service', () => ({
 }));
 
 const resolveMock = vi.fn();
-const streamZipMock = vi.fn();
+const writeZipMock = vi.fn();
 vi.mock('../../services/files.service', () => ({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolveFilesByIds: (...args: any[]) => resolveMock(...args),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    streamZip: (...args: any[]) => streamZipMock(...args),
+    writeZip: (...args: any[]) => writeZipMock(...args),
+    archiveDownloadHeaders: () => ({
+        contentType: 'application/zip',
+        contentDisposition: 'attachment; filename="images.zip"',
+    }),
+    ArchiveClientAbortError: class extends Error {},
 }));
 
 const readMetaMock = vi.fn();
@@ -302,7 +307,7 @@ describe('files.controller.downloadMany', () => {
             found: [resolved('a'), resolved('b')],
             missing: ['c'],
         });
-        streamZipMock.mockResolvedValueOnce(undefined);
+        writeZipMock.mockResolvedValueOnce(undefined);
 
         const req = makeReq({
             params: { sid: 'S' },
@@ -314,10 +319,9 @@ describe('files.controller.downloadMany', () => {
 
         expect(res.setHeader).toHaveBeenCalledWith('X-Missing-Ids', 'c');
         // default fallback when no archiveName provided in body
-        expect(streamZipMock).toHaveBeenCalledWith(
+        expect(writeZipMock).toHaveBeenCalledWith(
             res,
             expect.any(Array),
-            'images.zip',
         );
     });
 
@@ -327,7 +331,7 @@ describe('files.controller.downloadMany', () => {
             found: [resolved('a')],
             missing: [],
         });
-        streamZipMock.mockResolvedValueOnce(undefined);
+        writeZipMock.mockResolvedValueOnce(undefined);
 
         const req = makeReq({
             params: { sid: 'S' },
@@ -337,10 +341,9 @@ describe('files.controller.downloadMany', () => {
 
         await downloadMany(req, res, vi.fn());
 
-        expect(streamZipMock).toHaveBeenCalledWith(
+        expect(writeZipMock).toHaveBeenCalledWith(
             res,
             expect.any(Array),
-            'Custom_Name',
         );
     });
 
@@ -351,7 +354,7 @@ describe('files.controller.downloadMany', () => {
             missing: [],
         });
         const err = new Error('zip-fail');
-        streamZipMock.mockRejectedValueOnce(err);
+        writeZipMock.mockRejectedValueOnce(err);
 
         const req = makeReq({ params: { sid: 'S' }, body: { ids: ['a'] } });
         const res = makeRes();

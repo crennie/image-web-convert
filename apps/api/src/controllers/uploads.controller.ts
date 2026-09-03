@@ -1,7 +1,11 @@
 import type { Request, Response } from 'express';
 import type { FileArray, UploadedFile } from 'express-fileupload';
 import fs from 'node:fs/promises';
-import { saveUploads } from '../services/uploads.service';
+import {
+    processUploadBatch,
+    UploadClaimConflictError,
+    UploadInput,
+} from '../services/uploads.service';
 import {
     ApiErrorInvalidRequest,
     ApiErrorUploadLimitExceeded,
@@ -9,10 +13,10 @@ import {
     ApiUploadsErrorMime,
     ApiUploadsErrorMissingFiles,
     ApiUploadsErrorSessionUsed,
+    ApiUploadsErrorInProgress,
     ApiUploadsRequestSchema,
     ApiUploadsResponse,
 } from '@image-web-convert/schemas';
-import { writeSessionInfo } from '../services/sessions.service';
 import { validateRequestWithToken } from '../services/auth.service';
 import { getSessionImageConfig } from '../env';
 
@@ -125,23 +129,18 @@ export async function create(req: Request, res: Response) {
 
         // Delegates to service layer (saves files, maps names -> UUIDs, writes metadata, etc.)
         // Expected shape: { accepted: any[]; rejected: { fileName: string; error: string }[] }
-        const { accepted, rejected } = await saveUploads(
+        const inputs: UploadInput[] = uploads.map((upload, index) => ({
+            originalName: upload.name,
+            tempInputPath: upload.tempFilePath,
+            originalBytes: upload.size,
+            clientId: clientIds[index],
+        }));
+        const { accepted, rejected } = await processUploadBatch(
             sid,
             outputMime,
-            uploads,
-            clientIds,
+            inputs,
+            validateResponse.info,
         );
-
-        // Update counts
-        validateResponse.info.counts.files += accepted.length;
-        validateResponse.info.counts.totalBytes += accepted.reduce(
-            (total, upload) => total + (upload.meta.original.sizeBytes ?? 0),
-            0,
-        );
-
-        // Seal regardless of per-file failures
-        validateResponse.info.sealedAt = new Date().toISOString();
-        await writeSessionInfo(sid, validateResponse.info);
 
         const hasFailures = rejected && rejected.length > 0;
         const http = hasFailures ? 207 /* Multi-Status */ : 200;
@@ -152,6 +151,13 @@ export async function create(req: Request, res: Response) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
         await cleanupTempUploads(uploads);
+        if (err instanceof UploadClaimConflictError) {
+            const response: ApiUploadsErrorInProgress = {
+                type: 'upload_in_progress',
+                message: err.message,
+            };
+            return res.status(409).json(response);
+        }
         const response: ApiUploadsErrorFiles = {
             type: 'upload_error',
             message: err?.message || 'Upload failed',

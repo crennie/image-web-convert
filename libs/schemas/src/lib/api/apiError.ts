@@ -26,6 +26,13 @@ export type ApiUploadsErrorSessionUsed = z.infer<
     typeof ApiUploadsErrorSessionUsedSchema
 >;
 
+export const ApiUploadsErrorInProgressSchema = apiErrorSchema(
+    'upload_in_progress',
+);
+export type ApiUploadsErrorInProgress = z.infer<
+    typeof ApiUploadsErrorInProgressSchema
+>;
+
 export const ApiUploadsErrorMimeSchema = apiErrorSchema('invalid_output_mime');
 export type ApiUploadsErrorMime = z.infer<typeof ApiUploadsErrorMimeSchema>;
 
@@ -64,6 +71,7 @@ export const ApiErrorSchema = z.discriminatedUnion('type', [
     ApiErrorSessionNotFoundSchema,
     ApiErrorSessionExpiredSchema,
     ApiUploadsErrorSessionUsedSchema,
+    ApiUploadsErrorInProgressSchema,
     ApiUploadsErrorMimeSchema,
     ApiUploadsErrorMissingFilesSchema,
     ApiUploadsErrorFilesSchema,

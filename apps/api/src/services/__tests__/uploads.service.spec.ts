@@ -1,77 +1,155 @@
-import type { UploadedFile } from 'express-fileupload';
-import { saveUploads } from '../uploads.service';
-import { saveUploadFile } from '../storage.service';
-import { MockInstance } from 'vitest';
-import { OutputMimeType } from '@image-web-convert/schemas';
+import { ApiUploadAccepted, ApiUploadMeta } from '@image-web-convert/schemas';
+import {
+    processUploadBatch,
+    UploadClaimConflictError,
+    UploadInput,
+} from '../uploads.service';
+import { removeStoredUpload, saveUploadFile } from '../storage.service';
+import { writeSessionInfo } from '../sessions.service';
 
-// Hoisted fixtures
-const h = vi.hoisted(() => ({
-    sid: 'sid-abc',
-    okResult: { id: 'file-ok', url: '/files/file-ok', metaUrl: '/files/file-ok/meta', meta: {}, clientId: 'c1' },
-    err: new Error('boom'),
-}));
-
-// Mock the file saver that uploads.service delegates to
 vi.mock('../storage.service', () => ({
     saveUploadFile: vi.fn(),
+    removeStoredUpload: vi.fn(),
 }));
+vi.mock('../sessions.service', () => ({ writeSessionInfo: vi.fn() }));
 
-const mkUpload = (name: string, tempFilePath = '/tmp/f'): UploadedFile =>
-({
-    name,
-    mimetype: 'image/png',
-    size: 123,
-    mv: vi.fn(),
-    encoding: '7bit',
-    tempFilePath,
-    truncated: false,
-    md5: 'x',
-} as unknown as UploadedFile);
+const info = () => ({
+    id: 'sid',
+    createdAt: new Date(0).toISOString(),
+    expiresAt: new Date(100_000).toISOString(),
+    sealedAt: null,
+    counts: { files: 2, totalBytes: 50 },
+    tokenHash: 'hash',
+});
+const input = (name: string, clientId?: string): UploadInput => ({
+    originalName: name,
+    tempInputPath: `/tmp/${name}`,
+    originalBytes: 10,
+    clientId,
+});
+const accepted = (id: string, bytes = 10): ApiUploadAccepted => ({
+    id,
+    url: `/files/${id}`,
+    metaUrl: `/files/${id}/meta`,
+    meta: {
+        original: { sizeBytes: bytes },
+        output: { storedName: `${id}.webp` },
+    } as ApiUploadMeta,
+});
 
-describe('saveUploads', () => {
-    beforeEach(() => {
-        vi.resetAllMocks();
-    });
+describe('processUploadBatch', () => {
+    beforeEach(() => vi.resetAllMocks());
 
-    it('returns accepted for fulfilled saves and rejected for failures, preserving clientIds', async () => {
-        const _outputMime = "image/webp";
-        const uploads = [mkUpload('a.png'), mkUpload('b.png'), mkUpload('c.png')];
-        const clientIds = ['c1', 'c2', 'c3'];
+    it('preserves partial success, updates accepted counts, and seals once', async () => {
+        vi.mocked(saveUploadFile)
+            .mockResolvedValueOnce(accepted('a', 12))
+            .mockRejectedValueOnce(new Error('bad image'));
 
-        (saveUploadFile as unknown as MockInstance).mockImplementation((_sid: string, outputMime: OutputMimeType, uf: UploadedFile, clientId?: string) => {
-            if (uf.name === 'b.png') return Promise.reject(h.err);
-            if (uf.name === 'c.png') return Promise.reject('bad format');
-            return Promise.resolve({ ...h.okResult, outputMime, clientId, id: 'file-' + uf.name });
-        });
+        const result = await processUploadBatch(
+            'sid',
+            'image/webp',
+            [input('a.png', 'a'), input('b.png', 'b')],
+            info(),
+        );
 
-        const res = await saveUploads(h.sid, _outputMime, uploads, clientIds);
-
-        // accepted
-        expect(res.accepted.map(a => ({ id: a.id, clientId: a.clientId }))).toEqual([
-            { id: 'file-a.png', clientId: 'c1' },
+        expect(result.accepted).toHaveLength(1);
+        expect(result.rejected).toEqual([
+            { fileName: 'b.png', error: 'bad image', clientId: 'b' },
         ]);
-
-        // rejected includes filename, message, and matching clientId
-        expect(res.rejected).toHaveLength(2);
-        expect(res.rejected[0]).toMatchObject({ fileName: 'b.png', error: 'boom', clientId: 'c2' });
-        expect(res.rejected[1]).toMatchObject({ fileName: 'c.png', error: 'bad format', clientId: 'c3' });
+        expect(writeSessionInfo).toHaveBeenCalledWith(
+            'sid',
+            expect.objectContaining({
+                sealedAt: expect.any(String),
+                counts: { files: 3, totalBytes: 62 },
+            }),
+        );
     });
 
-    it('uses "(unknown)" when an upload is missing a name', async () => {
-        const outputMime = "image/webp";
-        const unnamed = mkUpload(undefined as unknown as string);
-        (saveUploadFile as unknown as MockInstance).mockRejectedValueOnce(new Error('x'));
-
-        const res = await saveUploads(h.sid, outputMime, [unnamed], ['cid']);
-        expect(res.rejected[0].fileName).toBe('(unknown)');
+    it('seals an all-rejected batch without changing counts', async () => {
+        vi.mocked(saveUploadFile).mockRejectedValue(new Error('unsupported'));
+        const result = await processUploadBatch(
+            'all-fail',
+            'image/webp',
+            [input('bad.png')],
+            info(),
+        );
+        expect(result.accepted).toEqual([]);
+        expect(result.rejected).toHaveLength(1);
+        expect(writeSessionInfo).toHaveBeenCalledWith(
+            'all-fail',
+            expect.objectContaining({ counts: { files: 2, totalBytes: 50 } }),
+        );
     });
 
-    it('handles missing clientIds array gracefully (defaults to undefined)', async () => {
-        const outputMime = "image/webp";
-        const uploads = [mkUpload('a.png')];
-        (saveUploadFile as unknown as MockInstance).mockResolvedValueOnce(h.okResult);
+    it('removes accepted outputs and releases the claim when persistence fails', async () => {
+        const saved = accepted('saved');
+        vi.mocked(saveUploadFile).mockResolvedValue(saved);
+        vi.mocked(writeSessionInfo).mockRejectedValueOnce(new Error('disk full'));
 
-        const res = await saveUploads(h.sid, outputMime, uploads);
-        expect(res.accepted[0].clientId).toBe(h.okResult.clientId);
+        await expect(
+            processUploadBatch('retry', 'image/webp', [input('a.png')], info()),
+        ).rejects.toThrow('disk full');
+        expect(removeStoredUpload).toHaveBeenCalledWith('retry', saved);
+
+        vi.mocked(writeSessionInfo).mockResolvedValueOnce(undefined);
+        await expect(
+            processUploadBatch('retry', 'image/webp', [input('a.png')], info()),
+        ).resolves.toBeDefined();
+    });
+
+    it('rejects a concurrent same-session batch before conversion and releases after success', async () => {
+        let finish!: (value: ApiUploadAccepted) => void;
+        vi.mocked(saveUploadFile).mockImplementationOnce(
+            () => new Promise((resolve) => (finish = resolve)),
+        );
+        const first = processUploadBatch(
+            'claimed',
+            'image/webp',
+            [input('first.png')],
+            info(),
+        );
+
+        await expect(
+            processUploadBatch(
+                'claimed',
+                'image/webp',
+                [input('second.png')],
+                info(),
+            ),
+        ).rejects.toBeInstanceOf(UploadClaimConflictError);
+        expect(saveUploadFile).toHaveBeenCalledTimes(1);
+        finish(accepted('first'));
+        await first;
+
+        vi.mocked(saveUploadFile).mockResolvedValueOnce(accepted('next'));
+        await expect(
+            processUploadBatch('claimed', 'image/webp', [input('next.png')], info()),
+        ).resolves.toBeDefined();
+    });
+
+    it('allows different sessions to proceed independently', async () => {
+        let finishFirst!: (value: ApiUploadAccepted) => void;
+        vi.mocked(saveUploadFile)
+            .mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)))
+            .mockResolvedValueOnce(accepted('second'));
+        const first = processUploadBatch('one', 'image/webp', [input('a')], info());
+        await expect(
+            processUploadBatch('two', 'image/webp', [input('b')], info()),
+        ).resolves.toBeDefined();
+        finishFirst(accepted('first'));
+        await first;
+    });
+
+    it('releases the claim after conversion orchestration throws', async () => {
+        vi.mocked(saveUploadFile).mockImplementationOnce(() => {
+            throw new Error('unexpected');
+        });
+        await expect(
+            processUploadBatch('throwing', 'image/webp', [input('a')], info()),
+        ).rejects.toThrow('unexpected');
+        vi.mocked(saveUploadFile).mockResolvedValueOnce(accepted('retry'));
+        await expect(
+            processUploadBatch('throwing', 'image/webp', [input('a')], info()),
+        ).resolves.toBeDefined();
     });
 });

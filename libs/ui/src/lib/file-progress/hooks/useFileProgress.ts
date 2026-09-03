@@ -1,39 +1,38 @@
 'use client';
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-export function useFileProgress() {
-    const [progressComplete, setProgressComplete] = useState(false);
-    const [progress, setProgress] = useState(0);
-    const intervalRef = useRef<ReturnType<typeof setTimeout>>(null);
-    const DEFAULT_PROGRESS_INCREMENT = 20;
-    const startProgress = useCallback((minTimeSeconds = 4, progressIncrement = DEFAULT_PROGRESS_INCREMENT) => {
-        const intervalTimeMs = Math.ceil(minTimeSeconds / (100 / progressIncrement)) * 1000;
-        setProgressComplete(false);
-        intervalRef.current = setInterval(() => {
-            setProgress(prev => {
-                if (intervalRef.current && prev >= 100) {
-                    clearInterval(intervalRef.current);
-                    setProgressComplete(true);
-                    return prev;
-                } else {
-                    return prev + progressIncrement;
-                }
-            });
-        }, intervalTimeMs);
-    }, []);
-    const cancelProgress = useCallback(() => {
+export function useCosmeticProgress() {
+    const [cosmeticPercent, setCosmeticPercent] = useState(0);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const cancelCosmeticProgress = useCallback(() => {
         if (intervalRef.current) clearInterval(intervalRef.current);
-        setProgress(0);
-        setProgressComplete(false);
+        intervalRef.current = null;
+        setCosmeticPercent(0);
     }, []);
+
+    const startCosmeticProgress = useCallback(() => {
+        cancelCosmeticProgress();
+        intervalRef.current = setInterval(() => {
+            setCosmeticPercent((previous) => Math.min(previous + 10, 90));
+        }, 400);
+    }, [cancelCosmeticProgress]);
+
+    const completeCosmeticProgress = useCallback(() => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        intervalRef.current = null;
+        setCosmeticPercent(100);
+    }, []);
+
+    useEffect(() => cancelCosmeticProgress, [cancelCosmeticProgress]);
 
     return {
-        progressComplete,
-        progress,
-        startProgress,
-        cancelProgress,
-    }
+        cosmeticPercent,
+        startCosmeticProgress,
+        completeCosmeticProgress,
+        cancelCosmeticProgress,
+    };
 }
 
-export default useFileProgress;
+export default useCosmeticProgress;

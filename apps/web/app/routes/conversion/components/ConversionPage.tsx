@@ -3,12 +3,12 @@
 import {
     FILE_UPLOAD_CONFIG,
     FileDownload,
-    FileProgress,
+    CosmeticProgress,
     FileUpload,
     PageLayout,
     UploadFilesError,
     useFileItems,
-    useFileProgress,
+    useCosmeticProgress,
     useFileUploads,
     useSession,
 } from '@image-web-convert/ui';
@@ -40,8 +40,12 @@ export function ConversionPage() {
     const { items, addItems, removeItem, clearFiles, errors, clearErrors } =
         useFileItems({ config });
     const { uploadedFiles, uploadFilesForm, rejectedFiles } = useFileUploads();
-    const { progress, progressComplete, startProgress, cancelProgress } =
-        useFileProgress();
+    const {
+        cosmeticPercent,
+        startCosmeticProgress,
+        completeCosmeticProgress,
+        cancelCosmeticProgress,
+    } = useCosmeticProgress();
 
     useEffect(() => {
         void startSession().catch(() => {
@@ -55,26 +59,28 @@ export function ConversionPage() {
             startTransition(() => {
                 setConversionExt(conversionExt);
                 setPageState('upload');
-                startProgress();
+                startCosmeticProgress();
             });
             // API actions - create session then upload
             try {
                 const newSession = await startSession();
                 await uploadFilesForm(formData, newSession);
-                startTransition(() => setPageState('upload_complete'));
+                completeCosmeticProgress();
+                startTransition(() => setPageState('download'));
             } catch (err) {
                 if (err instanceof UploadFilesError)
                     setUploadError(err.message);
-                cancelProgress();
+                cancelCosmeticProgress();
                 clearSession();
                 setPageState('upload_error');
             }
         },
         [
             startSession,
-            startProgress,
+            startCosmeticProgress,
+            completeCosmeticProgress,
             uploadFilesForm,
-            cancelProgress,
+            cancelCosmeticProgress,
             clearSession,
         ],
     );
@@ -86,13 +92,6 @@ export function ConversionPage() {
         clearFiles();
         setPageState('select');
     }, [clearSession, clearErrors, clearFiles]);
-
-    useEffect(() => {
-        // Move to download state once uploads complete
-        if (pageState === 'upload_complete' && progressComplete) {
-            setPageState('download');
-        }
-    }, [pageState, progressComplete]);
 
     return (
         <PageLayout>
@@ -119,7 +118,10 @@ export function ConversionPage() {
                             />
                         ) : pageState === 'upload' ||
                           pageState === 'upload_complete' ? (
-                            <FileProgress items={items} progress={progress} />
+                            <CosmeticProgress
+                                items={items}
+                                cosmeticPercent={cosmeticPercent}
+                            />
                         ) : pageState === 'download' ? (
                             <FileDownload
                                 conversionExt={conversionExt ?? ''}

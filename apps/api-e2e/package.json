@@ -7,18 +7,14 @@
             "@image-web-convert/api"
         ],
         "targets": {
-            "_REMOVE_e2e": {
-                "executor": "@nx/jest:jest",
-                "outputs": [
-                    "{projectRoot}/test-output/jest/coverage"
-                ],
+            "e2e": {
+                "executor": "nx:run-commands",
                 "options": {
-                    "jestConfig": "apps/api-e2e/jest.config.ts",
-                    "passWithNoTests": true
+                    "cwd": "apps/api-e2e",
+                    "command": "vitest run"
                 },
                 "dependsOn": [
-                    "@image-web-convert/api:build",
-                    "@image-web-convert/api:serve"
+                    "@image-web-convert/api:build"
                 ]
             }
         }
