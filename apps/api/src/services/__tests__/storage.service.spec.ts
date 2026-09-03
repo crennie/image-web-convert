@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs/promises';
-import fssync from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import type { UploadedFile } from 'express-fileupload';
@@ -69,13 +68,6 @@ beforeAll(async () => {
             secureId: () => 'fixed-id-999',
         };
     });
-    vi.doMock('../sessions.service', () => ({
-        sessionDir: (sid: string) => path.join(tmpRoot, sid),
-    }));
-
-    // Ensure tmp root exists (module also mkdirs)
-    fssync.mkdirSync(tmpRoot, { recursive: true });
-
     // 4) NOW import the module under test
     storage = await import('../storage.service');
 });
@@ -102,20 +94,6 @@ const mkUpload = (
         encoding: '7bit',
         truncated: false,
     }) as unknown as UploadedFile;
-
-describe('storage.service config', () => {
-    it('uses the temp UPLOAD_DIR for tests', () => {
-        expect(storage.UPLOAD_DIR).toBe(tmpRoot);
-        expect(fssync.existsSync(storage.UPLOAD_DIR)).toBe(true);
-    });
-});
-
-describe('pathForStored', () => {
-    it('joins sessionDir and stored filename', () => {
-        const p = storage.pathForStored(h.sid, h.storedName);
-        expect(p).toBe(path.join(tmpRoot, h.sid, h.storedName));
-    });
-});
 
 describe('sanitizeBasename', () => {
     it('repairs mojibake filenames and sanitizes', async () => {

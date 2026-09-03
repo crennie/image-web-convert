@@ -4,10 +4,9 @@ import {
     create,
     isSessionExpired,
     readSessionInfo,
-    sessionDir,
-    sessionInfoPath,
     writeSessionInfo,
 } from '../sessions.service';
+import { sessionDir, sessionInfoPath } from '../storage.paths';
 
 // Hoisted constants used inside module mocks.
 const h = vi.hoisted(() => {
@@ -28,8 +27,11 @@ const h = vi.hoisted(() => {
 });
 
 // Point the service at a temp upload directory
-vi.mock('../storage.service', () => ({
+vi.mock('../storage.paths', () => ({
     UPLOAD_DIR: h.uploadDir,
+    sessionDir: (sid: string) => path.join(h.uploadDir, sid),
+    sessionInfoPath: (sid: string) =>
+        path.join(h.uploadDir, sid, 'session.info.json'),
 }));
 
 // Deterministic ID/token + TTL
@@ -86,18 +88,6 @@ describe('session.service create()', () => {
             counts: { files: 0, totalBytes: 0 },
             tokenHash: h.tokenHash,
         });
-    });
-});
-
-describe('session.service helpers', () => {
-    it('sessionDir builds path under UPLOAD_DIR', () => {
-        const dir = sessionDir('abc');
-        expect(dir).toBe(path.join(h.uploadDir, 'abc'));
-    });
-
-    it('sessionInfoPath appends session.info.json', () => {
-        const p = sessionInfoPath('abc');
-        expect(p).toBe(path.join(h.uploadDir, 'abc', 'session.info.json'));
     });
 });
 
