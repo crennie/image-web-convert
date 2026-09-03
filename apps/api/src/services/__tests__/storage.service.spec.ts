@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import type { UploadedFile } from 'express-fileupload';
 import { processImageToMimeType } from '../image.service';
 
 // ---- Hoisted, deterministic fixtures ----
@@ -57,7 +56,6 @@ beforeAll(async () => {
 
     // 4) mocks that storage.service depends on
     vi.doMock('@image-web-convert/node-shared', async (importOriginal) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const actual =
             await importOriginal<
                 typeof import('@image-web-convert/node-shared')
@@ -83,17 +81,11 @@ const mkUpload = (
     name: string,
     tempFilePath: string,
     size = 4321,
-): UploadedFile =>
-    ({
-        name,
-        mimetype: 'image/jpeg',
-        size,
-        tempFilePath,
-        mv: vi.fn(),
-        md5: 'x',
-        encoding: '7bit',
-        truncated: false,
-    }) as unknown as UploadedFile;
+) => ({
+    originalName: name,
+    tempInputPath: tempFilePath,
+    originalBytes: size,
+});
 
 describe('sanitizeBasename', () => {
     it('repairs mojibake filenames and sanitizes', async () => {
@@ -109,7 +101,7 @@ describe('sanitizeBasename', () => {
         const bad = 'Screenshot 2025-09-18 at 9.36.20â¯AM.png';
         const upload = mkUpload(bad, tmp);
 
-        const res = await storage.saveUploadFile(h.sid, outputMime, upload, '');
+        const res = await storage.saveUploadFile(h.sid, outputMime, upload);
         const meta = await storage.readMeta(h.sid, res.id);
         expect(meta?.original.name).toBe(
             'Screenshot 2025-09-18 at 9.36.20 AM.png',
@@ -128,7 +120,7 @@ describe('sanitizeBasename', () => {
         const good = 'Screenshot 2025-09-18 at 9.36.20 AM.png'; // real U+202F
         const upload = mkUpload(good, tmp);
 
-        const res = await storage.saveUploadFile(h.sid, outputMime, upload, '');
+        const res = await storage.saveUploadFile(h.sid, outputMime, upload);
         const meta = await storage.readMeta(h.sid, res.id);
         expect(meta?.original.name).toBe(
             'Screenshot 2025-09-18 at 9.36.20 AM.png',
@@ -152,8 +144,7 @@ describe('saveUploadFile', () => {
         const res = await storage.saveUploadFile(
             h.sid,
             outputMime,
-            upload,
-            'client-42',
+            { ...upload, clientId: 'client-42' },
         );
 
         // Assert return object
@@ -175,7 +166,7 @@ describe('saveUploadFile', () => {
             original: {
                 name: 'photo_01_.jpg', // sanitized from `nice/photo:01?.jpg`
                 mime: 'image/jpeg',
-                sizeBytes: upload.size,
+                sizeBytes: upload.originalBytes,
                 width: h.processed.inputMeta.width,
                 height: h.processed.inputMeta.height,
                 pages: h.processed.inputMeta.pages,

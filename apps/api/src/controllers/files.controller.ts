@@ -1,6 +1,11 @@
 import type { NextFunction, Request, Response } from 'express';
 import { readMeta } from '../services/storage.service';
-import { resolveFilesByIds, streamZip } from '../services/files.service';
+import {
+    ArchiveClientAbortError,
+    archiveDownloadHeaders,
+    resolveFilesByIds,
+    writeZip,
+} from '../services/files.service';
 import { validateRequestWithToken } from '../services/auth.service';
 import {
     ApiDownloadFilesRequestSchema,
@@ -125,9 +130,12 @@ export async function downloadMany(
     }
 
     try {
-        await streamZip(res, found, archiveName || 'images.zip');
+        const headers = archiveDownloadHeaders(archiveName || 'images.zip');
+        res.setHeader('Content-Type', headers.contentType);
+        res.setHeader('Content-Disposition', headers.contentDisposition);
+        await writeZip(res, found);
     } catch (err) {
-        next(err);
+        if (!(err instanceof ArchiveClientAbortError)) next(err);
     }
     return Promise<void>;
 }

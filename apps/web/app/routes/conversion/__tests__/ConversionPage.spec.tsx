@@ -7,8 +7,9 @@ import { UploadFilesError } from '@image-web-convert/ui';
 const startSessionMock = vi.fn();
 const clearSessionMock = vi.fn();
 const uploadFilesFormMock = vi.fn();
-const startProgressMock = vi.fn();
-const cancelProgressMock = vi.fn();
+const startCosmeticProgressMock = vi.fn();
+const completeCosmeticProgressMock = vi.fn();
+const cancelCosmeticProgressMock = vi.fn();
 const clearErrorsMock = vi.fn();
 const clearFilesMock = vi.fn();
 
@@ -17,7 +18,7 @@ const fakeUploaded = [{ id: 'u1' }];
 const fakeRejected = [{ id: 'r1' }];
 
 // mutable progress state for this suite
-const progressState = { progress: 42, progressComplete: false };
+const progressState = { cosmeticPercent: 42 };
 
 vi.mock('@image-web-convert/ui', async (importOriginal) => {
     const actual =
@@ -41,12 +42,12 @@ vi.mock('@image-web-convert/ui', async (importOriginal) => {
             </div>
         ),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        FileProgress: (props: any) => (
+        CosmeticProgress: (props: any) => (
             <div data-testid="file-progress">
                 FileProgress:
                 {JSON.stringify({
                     items: props.items,
-                    progress: props.progress,
+                    cosmeticPercent: props.cosmeticPercent,
                 })}
             </div>
         ),
@@ -80,11 +81,11 @@ vi.mock('@image-web-convert/ui', async (importOriginal) => {
             uploadFilesForm: uploadFilesFormMock,
         }),
 
-        useFileProgress: () => ({
-            progress: progressState.progress,
-            progressComplete: progressState.progressComplete,
-            startProgress: startProgressMock,
-            cancelProgress: cancelProgressMock,
+        useCosmeticProgress: () => ({
+            cosmeticPercent: progressState.cosmeticPercent,
+            startCosmeticProgress: startCosmeticProgressMock,
+            completeCosmeticProgress: completeCosmeticProgressMock,
+            cancelCosmeticProgress: cancelCosmeticProgressMock,
         }),
     };
 });
@@ -118,8 +119,7 @@ vi.mock('../components/ConversionErrorBoundary', () => ({
 beforeEach(() => {
     startSessionMock.mockResolvedValue({ sid: 's1' });
     vi.clearAllMocks();
-    progressState.progress = 42;
-    progressState.progressComplete = false;
+    progressState.cosmeticPercent = 42;
 });
 
 describe('ConversionPage', () => {
@@ -142,6 +142,10 @@ describe('ConversionPage', () => {
 
     it('passes props to FileUpload/FileProgress/FileDownload correctly', async () => {
         const user = userEvent.setup();
+        let finishUpload!: () => void;
+        uploadFilesFormMock.mockImplementationOnce(
+            () => new Promise<void>((resolve) => (finishUpload = resolve)),
+        );
         render(<ConversionPage />);
 
         // Initial select view: FileUpload should show config+items
@@ -155,30 +159,15 @@ describe('ConversionPage', () => {
         // Progress view: should include items and progress=42
         await screen.findByTestId('file-progress');
         expect(screen.getByTestId('file-progress')).toHaveTextContent(
-            '"progress":42',
+            '"cosmeticPercent":42',
         );
 
-        // Resolve API -> upload_complete, but progressComplete=false, so still on FileProgress
+        // API completion owns the transition to download.
+        finishUpload();
         await waitFor(() =>
             expect(screen.getByTestId('instructions')).toHaveTextContent(
-                'state:upload_complete',
+                'state:download',
             ),
-        );
-
-        // Manually change to progressComplete=true for this test:
-        // simulate re-render with FileDownload showing props
-        // (in practice you'd adjust the mock between tests)
-        render(
-            <div>
-                <div data-testid="file-download">
-                    FileDownload:
-                    {JSON.stringify({
-                        items: fakeItems,
-                        uploadedFiles: fakeUploaded,
-                        rejectedFiles: fakeRejected,
-                    })}
-                </div>
-            </div>,
         );
 
         expect(screen.getByTestId('file-download')).toHaveTextContent(
@@ -189,7 +178,7 @@ describe('ConversionPage', () => {
         );
     });
 
-    it("sets pageState to 'upload_complete' after successful upload", async () => {
+    it("sets pageState to 'download' after successful upload", async () => {
         const user = userEvent.setup();
         uploadFilesFormMock.mockResolvedValueOnce(undefined);
 
@@ -201,22 +190,25 @@ describe('ConversionPage', () => {
         // After promises resolve, the page should transition to 'upload_complete'
         await waitFor(() =>
             expect(screen.getByTestId('instructions')).toHaveTextContent(
-                'state:upload_complete',
+                'state:download',
             ),
         );
 
-        // Still showing FileProgress (progressComplete=false in unit stub)
-        expect(screen.getByTestId('file-progress')).toBeInTheDocument();
-        expect(screen.queryByTestId('file-download')).not.toBeInTheDocument();
+        expect(screen.getByTestId('file-download')).toBeInTheDocument();
+        expect(completeCosmeticProgressMock).toHaveBeenCalledOnce();
 
         // Calls were made
         expect(startSessionMock).toHaveBeenCalledTimes(2);
         expect(uploadFilesFormMock).toHaveBeenCalledTimes(1);
     });
 
-    it('shows download view once file progress is complete', async () => {
+    it('cosmetic progress cannot complete the workflow before the request', async () => {
         const user = userEvent.setup();
-        const { rerender } = render(<ConversionPage />);
+        let finishUpload!: () => void;
+        uploadFilesFormMock.mockImplementationOnce(
+            () => new Promise<void>((resolve) => (finishUpload = resolve)),
+        );
+        render(<ConversionPage />);
 
         // Trigger uploads via the stubbed button
         await user.click(screen.getByTestId('start-upload'));
@@ -224,21 +216,8 @@ describe('ConversionPage', () => {
         // We enter progress view
         expect(screen.getByTestId('file-progress')).toBeInTheDocument();
 
-        // After promises settle, pageState becomes 'upload_complete'
-        await waitFor(() =>
-            expect(screen.getByTestId('instructions')).toHaveTextContent(
-                'state:upload_complete',
-            ),
-        );
-
-        // Download doesn't show until progress bar is finished
         expect(screen.queryByTestId('file-download')).not.toBeInTheDocument();
-
-        // Now flip progressComplete → true and re-render to trigger the effect
-        progressState.progressComplete = true;
-        rerender(<ConversionPage />);
-
-        // Expect transition to download view
+        finishUpload();
         await waitFor(() =>
             expect(screen.queryByTestId('file-download')).toBeInTheDocument(),
         );
@@ -248,27 +227,6 @@ describe('ConversionPage', () => {
         expect(uploadFilesFormMock).toHaveBeenCalledTimes(1);
     });
 
-    it('does not transition to download when progressComplete=false', async () => {
-        const user = userEvent.setup();
-        render(<ConversionPage />);
-
-        // Trigger uploads via the stubbed button
-        await user.click(screen.getByTestId('start-upload'));
-
-        // Progress visible
-        await screen.findByTestId('file-progress');
-
-        // Resolve API -> upload_complete
-        await waitFor(() =>
-            expect(screen.getByTestId('instructions')).toHaveTextContent(
-                'state:upload_complete',
-            ),
-        );
-
-        // Should still be showing progress (not download) because progressComplete=false
-        expect(screen.getByTestId('file-progress')).toBeInTheDocument();
-        expect(screen.queryByTestId('file-download')).not.toBeInTheDocument();
-    });
 });
 
 describe('ConversionPage - error handling unit tests', () => {
@@ -291,7 +249,7 @@ describe('ConversionPage - error handling unit tests', () => {
         );
 
         // Side effects
-        expect(cancelProgressMock).toHaveBeenCalledTimes(1);
+        expect(cancelCosmeticProgressMock).toHaveBeenCalledTimes(1);
         expect(clearSessionMock).toHaveBeenCalledTimes(1);
 
         // State marker
@@ -316,7 +274,7 @@ describe('ConversionPage - error handling unit tests', () => {
             ),
         );
 
-        expect(cancelProgressMock).toHaveBeenCalledTimes(1);
+        expect(cancelCosmeticProgressMock).toHaveBeenCalledTimes(1);
         expect(clearSessionMock).toHaveBeenCalledTimes(1);
         expect(screen.getByTestId('instructions')).toHaveTextContent(
             'state:upload_error',

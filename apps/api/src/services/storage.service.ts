@@ -1,6 +1,5 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import type { UploadedFile } from 'express-fileupload';
 import { processImageToMimeType } from './image.service';
 import { secureId } from '@image-web-convert/node-shared';
 import {
@@ -14,15 +13,19 @@ import { pathForStored, sessionMetaPath } from './storage.paths';
 export async function saveUploadFile(
     sid: string,
     outputMime: OutputMimeType,
-    uf: UploadedFile,
-    clientId = '',
+    upload: {
+        originalName: string;
+        tempInputPath: string;
+        originalBytes: number;
+        clientId?: string;
+    },
 ): Promise<ApiUploadAccepted> {
-    const inputPath = uf.tempFilePath;
+    const inputPath = upload.tempInputPath;
     if (!inputPath) {
         throw new Error('Upload is missing a temporary file path');
     }
 
-    const originalName = sanitizeBaseName(uf.name || 'upload');
+    const originalName = sanitizeBaseName(upload.originalName || 'upload');
     let storedPath: string | undefined;
     let metaPath: string | undefined;
 
@@ -44,7 +47,7 @@ export async function saveUploadFile(
             original: {
                 name: originalName,
                 mime: processed.inputMeta.mime,
-                sizeBytes: uf.size,
+                sizeBytes: upload.originalBytes,
                 width: processed.inputMeta.width,
                 height: processed.inputMeta.height,
                 pages: processed.inputMeta.pages,
@@ -70,7 +73,7 @@ export async function saveUploadFile(
             url: `/sessions/${sid}/files/${id}`,
             metaUrl: `/sessions/${sid}/files/${id}/meta`,
             meta,
-            clientId,
+            clientId: upload.clientId,
         };
     } catch (error) {
         await Promise.all([
@@ -81,6 +84,16 @@ export async function saveUploadFile(
     } finally {
         await deleteFileIfPresent(inputPath);
     }
+}
+
+export async function removeStoredUpload(
+    sid: string,
+    upload: ApiUploadAccepted,
+): Promise<void> {
+    await Promise.all([
+        deleteFileIfPresent(pathForStored(sid, upload.meta.output.storedName)),
+        deleteFileIfPresent(sessionMetaPath(sid, upload.id)),
+    ]);
 }
 
 // ---------- Helpers ----------

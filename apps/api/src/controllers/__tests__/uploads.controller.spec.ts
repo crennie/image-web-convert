@@ -3,8 +3,10 @@ import type { UploadedFile } from 'express-fileupload';
 
 import { create } from '../uploads.controller';
 import { validateRequestWithToken } from '../../services/auth.service';
-import { saveUploads } from '../../services/uploads.service';
-import { writeSessionInfo } from '../../services/sessions.service';
+import {
+    processUploadBatch,
+    UploadClaimConflictError,
+} from '../../services/uploads.service';
 import { MockInstance } from 'vitest';
 import { ApiUploadAccepted, ApiUploadMeta } from '@image-web-convert/schemas';
 import fs from 'node:fs/promises';
@@ -17,11 +19,8 @@ vi.mock('../../services/auth.service', () => ({
 }));
 
 vi.mock('../../services/uploads.service', () => ({
-    saveUploads: vi.fn(),
-}));
-
-vi.mock('../../services/sessions.service', () => ({
-    writeSessionInfo: vi.fn(),
+    processUploadBatch: vi.fn(),
+    UploadClaimConflictError: class extends Error {},
 }));
 
 vi.mock('../../env', () => ({
@@ -35,8 +34,7 @@ vi.mock('../../env', () => ({
 
 // typed helpers
 const mockedValidate = vi.mocked(validateRequestWithToken);
-const mockedSave = vi.mocked(saveUploads);
-const mockedWriteInfo = vi.mocked(writeSessionInfo);
+const mockedSave = vi.mocked(processUploadBatch);
 
 // ---- Test helpers ----
 function makeReq(opts?: {
@@ -133,7 +131,6 @@ describe('uploads.controller.create', () => {
             message: '',
         });
         expect(mockedSave).not.toHaveBeenCalled();
-        expect(mockedWriteInfo).not.toHaveBeenCalled();
     });
 
     it('returns 409 when session already sealed', async () => {
@@ -153,7 +150,6 @@ describe('uploads.controller.create', () => {
             message: '',
         });
         expect(mockedSave).not.toHaveBeenCalled();
-        expect(mockedWriteInfo).not.toHaveBeenCalled();
     });
 
     it('returns 400 when no files are provided', async () => {
@@ -171,7 +167,6 @@ describe('uploads.controller.create', () => {
             message: 'No files uploaded',
         });
         expect(mockedSave).not.toHaveBeenCalled();
-        expect(mockedWriteInfo).not.toHaveBeenCalled();
     });
 
     it('passes files (flattened) and empty clientIds to saveUploads; returns 200 OK on full success', async () => {
@@ -202,21 +197,17 @@ describe('uploads.controller.create', () => {
 
         // saveUploads called with flattened files array (length 3) and empty clientIds
         expect(mockedSave).toHaveBeenCalledTimes(1);
-        const [sidArg, outputMime, filesArg, clientIdsArg] =
+        const [sidArg, outputMime, filesArg, infoArg] =
             mockedSave.mock.calls[0];
         expect(sidArg).toBe('S123');
         expect(Array.isArray(filesArg)).toBe(true);
         expect(outputMime).toBe('image/webp');
-        expect(filesArg as UploadedFile[]).toHaveLength(3);
-        expect(clientIdsArg).toEqual([]);
-
-        // session info updated: counts.files += accepted.length and sealedAt set
-        expect(mockedWriteInfo).toHaveBeenCalledTimes(1);
-        const [sid2, infoArg] = mockedWriteInfo.mock.calls[0];
-        expect(sid2).toBe('S123');
-        expect(infoArg.counts.files).toBe(1 + 2);
-        expect(infoArg.counts.totalBytes).toBe(50);
-        expect(typeof infoArg.sealedAt).toBe('string');
+        expect(filesArg).toEqual([
+            expect.objectContaining({ originalName: 'a.png', originalBytes: 1 }),
+            expect.objectContaining({ originalName: 'b1.jpg', originalBytes: 1 }),
+            expect.objectContaining({ originalName: 'b2.jpg', originalBytes: 1 }),
+        ]);
+        expect(infoArg).toBe(info);
 
         // response
         expect(res.status).toHaveBeenCalledWith(200);
@@ -252,9 +243,6 @@ describe('uploads.controller.create', () => {
             rejected: [{ fileName: 'x.png', error: 'bad mime' }],
         });
 
-        // counts incremented by accepted only
-        const [, infoArg] = mockedWriteInfo.mock.calls[0];
-        expect(infoArg.counts.files).toBe(0 + 1);
     });
 
     it('forwards manifest clientIds to saveUploads', async () => {
@@ -273,8 +261,8 @@ describe('uploads.controller.create', () => {
 
         await create(req, res);
 
-        const [, , , clientIds] = mockedSave.mock.calls[0];
-        expect(clientIds).toEqual(['c1', 'c2']);
+        const [, , inputs] = mockedSave.mock.calls[0];
+        expect(inputs.map((input) => input.clientId)).toEqual(['c1', 'c2']);
     });
 
     it.each([
@@ -356,7 +344,6 @@ describe('uploads.controller.create', () => {
             expect.objectContaining({ type: 'upload_limit_exceeded' }),
         );
         expect(mockedSave).not.toHaveBeenCalled();
-        expect(mockedWriteInfo).not.toHaveBeenCalled();
     });
 
     it('removes temporary files when boundary validation rejects the upload', async () => {
@@ -397,6 +384,19 @@ describe('uploads.controller.create', () => {
             type: 'upload_error',
             message: 'disk full',
         });
-        expect(mockedWriteInfo).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when the application service reports a concurrent upload', async () => {
+        mockedValidate.mockResolvedValueOnce({ valid: true, info: baseInfo() });
+        mockedSave.mockRejectedValueOnce(new UploadClaimConflictError());
+        const file = { name: 'z.png', size: 1 } as UploadedFile;
+        const res = makeRes();
+
+        await create(makeReq({ files: { z: file } }), res);
+
+        expect(res.status).toHaveBeenCalledWith(409);
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'upload_in_progress' }),
+        );
     });
 });

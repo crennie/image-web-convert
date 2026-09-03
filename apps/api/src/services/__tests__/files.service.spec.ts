@@ -1,8 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import type { Response } from 'express';
-import { resolveFilesByIds, streamZip } from '../files.service';
+import {
+    archiveDownloadHeaders,
+    ArchiveClientAbortError,
+    resolveFilesByIds,
+    writeZip,
+} from '../files.service';
 import { MockInstance } from 'vitest';
 
 // ---- Mocks ----
@@ -31,6 +35,7 @@ vi.mock('../storage.paths', () => ({
 // 3) Mock archiver (default export is a function that returns an archive instance)
 const archiveApi = {
     on: vi.fn(),
+    once: vi.fn(),
     pipe: vi.fn(),
     file: vi.fn(),
     finalize: vi.fn().mockResolvedValue(undefined),
@@ -150,13 +155,14 @@ describe('resolveFilesByIds', () => {
     });
 });
 
-describe('streamZip', () => {
+describe('writeZip', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         // Recreate archive API per test (so call counts reset)
         vi.mocked(archiveApi.on).mockImplementation(() => {
             //
         });
+        vi.mocked(archiveApi.once).mockImplementation(() => archiveApi);
         vi.mocked(archiveApi.pipe).mockImplementation(() => {
             //
         });
@@ -169,8 +175,8 @@ describe('streamZip', () => {
         });
     });
 
-    it('sets headers, pipes response, adds files in order, and finalizes', async () => {
-        const res = new ResStub() as unknown as Response;
+    it('pipes output, adds files in order, and resolves after output finishes', async () => {
+        const output = new ResStub();
 
         const entries = [
             {
@@ -194,19 +200,12 @@ describe('streamZip', () => {
         ];
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await streamZip(res, entries as any, 'My*Bundle'); // no .zip + unsafe chars
-
-        // Headers
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        expect((res as any).headers['Content-Type']).toBe('application/zip');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const cd = (res as any).headers['Content-Disposition'];
-        // Sanitized and with .zip appended
-        expect(cd).toContain('filename="My_Bundle.zip"');
-        expect(cd).toContain("filename*=UTF-8''My_Bundle.zip");
+        const pending = writeZip(output as any, entries as any);
+        output.emit('finish');
+        await pending;
 
         // archive API usage
-        expect(archiveApi.pipe).toHaveBeenCalledWith(res);
+        expect(archiveApi.pipe).toHaveBeenCalledWith(output);
         expect(archiveApi.file).toHaveBeenCalledTimes(2);
         expect(archiveApi.file).toHaveBeenNthCalledWith(1, '/abs/a.webp', {
             name: 'image.webp',
@@ -217,23 +216,8 @@ describe('streamZip', () => {
         expect(archiveApi.finalize).toHaveBeenCalledTimes(1);
     });
 
-    it('destroys archive if client aborts', async () => {
-        const res = new ResStub() as unknown as Response;
-
-        // Capture "aborted" listener and invoke it
-        let abortedHandler: (() => void) | undefined;
-        vi.mocked(archiveApi.on).mockImplementation(() => {
-            //
-        });
-        // Replace res.on to intercept 'aborted'
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const originalOn = (res as any).on.bind(res);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (res as any).on = (ev: string, cb: any) => {
-            if (ev === 'aborted') abortedHandler = cb;
-            return originalOn(ev, cb);
-        };
+    it('destroys archive and rejects if the client closes early', async () => {
+        const output = new ResStub();
 
         const entries = [
             {
@@ -248,20 +232,17 @@ describe('streamZip', () => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ] as any;
 
-        const p = streamZip(res, entries, 'bundle');
-
-        // Simulate client abort mid-stream
-        abortedHandler?.();
-
-        await p;
+        const p = writeZip(output as any, entries);
+        output.emit('close');
+        await expect(p).rejects.toBeInstanceOf(ArchiveClientAbortError);
         expect(archiveApi.destroy).toHaveBeenCalledTimes(1);
     });
 
     it('bubbles archiver errors', async () => {
-        const res = new ResStub() as unknown as Response;
+        const output = new ResStub();
 
         // Wire error listener to immediately throw
-        vi.mocked(archiveApi.on).mockImplementation(
+        vi.mocked(archiveApi.once).mockImplementation(
             (ev: string, cb: (err: Error) => void) => {
                 if (ev === 'error') {
                     // Immediately invoke with a fake error once finalize is awaited
@@ -288,8 +269,14 @@ describe('streamZip', () => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ] as any;
 
-        await expect(streamZip(res, entries, 'bundle')).rejects.toThrow(
+        await expect(writeZip(output as any, entries)).rejects.toThrow(
             /zip-failed/,
         );
+    });
+
+    it('builds sanitized HTTP headers separately', () => {
+        const headers = archiveDownloadHeaders('My*Bundle');
+        expect(headers.contentType).toBe('application/zip');
+        expect(headers.contentDisposition).toContain('filename="My_Bundle.zip"');
     });
 });

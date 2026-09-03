@@ -6,8 +6,14 @@
         "noUnusedLocals": false,
         "noImplicitAny": false
     },
-    "include": ["jest.config.ts", "src/**/*.ts"],
+    "include": ["vite.config.ts", "src/**/*.ts"],
     "references": [
+        {
+            "path": "../api"
+        },
+        {
+            "path": "../../libs/schemas"
+        },
         {
             "path": "./tsconfig.spec.json"
         }

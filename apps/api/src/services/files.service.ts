@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import archiver from 'archiver';
-import type { Response } from 'express';
+import type { Writable } from 'node:stream';
 import { readMeta } from './storage.service';
 import { pathForStored } from './storage.paths';
 import {
@@ -68,26 +68,43 @@ export async function resolveFilesByIds(
     return { found, missing };
 }
 
-export async function streamZip(
-    res: Response,
-    entries: ResolvedDownload[],
-    zipName: string,
-): Promise<void> {
+export class ArchiveClientAbortError extends Error {
+    constructor() {
+        super('Archive download aborted by client');
+        this.name = 'ArchiveClientAbortError';
+    }
+}
+
+export function archiveDownloadHeaders(zipName: string) {
     const finalZip = sanitizeZipName(zipName);
+    return {
+        contentType: 'application/zip',
+        contentDisposition: buildContentDisposition(finalZip),
+    };
+}
 
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', buildContentDisposition(finalZip));
-
+export async function writeZip(
+    output: Writable,
+    entries: ResolvedDownload[],
+): Promise<void> {
     const archive = archiver('zip', { zlib: { level: 9 } });
-    archive.on('error', (err) => {
-        // Bubble up to the catch in controller
-        throw err;
+    const completed = new Promise<void>((resolve, reject) => {
+        let finished = false;
+        output.once('finish', () => {
+            finished = true;
+            resolve();
+        });
+        output.once('close', () => {
+            if (!finished) {
+                archive.destroy();
+                reject(new ArchiveClientAbortError());
+            }
+        });
+        output.once('error', reject);
+        archive.once('error', reject);
     });
 
-    // If client aborts the request, stop archiving
-    res.on('aborted', () => archive.destroy());
-
-    archive.pipe(res);
+    archive.pipe(output);
 
     // Add files in the same order as the incoming ids
     for (const e of entries) {
@@ -96,6 +113,7 @@ export async function streamZip(
     }
 
     await archive.finalize();
+    await completed;
 }
 
 /* ----------------------------- helpers ----------------------------- */
