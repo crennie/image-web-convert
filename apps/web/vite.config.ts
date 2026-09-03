@@ -3,16 +3,24 @@ import { defineConfig } from 'vite';
 import { reactRouter } from '@react-router/dev/vite';
 import tailwindcss from '@tailwindcss/vite'
 
+const apiProxyTarget = process.env.API_PROXY_TARGET || 'http://localhost:4201';
+
 export default defineConfig(() => ({
     root: __dirname,
     cacheDir: '../../node_modules/.vite/apps/web',
     server: {
         port: 4200,
         host: 'localhost',
+        proxy: {
+            '/api': apiProxyTarget,
+        },
     },
     preview: {
         port: 4300,
         host: 'localhost',
+        proxy: {
+            '/api': apiProxyTarget,
+        },
     },
     plugins: [!process.env.VITEST && reactRouter(), tailwindcss()],
     // Uncomment this if you are using workers.

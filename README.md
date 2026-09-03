@@ -27,6 +27,18 @@ NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx e2e @image-web-convert/api
 Nx Cloud may warn that this local workspace is unconnected; that does not
 prevent local commands from running.
 
+### API URL configuration
+
+The browser uses `/api` by default. During local development, Vite proxies that
+same-origin path to the API process at `http://localhost:4201`. This keeps the
+browser-facing URL consistent with a production deployment where a reverse
+proxy or application platform routes `/api` to the Express service.
+
+Set `API_PROXY_TARGET` when the local API process is available at a different
+origin. Set `VITE_API_URL` at frontend build time only when a deployment exposes
+the API at a different browser-facing base URL; cross-origin deployments must
+also configure the API's `CORS_ORIGIN` appropriately.
+
 ## Repository layout
 
 - `apps/web` contains the React Router frontend.
