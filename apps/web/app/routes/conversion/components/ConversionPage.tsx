@@ -1,41 +1,83 @@
 'use client';
 
-import { FILE_UPLOAD_CONFIG, FileDownload, FileProgress, FileUpload, PageLayout, UploadFilesError, useFileItems, useFileProgress, useFileUploads, useSession } from "@image-web-convert/ui";
-import { startTransition, useCallback, useEffect, useState } from "react";
-import { ConversionState } from "..";
-import { ConversionErrorBoundary } from "./ConversionErrorBoundary";
-import { PageInstructions } from "./PageInstructions";
-import { ErrorBoundary } from "react-error-boundary";
+import {
+    FILE_UPLOAD_CONFIG,
+    FileDownload,
+    FileProgress,
+    FileUpload,
+    PageLayout,
+    UploadFilesError,
+    useFileItems,
+    useFileProgress,
+    useFileUploads,
+    useSession,
+} from '@image-web-convert/ui';
+import {
+    startTransition,
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+} from 'react';
+import { ConversionState } from '..';
+import { ConversionErrorBoundary } from './ConversionErrorBoundary';
+import { PageInstructions } from './PageInstructions';
+import { ErrorBoundary } from 'react-error-boundary';
 
 export function ConversionPage() {
-    const config = FILE_UPLOAD_CONFIG;
     const [conversionExt, setConversionExt] = useState<string | null>(null);
     const [uploadError, setUploadError] = useState<string | null>(null);
     const [pageState, setPageState] = useState<ConversionState>('select');
-    const { items, addItems, removeItem, clearFiles, errors, clearErrors } = useFileItems({ config });
-    const { startSession, clearSession } = useSession();
+    const { session, startSession, clearSession } = useSession();
+    const config = useMemo(
+        () => ({
+            ...FILE_UPLOAD_CONFIG,
+            sessionImageConfig:
+                session?.imageConfig ?? FILE_UPLOAD_CONFIG.sessionImageConfig,
+        }),
+        [session?.imageConfig],
+    );
+    const { items, addItems, removeItem, clearFiles, errors, clearErrors } =
+        useFileItems({ config });
     const { uploadedFiles, uploadFilesForm, rejectedFiles } = useFileUploads();
-    const { progress, progressComplete, startProgress, cancelProgress } = useFileProgress();
+    const { progress, progressComplete, startProgress, cancelProgress } =
+        useFileProgress();
 
-    const startUploads = useCallback(async (formData: FormData, conversionExt: string) => {
-        // UI transition to upload state
-        startTransition(() => {
-            setConversionExt(conversionExt)
-            setPageState('upload');
-            startProgress();
+    useEffect(() => {
+        void startSession().catch(() => {
+            // Submission retries and presents the actionable error to the user.
         });
-        // API actions - create session then upload
-        try {
-            const newSession = await startSession();
-            await uploadFilesForm(formData, newSession);
-            startTransition(() => setPageState('upload_complete'));
-        } catch (err) {
-            if (err instanceof UploadFilesError) setUploadError(err.message);
-            cancelProgress();
-            clearSession();
-            setPageState('upload_error');
-        }
-    }, [startSession, startProgress, uploadFilesForm, cancelProgress, clearSession]);
+    }, [startSession]);
+
+    const startUploads = useCallback(
+        async (formData: FormData, conversionExt: string) => {
+            // UI transition to upload state
+            startTransition(() => {
+                setConversionExt(conversionExt);
+                setPageState('upload');
+                startProgress();
+            });
+            // API actions - create session then upload
+            try {
+                const newSession = await startSession();
+                await uploadFilesForm(formData, newSession);
+                startTransition(() => setPageState('upload_complete'));
+            } catch (err) {
+                if (err instanceof UploadFilesError)
+                    setUploadError(err.message);
+                cancelProgress();
+                clearSession();
+                setPageState('upload_error');
+            }
+        },
+        [
+            startSession,
+            startProgress,
+            uploadFilesForm,
+            cancelProgress,
+            clearSession,
+        ],
+    );
 
     const resetAfterError = useCallback(() => {
         clearSession();
@@ -50,12 +92,15 @@ export function ConversionPage() {
         if (pageState === 'upload_complete' && progressComplete) {
             setPageState('download');
         }
-    }, [pageState, progressComplete])
+    }, [pageState, progressComplete]);
 
     return (
         <PageLayout>
             <div className="flex flex-col gap-4">
-                <ErrorBoundary fallbackRender={ConversionErrorBoundary} onReset={resetAfterError}>
+                <ErrorBoundary
+                    fallbackRender={ConversionErrorBoundary}
+                    onReset={resetAfterError}
+                >
                     <div className="mt-6">
                         <PageInstructions pageState={pageState} />
                     </div>
@@ -72,13 +117,24 @@ export function ConversionPage() {
                                 clearErrors={clearErrors}
                                 onUploadStart={startUploads}
                             />
-                        ) : pageState === 'upload' || pageState === 'upload_complete' ? (
+                        ) : pageState === 'upload' ||
+                          pageState === 'upload_complete' ? (
                             <FileProgress items={items} progress={progress} />
                         ) : pageState === 'download' ? (
-                            <FileDownload conversionExt={conversionExt ?? ''} items={items} uploadedFiles={uploadedFiles} rejectedFiles={rejectedFiles} />
-                        ) : pageState === "upload_error" ? (
-                            <ConversionErrorBoundary error={{ message: uploadError || "Error uploading files" }}
-                                resetErrorBoundary={resetAfterError} />
+                            <FileDownload
+                                conversionExt={conversionExt ?? ''}
+                                items={items}
+                                uploadedFiles={uploadedFiles}
+                                rejectedFiles={rejectedFiles}
+                            />
+                        ) : pageState === 'upload_error' ? (
+                            <ConversionErrorBoundary
+                                error={{
+                                    message:
+                                        uploadError || 'Error uploading files',
+                                }}
+                                resetErrorBoundary={resetAfterError}
+                            />
                         ) : null}
                     </div>
                 </ErrorBoundary>

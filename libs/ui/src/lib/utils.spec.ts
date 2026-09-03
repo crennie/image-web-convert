@@ -1,4 +1,11 @@
-import { cn, uiId, displayBytes, displayMinutes, displayDateTime, getAuthHeaders } from './utils';
+import {
+    cn,
+    uiId,
+    displayBytes,
+    displayMinutes,
+    displayDateTime,
+    getAuthHeaders,
+} from './utils';
 
 describe('cn', () => {
     it('merges classes and dedupes conflicts', () => {
@@ -49,7 +56,7 @@ describe('displayBytes', () => {
         expect(displayBytes(0)).toBe('0 B');
         expect(displayBytes(1023)).toBe('1023 B');
         expect(displayBytes(1024)).toBe('1.0 KB');
-        expect(displayBytes(1536)).toBe('1.5 KB');          // 1.5 KB (one decimal for <10)
+        expect(displayBytes(1536)).toBe('1.5 KB'); // 1.5 KB (one decimal for <10)
         expect(displayBytes(10 * 1024 + 512)).toBe('11 KB'); // >=10 rounds to integer
         expect(displayBytes(1048576)).toBe('1.0 MB');
     });
@@ -63,9 +70,9 @@ describe('displayBytes', () => {
 describe('displayMinutes', () => {
     it('pluralizes correctly and floors minutes', () => {
         expect(displayMinutes(0)).toBe('0 minutes');
-        expect(displayMinutes(59_999)).toBe('0 minutes');   // floor
+        expect(displayMinutes(59_999)).toBe('0 minutes'); // floor
         expect(displayMinutes(60_000)).toBe('1 minute');
-        expect(displayMinutes(61_000)).toBe('1 minute');    // still 1
+        expect(displayMinutes(61_000)).toBe('1 minute'); // still 1
         expect(displayMinutes(120_000)).toBe('2 minutes');
     });
 });
@@ -83,13 +90,25 @@ describe('displayDateTime', () => {
     it('includes seconds when displaySeconds=true', () => {
         const out = displayDateTime(date, { displaySeconds: true });
         // Example match: "5/6/2025, 8:04:30 AM"
-        expect(out).toMatch(/^\d{1,2}\/\d{1,2}\/\d{4}, \d{1,2}:\d{2}:\d{2} (AM|PM)$/);
+        expect(out).toMatch(
+            /^\d{1,2}\/\d{1,2}\/\d{4}, \d{1,2}:\d{2}:\d{2} (AM|PM)$/,
+        );
     });
 });
 
 describe('getAuthHeaders', () => {
     it('returns a Bearer auth header for a session token', () => {
-        const headers = getAuthHeaders({ token: 'abc123', sessionId: 'sid', expiresAt: '00:00' });
+        const headers = getAuthHeaders({
+            token: 'abc123',
+            sessionId: 'sid',
+            expiresAt: '00:00',
+            imageConfig: {
+                ttlMinutes: 15,
+                maxFiles: 20,
+                maxBytesPerFile: 20_000_000,
+                maxTotalBytes: 500_000_000,
+            },
+        });
         expect(headers).toEqual({ Authorization: 'Bearer abc123' });
     });
 });

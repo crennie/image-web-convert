@@ -1,47 +1,68 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
-import { ApiCreateSessionResponse } from '@image-web-convert/schemas';
+import React, {
+    createContext,
+    useCallback,
+    useContext,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
+import { ApiCreateSessionResponseSchema } from '@image-web-convert/schemas';
+import type { SessionImageConfig } from '@image-web-convert/schemas';
 const VITE_API_URL = import.meta.env.VITE_API_URL;
 
 export type Session = {
     sessionId: string;
     token: string;
     expiresAt: string;
+    imageConfig: SessionImageConfig;
 };
 
 type SessionContextValue = {
     session: Session | null;
-    startSession: (ttlSeconds?: number) => Promise<Session>;
+    startSession: () => Promise<Session>;
     clearSession: () => void;
 };
 
-const SessionContext = createContext<SessionContextValue | undefined>(undefined);
+const SessionContext = createContext<SessionContextValue | undefined>(
+    undefined,
+);
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
     const [session, setSession] = useState<Session | null>(null);
     const startPromiseRef = useRef<Promise<Session> | null>(null);
 
     const startSession = useCallback(async (): Promise<Session> => {
-        if (session && new Date(session.expiresAt).getTime() > Date.now()) return session;
+        if (session && new Date(session.expiresAt).getTime() > Date.now())
+            return session;
         if (startPromiseRef.current) return startPromiseRef.current;
 
         startPromiseRef.current = (async () => {
-            const response = await fetch(`${VITE_API_URL}/sessions`, { method: "POST", });
-            if (!response.ok) {
-                startPromiseRef.current = null;
-                throw new Error(`Failed to create session (${response.status})`);
-            }
+            try {
+                const response = await fetch(`${VITE_API_URL}/sessions`, {
+                    method: 'POST',
+                });
+                if (!response.ok) {
+                    throw new Error(
+                        `Failed to create session (${response.status})`,
+                    );
+                }
 
-            const result: ApiCreateSessionResponse = await response.json();
-            const session = {
-                sessionId: result.sid,
-                token: result.token,
-                expiresAt: result.expiresAt,
+                const result = ApiCreateSessionResponseSchema.parse(
+                    await response.json(),
+                );
+                const session = {
+                    sessionId: result.sid,
+                    token: result.token,
+                    expiresAt: result.expiresAt,
+                    imageConfig: result.imageConfig,
+                };
+                setSession(session);
+                return session;
+            } finally {
+                startPromiseRef.current = null;
             }
-            setSession(session);
-            startPromiseRef.current = null;
-            return session;
         })();
 
         return startPromiseRef.current;
@@ -51,17 +72,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         setSession(null);
     }, []);
 
-
     const value = useMemo<SessionContextValue>(
         () => ({ session, startSession, clearSession }),
-        [session, startSession, clearSession]
+        [session, startSession, clearSession],
     );
 
-    return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+    return (
+        <SessionContext.Provider value={value}>
+            {children}
+        </SessionContext.Provider>
+    );
 }
 
 export function useSession() {
     const ctx = useContext(SessionContext);
-    if (!ctx) throw new Error("useSession must be used within SessionProvider");
+    if (!ctx) throw new Error('useSession must be used within SessionProvider');
     return ctx;
 }

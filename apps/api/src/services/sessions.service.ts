@@ -1,9 +1,10 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { UPLOAD_DIR } from './storage.service';
-import { secureId } from "@image-web-convert/node-shared";
-import { generateAccessToken } from "../auth/authUtils";
-import { SESSION_IMAGE_CONFIG } from '@image-web-convert/schemas';
+import { secureId } from '@image-web-convert/node-shared';
+import { generateAccessToken } from '../auth/authUtils';
+import type { SessionImageConfig } from '@image-web-convert/schemas';
+import { getSessionImageConfig } from '../env';
 
 //const isProd = process.env.NODE_ENV === 'production';
 
@@ -14,8 +15,8 @@ export type SessionCounts = {
 };
 export type SessionInfo = {
     id: string;
-    createdAt: string;   // ISO
-    expiresAt: string;   // ISO
+    createdAt: string; // ISO
+    expiresAt: string; // ISO
     sealedAt: string | null; // set when upload batch completes
     counts: SessionCounts;
     tokenHash: string;
@@ -25,11 +26,13 @@ interface CreateSessionResponse {
     sid: string;
     expiresAt: string;
     accessToken: string;
+    imageConfig: SessionImageConfig;
 }
 
 export async function create(): Promise<CreateSessionResponse> {
     const sid = secureId();
-    const ttl = SESSION_IMAGE_CONFIG.ttlMinutes;
+    const imageConfig = getSessionImageConfig();
+    const ttl = imageConfig.ttlMinutes;
     const now = new Date();
     const expires = new Date(now.getTime() + ttl * 60_000);
     const { token, hash } = generateAccessToken();
@@ -46,19 +49,26 @@ export async function create(): Promise<CreateSessionResponse> {
     await fs.mkdir(sessionDir(sid), { recursive: true });
     await writeSessionInfo(sid, info);
 
-    return { sid, expiresAt: info.expiresAt, accessToken: token };
+    return { sid, expiresAt: info.expiresAt, accessToken: token, imageConfig };
 }
 
 /* ---------------------------- External Helpers -------------------------------- */
 
 export async function readSessionInfo(sid: string): Promise<SessionInfo> {
-    const raw = await fs.readFile(sessionInfoPath(sid), "utf8");
+    const raw = await fs.readFile(sessionInfoPath(sid), 'utf8');
     const info = JSON.parse(raw) as SessionInfo;
     return info;
 }
 
-export async function writeSessionInfo(sid: string, info: SessionInfo): Promise<void> {
-    await fs.writeFile(sessionInfoPath(sid), JSON.stringify(info, null, 2), "utf8");
+export async function writeSessionInfo(
+    sid: string,
+    info: SessionInfo,
+): Promise<void> {
+    await fs.writeFile(
+        sessionInfoPath(sid),
+        JSON.stringify(info, null, 2),
+        'utf8',
+    );
 }
 
 export function isSessionExpired(info: SessionInfo, now = new Date()): boolean {

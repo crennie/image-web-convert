@@ -38,21 +38,43 @@ function makeReq(init: Partial<Request> = {}): Request {
 
 function makeRes(): Response & {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    _json?: any; _status?: number; _headers: Record<string, string>; _filePath?: string;
+    _json?: any;
+    _status?: number;
+    _headers: Record<string, string>;
+    _filePath?: string;
 } {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const store: any = { _headers: {} as Record<string, string> };
     const res = {
-        setHeader: vi.fn((k: string, v: string) => { store._headers[k] = v; }),
-        status: vi.fn((code: number) => { store._status = code; return res; }),
+        setHeader: vi.fn((k: string, v: string) => {
+            store._headers[k] = v;
+        }),
+        status: vi.fn((code: number) => {
+            store._status = code;
+            return res;
+        }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        json: vi.fn((v: any) => { store._json = v; return res; }),
-        sendFile: vi.fn((p: string) => { store._filePath = p; return res; }),
+        json: vi.fn((v: any) => {
+            store._json = v;
+            return res;
+        }),
+        sendFile: vi.fn((p: string) => {
+            store._filePath = p;
+            return res;
+        }),
         on: vi.fn(),
-        get _headers() { return store._headers; },
-        get _status() { return store._status; },
-        get _json() { return store._json; },
-        get _filePath() { return store._filePath; },
+        get _headers() {
+            return store._headers;
+        },
+        get _status() {
+            return store._status;
+        },
+        get _json() {
+            return store._json;
+        },
+        get _filePath() {
+            return store._filePath;
+        },
     } as unknown as Response & typeof store;
 
     return res;
@@ -62,7 +84,10 @@ const okValidated = (sealedAt: string | null = '2025-01-01T00:00:00.000Z') => ({
     valid: true,
     info: { sealedAt },
 });
-const invalidValidated = (status = 401, apiError = { status: 'error', message: 'unauthorized' }) => ({
+const invalidValidated = (
+    status = 401,
+    apiError = { status: 'error', message: 'unauthorized' },
+) => ({
     valid: false,
     status,
     apiError,
@@ -89,7 +114,9 @@ describe('files.controller.show', () => {
     });
 
     it('returns auth error when validation fails', async () => {
-        validateMock.mockResolvedValueOnce(invalidValidated(403, { status: 'error', message: 'forbidden' }));
+        validateMock.mockResolvedValueOnce(
+            invalidValidated(403, { status: 'error', message: 'forbidden' }),
+        );
         const req = makeReq({ params: { sid: 'S', fileId: 'F' } });
         const res = makeRes();
 
@@ -107,7 +134,7 @@ describe('files.controller.show', () => {
         await show(req, res);
 
         expect(res.status).toHaveBeenCalledWith(409);
-        expect(res._json).toMatchObject({ type: 'session_used' });
+        expect(res._json).toMatchObject({ type: 'session_not_ready' });
     });
 
     it('404 when file not found', async () => {
@@ -125,15 +152,24 @@ describe('files.controller.show', () => {
 
     it('sets headers and sends file on success', async () => {
         validateMock.mockResolvedValueOnce(okValidated());
-        resolveMock.mockResolvedValueOnce({ found: [resolved('F')], missing: [] });
+        resolveMock.mockResolvedValueOnce({
+            found: [resolved('F')],
+            missing: [],
+        });
 
         const req = makeReq({ params: { sid: 'S', fileId: 'F' } });
         const res = makeRes();
 
         await show(req, res);
 
-        expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'image/webp');
-        expect(res.setHeader).toHaveBeenCalledWith('Content-Disposition', expect.stringContaining('F.webp'));
+        expect(res.setHeader).toHaveBeenCalledWith(
+            'Content-Type',
+            'image/webp',
+        );
+        expect(res.setHeader).toHaveBeenCalledWith(
+            'Content-Disposition',
+            expect.stringContaining('F.webp'),
+        );
         expect(res.sendFile).toHaveBeenCalledWith('/abs/F.webp');
     });
 });
@@ -165,7 +201,7 @@ describe('files.controller.meta', () => {
         await meta(req, res);
 
         expect(res.status).toHaveBeenCalledWith(409);
-        expect(res._json).toMatchObject({ type: 'session_used' });
+        expect(res._json).toMatchObject({ type: 'session_not_ready' });
     });
 
     it('returns 404 when meta missing', async () => {
@@ -222,11 +258,10 @@ describe('files.controller.downloadMany', () => {
         await downloadMany(req, res, vi.fn());
 
         expect(res.status).toHaveBeenCalledWith(409);
-        expect(res._json).toMatchObject({ type: 'session_used' });
+        expect(res._json).toMatchObject({ type: 'session_not_ready' });
     });
 
     it('400 when body.ids invalid', async () => {
-        console.log("----- 400 body start");
         validateMock.mockResolvedValue(okValidated());
         const badBodies = [undefined, {}, { ids: [] }, { ids: [1, 2] }];
 
@@ -236,7 +271,9 @@ describe('files.controller.downloadMany', () => {
             const res = makeRes();
             await downloadMany(req, res, vi.fn());
             expect(res.status).toHaveBeenCalledWith(400);
-            expect(res._json?.message).toMatch(/Body must include \{ ids: string\[\] \}/);
+            expect(res._json?.message).toMatch(
+                /Body must include \{ ids: string\[\] \}/,
+            );
         }
     });
 
@@ -244,13 +281,19 @@ describe('files.controller.downloadMany', () => {
         validateMock.mockResolvedValueOnce(okValidated());
         resolveMock.mockResolvedValueOnce({ found: [], missing: ['a', 'b'] });
 
-        const req = makeReq({ params: { sid: 'S' }, body: { ids: ['a', 'b'] } });
+        const req = makeReq({
+            params: { sid: 'S' },
+            body: { ids: ['a', 'b'] },
+        });
         const res = makeRes();
 
         await downloadMany(req, res, vi.fn());
 
         expect(res.status).toHaveBeenCalledWith(404);
-        expect(res._json).toMatchObject({ status: 'error', missing: ['a', 'b'] });
+        expect(res._json).toMatchObject({
+            type: 'file_not_found',
+            message: 'None of the requested files were found',
+        });
     });
 
     it('sets X-Missing-Ids header when some requested files are missing, and streams zip with default name', async () => {
@@ -261,32 +304,52 @@ describe('files.controller.downloadMany', () => {
         });
         streamZipMock.mockResolvedValueOnce(undefined);
 
-        const req = makeReq({ params: { sid: 'S' }, body: { ids: ['a', 'b', 'c'] } });
+        const req = makeReq({
+            params: { sid: 'S' },
+            body: { ids: ['a', 'b', 'c'] },
+        });
         const res = makeRes();
 
         await downloadMany(req, res, vi.fn());
 
         expect(res.setHeader).toHaveBeenCalledWith('X-Missing-Ids', 'c');
         // default fallback when no archiveName provided in body
-        expect(streamZipMock).toHaveBeenCalledWith(res, expect.any(Array), 'images.zip');
+        expect(streamZipMock).toHaveBeenCalledWith(
+            res,
+            expect.any(Array),
+            'images.zip',
+        );
     });
 
     it('uses provided archiveName when present', async () => {
         validateMock.mockResolvedValueOnce(okValidated());
-        resolveMock.mockResolvedValueOnce({ found: [resolved('a')], missing: [] });
+        resolveMock.mockResolvedValueOnce({
+            found: [resolved('a')],
+            missing: [],
+        });
         streamZipMock.mockResolvedValueOnce(undefined);
 
-        const req = makeReq({ params: { sid: 'S' }, body: { ids: ['a'], archiveName: 'Custom_Name' } });
+        const req = makeReq({
+            params: { sid: 'S' },
+            body: { ids: ['a'], archiveName: 'Custom_Name' },
+        });
         const res = makeRes();
 
         await downloadMany(req, res, vi.fn());
 
-        expect(streamZipMock).toHaveBeenCalledWith(res, expect.any(Array), 'Custom_Name');
+        expect(streamZipMock).toHaveBeenCalledWith(
+            res,
+            expect.any(Array),
+            'Custom_Name',
+        );
     });
 
     it('forwards errors from streamZip to next(err)', async () => {
         validateMock.mockResolvedValueOnce(okValidated());
-        resolveMock.mockResolvedValueOnce({ found: [resolved('a')], missing: [] });
+        resolveMock.mockResolvedValueOnce({
+            found: [resolved('a')],
+            missing: [],
+        });
         const err = new Error('zip-fail');
         streamZipMock.mockRejectedValueOnce(err);
 

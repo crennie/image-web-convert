@@ -1,27 +1,37 @@
-import type { Request, Response } from "express";
-import type { UploadedFile } from "express-fileupload";
+import type { Request, Response } from 'express';
+import type { UploadedFile } from 'express-fileupload';
 
-import { create } from "../uploads.controller";
-import { validateRequestWithToken } from "../../services/auth.service";
-import { saveUploads } from "../../services/uploads.service";
-import { writeSessionInfo } from "../../services/sessions.service";
-import { MockInstance } from "vitest";
-import { ApiUploadAccepted, ApiUploadMeta } from "@image-web-convert/schemas";
-
+import { create } from '../uploads.controller';
+import { validateRequestWithToken } from '../../services/auth.service';
+import { saveUploads } from '../../services/uploads.service';
+import { writeSessionInfo } from '../../services/sessions.service';
+import { MockInstance } from 'vitest';
+import { ApiUploadAccepted, ApiUploadMeta } from '@image-web-convert/schemas';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 // ---- Mocks ----
-vi.mock("../../services/auth.service", () => ({
+vi.mock('../../services/auth.service', () => ({
     validateRequestWithToken: vi.fn(),
 }));
 
-vi.mock("../../services/uploads.service", () => ({
+vi.mock('../../services/uploads.service', () => ({
     saveUploads: vi.fn(),
 }));
 
-vi.mock("../../services/sessions.service", () => ({
+vi.mock('../../services/sessions.service', () => ({
     writeSessionInfo: vi.fn(),
 }));
 
+vi.mock('../../env', () => ({
+    getSessionImageConfig: () => ({
+        ttlMinutes: 15,
+        maxFiles: 20,
+        maxBytesPerFile: 100,
+        maxTotalBytes: 200,
+    }),
+}));
 
 // typed helpers
 const mockedValidate = vi.mocked(validateRequestWithToken);
@@ -35,7 +45,12 @@ function makeReq(opts?: {
     manifest?: string;
     outputMime?: string;
 }): Request {
-    const { sid = "S123", files, manifest, outputMime = JSON.stringify("image/webp") } = opts ?? {};
+    const {
+        sid = 'S123',
+        files,
+        manifest,
+        outputMime = 'image/webp',
+    } = opts ?? {};
     return {
         params: { sid },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -71,24 +86,27 @@ function makeRes(): Response & {
 
 // Minimal SessionInfo stub
 const baseInfo = () =>
-({
-    tokenHash: "abc",
-    counts: { files: 0 },
-    sealedAt: undefined,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} as any);
+    ({
+        tokenHash: 'abc',
+        counts: { files: 0, totalBytes: 0 },
+        sealedAt: undefined,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any;
 
 // Helper for creating file responses
-function createAcceptedMockFileResponse(id: string): ApiUploadAccepted {
-    return ({
+function createAcceptedMockFileResponse(
+    id: string,
+    sizeBytes = 25,
+): ApiUploadAccepted {
+    return {
         id,
-        url: "url",
-        metaUrl: "metaUrl",
-        meta: {} as unknown as ApiUploadMeta,
-    })
+        url: 'url',
+        metaUrl: 'metaUrl',
+        meta: { original: { sizeBytes } } as unknown as ApiUploadMeta,
+    };
 }
 
-describe("uploads.controller.create", () => {
+describe('uploads.controller.create', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -97,11 +115,11 @@ describe("uploads.controller.create", () => {
         vi.restoreAllMocks();
     });
 
-    it("returns 401 when auth validation fails (delegates service error)", async () => {
+    it('returns 401 when auth validation fails (delegates service error)', async () => {
         mockedValidate.mockResolvedValueOnce({
             valid: false,
             status: 401,
-            apiError: { type: "invalid_token", message: "" },
+            apiError: { type: 'invalid_token', message: '' },
         });
 
         const req = makeReq();
@@ -110,12 +128,15 @@ describe("uploads.controller.create", () => {
         await create(req, res);
 
         expect(res.status).toHaveBeenCalledWith(401);
-        expect(res.json).toHaveBeenCalledWith({ type: "invalid_token", message: "" });
+        expect(res.json).toHaveBeenCalledWith({
+            type: 'invalid_token',
+            message: '',
+        });
         expect(mockedSave).not.toHaveBeenCalled();
         expect(mockedWriteInfo).not.toHaveBeenCalled();
     });
 
-    it("returns 409 when session already sealed", async () => {
+    it('returns 409 when session already sealed', async () => {
         const info = baseInfo();
         info.sealedAt = new Date().toISOString();
 
@@ -127,12 +148,15 @@ describe("uploads.controller.create", () => {
         await create(req, res);
 
         expect(res.status).toHaveBeenCalledWith(409);
-        expect(res.json).toHaveBeenCalledWith({ type: "session_used", message: "" });
+        expect(res.json).toHaveBeenCalledWith({
+            type: 'session_used',
+            message: '',
+        });
         expect(mockedSave).not.toHaveBeenCalled();
         expect(mockedWriteInfo).not.toHaveBeenCalled();
     });
 
-    it("returns 400 when no files are provided", async () => {
+    it('returns 400 when no files are provided', async () => {
         const info = baseInfo();
         mockedValidate.mockResolvedValueOnce({ valid: true, info });
 
@@ -143,22 +167,22 @@ describe("uploads.controller.create", () => {
 
         expect(res.status).toHaveBeenCalledWith(400);
         expect(res.json).toHaveBeenCalledWith({
-            type: "missing_files",
-            message: "No files uploaded",
+            type: 'missing_files',
+            message: 'No files uploaded',
         });
         expect(mockedSave).not.toHaveBeenCalled();
         expect(mockedWriteInfo).not.toHaveBeenCalled();
     });
 
-    it("passes files (flattened) and empty clientIds to saveUploads; returns 200 OK on full success", async () => {
+    it('passes files (flattened) and empty clientIds to saveUploads; returns 200 OK on full success', async () => {
         const info = baseInfo();
         info.counts.files = 1; // pre-existing files
         mockedValidate.mockResolvedValueOnce({ valid: true, info });
 
         // files: one single + one array (should flatten to 3)
-        const fileA = { name: "a.png" } as UploadedFile;
-        const fileB1 = { name: "b1.jpg" } as UploadedFile;
-        const fileB2 = { name: "b2.jpg" } as UploadedFile;
+        const fileA = { name: 'a.png', size: 1 } as UploadedFile;
+        const fileB1 = { name: 'b1.jpg', size: 1 } as UploadedFile;
+        const fileB2 = { name: 'b2.jpg', size: 1 } as UploadedFile;
 
         const req = makeReq({
             files: { a: fileA, b: [fileB1, fileB2] },
@@ -167,7 +191,10 @@ describe("uploads.controller.create", () => {
         const res = makeRes();
 
         mockedSave.mockResolvedValueOnce({
-            accepted: [createAcceptedMockFileResponse("X1"), createAcceptedMockFileResponse("X2")],
+            accepted: [
+                createAcceptedMockFileResponse('X1'),
+                createAcceptedMockFileResponse('X2'),
+            ],
             rejected: [],
         });
 
@@ -175,25 +202,30 @@ describe("uploads.controller.create", () => {
 
         // saveUploads called with flattened files array (length 3) and empty clientIds
         expect(mockedSave).toHaveBeenCalledTimes(1);
-        const [sidArg, outputMime, filesArg, clientIdsArg] = mockedSave.mock.calls[0];
-        expect(sidArg).toBe("S123");
+        const [sidArg, outputMime, filesArg, clientIdsArg] =
+            mockedSave.mock.calls[0];
+        expect(sidArg).toBe('S123');
         expect(Array.isArray(filesArg)).toBe(true);
-        expect(outputMime).toBe("image/webp");
-        expect((filesArg as UploadedFile[])).toHaveLength(3);
+        expect(outputMime).toBe('image/webp');
+        expect(filesArg as UploadedFile[]).toHaveLength(3);
         expect(clientIdsArg).toEqual([]);
 
         // session info updated: counts.files += accepted.length and sealedAt set
         expect(mockedWriteInfo).toHaveBeenCalledTimes(1);
         const [sid2, infoArg] = mockedWriteInfo.mock.calls[0];
-        expect(sid2).toBe("S123");
+        expect(sid2).toBe('S123');
         expect(infoArg.counts.files).toBe(1 + 2);
-        expect(typeof infoArg.sealedAt).toBe("string");
+        expect(infoArg.counts.totalBytes).toBe(50);
+        expect(typeof infoArg.sealedAt).toBe('string');
 
         // response
         expect(res.status).toHaveBeenCalledWith(200);
         expect(res.json).toHaveBeenCalledWith({
-            status: "ok",
-            accepted: [createAcceptedMockFileResponse("X1"), createAcceptedMockFileResponse("X2")],
+            status: 'ok',
+            accepted: [
+                createAcceptedMockFileResponse('X1'),
+                createAcceptedMockFileResponse('X2'),
+            ],
             rejected: [],
         });
     });
@@ -202,22 +234,22 @@ describe("uploads.controller.create", () => {
         const info = baseInfo();
         mockedValidate.mockResolvedValueOnce({ valid: true, info });
 
-        const file = { name: "x.png" } as UploadedFile;
+        const file = { name: 'x.png', size: 1 } as UploadedFile;
         const req = makeReq({ files: { x: file } });
         const res = makeRes();
 
         mockedSave.mockResolvedValueOnce({
-            accepted: [createAcceptedMockFileResponse("A")],
-            rejected: [{ fileName: "x.png", error: "bad mime" }],
+            accepted: [createAcceptedMockFileResponse('A')],
+            rejected: [{ fileName: 'x.png', error: 'bad mime' }],
         });
 
         await create(req, res);
 
         expect(res.status).toHaveBeenCalledWith(207);
         expect(res.json).toHaveBeenCalledWith({
-            status: "partial",
-            accepted: [createAcceptedMockFileResponse("A")],
-            rejected: [{ fileName: "x.png", error: "bad mime" }],
+            status: 'partial',
+            accepted: [createAcceptedMockFileResponse('A')],
+            rejected: [{ fileName: 'x.png', error: 'bad mime' }],
         });
 
         // counts incremented by accepted only
@@ -225,14 +257,15 @@ describe("uploads.controller.create", () => {
         expect(infoArg.counts.files).toBe(0 + 1);
     });
 
-    it("forwards manifest clientIds to saveUploads", async () => {
+    it('forwards manifest clientIds to saveUploads', async () => {
         const info = baseInfo();
         mockedValidate.mockResolvedValueOnce({ valid: true, info });
 
-        const file = { name: "y.png" } as UploadedFile;
+        const file = { name: 'y.png', size: 1 } as UploadedFile;
+        const secondFile = { name: 'z.png', size: 1 } as UploadedFile;
         const req = makeReq({
-            files: { y: file },
-            manifest: JSON.stringify(["c1", "c2"]),
+            files: { y: [file, secondFile] },
+            manifest: JSON.stringify(['c1', 'c2']),
         });
         const res = makeRes();
 
@@ -241,25 +274,128 @@ describe("uploads.controller.create", () => {
         await create(req, res);
 
         const [, , , clientIds] = mockedSave.mock.calls[0];
-        expect(clientIds).toEqual(["c1", "c2"]);
+        expect(clientIds).toEqual(['c1', 'c2']);
     });
 
-    it("returns 500 upload_error if service throws", async () => {
+    it.each([
+        { manifest: 'not-json' },
+        { manifest: JSON.stringify({ clientId: 'c1' }) },
+        { manifest: JSON.stringify(['c1', 2]) },
+    ])(
+        'returns invalid_request for malformed manifest %#',
+        async ({ manifest }) => {
+            mockedValidate.mockResolvedValueOnce({
+                valid: true,
+                info: baseInfo(),
+            });
+            const req = makeReq({
+                files: { upload: { name: 'x.png', size: 1 } as UploadedFile },
+                manifest,
+            });
+            const res = makeRes();
+
+            await create(req, res);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: 'invalid_request',
+                }),
+            );
+            expect(mockedSave).not.toHaveBeenCalled();
+        },
+    );
+
+    it('requires one manifest ID per uploaded file', async () => {
+        mockedValidate.mockResolvedValueOnce({ valid: true, info: baseInfo() });
+        const req = makeReq({
+            files: { upload: { name: 'x.png', size: 1 } as UploadedFile },
+            manifest: JSON.stringify(['c1', 'c2']),
+        });
+        const res = makeRes();
+
+        await create(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: 'invalid_request',
+            }),
+        );
+        expect(mockedSave).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        {
+            name: 'per-file bytes',
+            info: baseInfo(),
+            files: [{ name: 'large.png', size: 101 } as UploadedFile],
+        },
+        {
+            name: 'file count',
+            info: { ...baseInfo(), counts: { files: 19, totalBytes: 0 } },
+            files: [
+                { name: 'a.png', size: 1 } as UploadedFile,
+                { name: 'b.png', size: 1 } as UploadedFile,
+            ],
+        },
+        {
+            name: 'total bytes',
+            info: { ...baseInfo(), counts: { files: 0, totalBytes: 150 } },
+            files: [{ name: 'a.png', size: 51 } as UploadedFile],
+        },
+    ])('returns 413 for the $name limit', async ({ info, files }) => {
+        mockedValidate.mockResolvedValueOnce({ valid: true, info });
+        const req = makeReq({ files: { uploads: files } });
+        const res = makeRes();
+
+        await create(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(413);
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'upload_limit_exceeded' }),
+        );
+        expect(mockedSave).not.toHaveBeenCalled();
+        expect(mockedWriteInfo).not.toHaveBeenCalled();
+    });
+
+    it('removes temporary files when boundary validation rejects the upload', async () => {
+        mockedValidate.mockResolvedValueOnce({ valid: true, info: baseInfo() });
+        const tmpDir = await fs.mkdtemp(
+            path.join(os.tmpdir(), 'iwc-controller-'),
+        );
+        const tempFilePath = path.join(tmpDir, 'upload.tmp');
+        await fs.writeFile(tempFilePath, 'temporary');
+        const file = {
+            name: 'large.png',
+            size: 101,
+            tempFilePath,
+        } as UploadedFile;
+
+        try {
+            await create(makeReq({ files: { upload: file } }), makeRes());
+            await expect(fs.access(tempFilePath)).rejects.toBeTruthy();
+        } finally {
+            await fs.rm(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    it('returns 500 upload_error if service throws', async () => {
         const info = baseInfo();
         mockedValidate.mockResolvedValueOnce({ valid: true, info });
 
-        const file = { name: "z.png" } as UploadedFile;
+        const file = { name: 'z.png', size: 1 } as UploadedFile;
         const req = makeReq({ files: { z: file } });
         const res = makeRes();
 
-        mockedSave.mockRejectedValueOnce(new Error("disk full"));
+        mockedSave.mockRejectedValueOnce(new Error('disk full'));
 
         await create(req, res);
 
         expect(res.status).toHaveBeenCalledWith(500);
         expect(res.json).toHaveBeenCalledWith({
-            type: "upload_error",
-            message: "disk full",
+            type: 'upload_error',
+            message: 'disk full',
         });
         expect(mockedWriteInfo).not.toHaveBeenCalled();
     });

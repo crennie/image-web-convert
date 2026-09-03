@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG NODE_VERSION=24.19.0
+ARG NODE_VERSION=22.22.0
 ARG AGENT_BASE_IMAGE=local-agentic-dev/codex-agent:dev
 
 FROM node:${NODE_VERSION}-trixie AS node-runtime
@@ -51,7 +51,8 @@ RUN apt-get update \
 # Agent containers should not maintain a persistent Nx daemon or contact
 # a configured Nx remote cache.
 ENV NX_DAEMON=false \
-    NX_DISABLE_REMOTE_CACHE=true
+    NX_DISABLE_REMOTE_CACHE=true \
+    NX_SKIP_NATIVE_FILE_CACHE=true
 
 RUN node --version \
     && npm --version \
