@@ -9,7 +9,7 @@ import {
 } from '@image-web-convert/schemas';
 import { Session } from '../../session/SessionContext';
 import { getAuthHeaders } from '../../utils';
-const VITE_API_URL = import.meta.env.VITE_API_URL;
+import { API_URL } from '../../api-url';
 
 interface CustomErrorFields {
     statusCode?: number;
@@ -46,7 +46,7 @@ export function useFileUploads() {
 
             try {
                 const response = await fetch(
-                    `${VITE_API_URL}/sessions/${session.sessionId}/uploads`,
+                    `${API_URL}/sessions/${session.sessionId}/uploads`,
                     {
                         method: 'POST',
                         headers: getAuthHeaders(session),

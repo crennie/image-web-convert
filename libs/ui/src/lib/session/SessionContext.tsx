@@ -10,7 +10,7 @@ import React, {
 } from 'react';
 import { ApiCreateSessionResponseSchema } from '@image-web-convert/schemas';
 import type { SessionImageConfig } from '@image-web-convert/schemas';
-const VITE_API_URL = import.meta.env.VITE_API_URL;
+import { API_URL } from '../api-url';
 
 export type Session = {
     sessionId: string;
@@ -40,7 +40,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
         startPromiseRef.current = (async () => {
             try {
-                const response = await fetch(`${VITE_API_URL}/sessions`, {
+                const response = await fetch(`${API_URL}/sessions`, {
                     method: 'POST',
                 });
                 if (!response.ok) {

@@ -1,13 +1,29 @@
 import { expect, test, type Page } from '@playwright/test';
 import { firstImage, secondImage, type ImageFixture } from './fixtures/images';
 
+const sessionResponse = {
+    sid: 'e2e-session',
+    token: 'e2e-token',
+    expiresAt: '2099-01-01T00:00:00.000Z',
+    imageConfig: {
+        ttlMinutes: 15,
+        maxFiles: 20,
+        maxBytesPerFile: 20_000_000,
+        maxTotalBytes: 500_000_000,
+    },
+};
+
 async function openConversionPage(page: Page) {
     // Session creation is unrelated to selecting local files. Keeping it offline
     // makes this smoke suite independent of the API and image conversion stack.
     await page.route('**/sessions', (route) =>
         route.fulfill({ status: 503, body: '' }),
     );
+    const sessionRequestPromise = page.waitForRequest(
+        (request) => new URL(request.url()).pathname === '/api/sessions',
+    );
     await page.goto('/conversion');
+    await sessionRequestPromise;
 }
 
 async function chooseFiles(page: Page, files: ImageFixture | ImageFixture[]) {
@@ -73,4 +89,37 @@ test('a pending file can be removed without removing the others', async ({
         page.getByText(secondImage.name, { exact: true }),
     ).toBeVisible();
     await expect(page.getByText('1 file ready to upload.')).toBeVisible();
+});
+
+test('upload uses the valid session API routes', async ({ page }) => {
+    await page.unroute('**/sessions');
+    await page.route('**/api/sessions', (route) =>
+        route.fulfill({ status: 200, json: sessionResponse }),
+    );
+    await page.route('**/api/sessions/e2e-session/uploads', (route) =>
+        route.fulfill({ status: 200, json: { accepted: [], rejected: [] } }),
+    );
+
+    const sessionRequestPromise = page.waitForRequest(
+        (request) => new URL(request.url()).pathname === '/api/sessions',
+    );
+    await page.reload();
+    await sessionRequestPromise;
+    await chooseFiles(page, firstImage);
+
+    const uploadRequestPromise = page.waitForRequest(
+        (request) =>
+            request.method() === 'POST' &&
+            new URL(request.url()).pathname ===
+                '/api/sessions/e2e-session/uploads',
+    );
+    await page.getByRole('button', { name: 'Start File Uploads' }).click();
+
+    const uploadRequest = await uploadRequestPromise;
+    expect(new URL(uploadRequest.url()).pathname).toBe(
+        '/api/sessions/e2e-session/uploads',
+    );
+    expect(uploadRequest.headers()['authorization']).toBe(
+        `Bearer ${sessionResponse.token}`,
+    );
 });
