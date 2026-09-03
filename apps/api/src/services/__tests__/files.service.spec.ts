@@ -8,19 +8,22 @@ import { MockInstance } from 'vitest';
 // ---- Mocks ----
 // 1) Mock normalizeAbsolutePath to identity so we can assert paths exactly
 vi.mock('@image-web-convert/node-shared', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('@image-web-convert/node-shared')>();
+    const actual =
+        await importOriginal<typeof import('@image-web-convert/node-shared')>();
     return {
         ...actual,
-        normalizeAbsolutePath: (p: string) => p
+        normalizeAbsolutePath: (p: string) => p,
     };
 });
 
-// 2) Mock storage helpers: readMeta + pathForStored
+// 2) Mock storage metadata and path helpers
 const readMetaMock = vi.fn();
 const pathForStoredMock = vi.fn();
 vi.mock('../storage.service', () => ({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     readMeta: (...args: any[]) => readMetaMock(...args),
+}));
+vi.mock('../storage.paths', () => ({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     pathForStored: (...args: any[]) => pathForStoredMock(...args),
 }));
@@ -44,11 +47,19 @@ class ResStub extends EventEmitter {
         this.headers[name] = val;
     }
     // Writable-ish surface not really used due to archiver mock
-    write() { /* noop */ }
-    end() { /* noop */ }
+    write() {
+        /* noop */
+    }
+    end() {
+        /* noop */
+    }
 }
 
-const makeMeta = (id: string, originalName: string, storedName = `${id}.webp`) => ({
+const makeMeta = (
+    id: string,
+    originalName: string,
+    storedName = `${id}.webp`,
+) => ({
     id,
     original: {
         name: originalName,
@@ -89,11 +100,13 @@ describe('resolveFilesByIds', () => {
 
         // pathForStored -> absolute-ish path under /tmp
         pathForStoredMock.mockImplementation((_sid: string, stored: string) =>
-            path.join('/tmp/uploads', sid, stored)
+            path.join('/tmp/uploads', sid, stored),
         );
 
         // For extra safety, mark one existing file as missing on disk
-        (fs.existsSync as unknown as MockInstance).mockImplementation((p: string) => !String(p).includes('a2.webp'));
+        (fs.existsSync as unknown as MockInstance).mockImplementation(
+            (p: string) => !String(p).includes('a2.webp'),
+        );
 
         const res = await resolveFilesByIds(sid, ids);
 
@@ -101,15 +114,17 @@ describe('resolveFilesByIds', () => {
         expect(res.missing.sort()).toEqual(['a2', 'missing'].sort());
 
         // Found preserves order of inputs that resolved to files
-        expect(res.found.map(f => f.id)).toEqual(['a1', 'a3']);
-        
+        expect(res.found.map((f) => f.id)).toEqual(['a1', 'a3']);
+
         // Check computed fields for one entry
         const f0 = res.found[0];
         expect(f0.absPath).toBe(path.join('/tmp/uploads', sid, 'a1.webp'));
         expect(f0.downloadName).toBe('photo_a1.webp');
         expect(f0.archiveName).toBe('photo_a1.webp');
         expect(f0.contentType).toBe('image/webp');
-        expect(f0.contentDisposition).toMatch(/^attachment; filename="photo_a1\.webp"; filename\*=/);
+        expect(f0.contentDisposition).toMatch(
+            /^attachment; filename="photo_a1\.webp"; filename\*=/,
+        );
         expect(f0.meta.output.storedName).toBe('a1.webp');
     });
 
@@ -117,17 +132,20 @@ describe('resolveFilesByIds', () => {
         const sid = 'SID';
         // Two different ids but same original "image.jpg" -> same base => image.webp
         const ids = ['x1', 'x2', 'x3'];
-        readMetaMock.mockResolvedValueOnce(makeMeta('x1', 'image.jpg'))
+        readMetaMock
+            .mockResolvedValueOnce(makeMeta('x1', 'image.jpg'))
             .mockResolvedValueOnce(makeMeta('x2', 'image.jpg'))
             .mockResolvedValueOnce(makeMeta('x3', 'image.jpg'));
-        pathForStoredMock.mockImplementation((_sid: string, stored: string) => `/abs/${stored}`);
+        pathForStoredMock.mockImplementation(
+            (_sid: string, stored: string) => `/abs/${stored}`,
+        );
         (fs.existsSync as unknown as MockInstance).mockReturnValue(true);
 
         const { found } = await resolveFilesByIds(sid, ids);
-        expect(found.map(f => f.archiveName)).toEqual([
-            'image.webp',        // 1st occurrence
-            'image (2).webp',    // 2nd
-            'image (3).webp',    // 3rd
+        expect(found.map((f) => f.archiveName)).toEqual([
+            'image.webp', // 1st occurrence
+            'image (2).webp', // 2nd
+            'image (3).webp', // 3rd
         ]);
     });
 });
@@ -190,8 +208,12 @@ describe('streamZip', () => {
         // archive API usage
         expect(archiveApi.pipe).toHaveBeenCalledWith(res);
         expect(archiveApi.file).toHaveBeenCalledTimes(2);
-        expect(archiveApi.file).toHaveBeenNthCalledWith(1, '/abs/a.webp', { name: 'image.webp' });
-        expect(archiveApi.file).toHaveBeenNthCalledWith(2, '/abs/b.webp', { name: 'image (2).webp' });
+        expect(archiveApi.file).toHaveBeenNthCalledWith(1, '/abs/a.webp', {
+            name: 'image.webp',
+        });
+        expect(archiveApi.file).toHaveBeenNthCalledWith(2, '/abs/b.webp', {
+            name: 'image (2).webp',
+        });
         expect(archiveApi.finalize).toHaveBeenCalledTimes(1);
     });
 
@@ -214,7 +236,15 @@ describe('streamZip', () => {
         };
 
         const entries = [
-            { id: 'a', absPath: '/abs/a.webp', downloadName: 'a.webp', archiveName: 'a.webp', contentType: 'image/webp', contentDisposition: '', meta: makeMeta('a', 'a.jpg') },
+            {
+                id: 'a',
+                absPath: '/abs/a.webp',
+                downloadName: 'a.webp',
+                archiveName: 'a.webp',
+                contentType: 'image/webp',
+                contentDisposition: '',
+                meta: makeMeta('a', 'a.jpg'),
+            },
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ] as any;
 
@@ -231,22 +261,35 @@ describe('streamZip', () => {
         const res = new ResStub() as unknown as Response;
 
         // Wire error listener to immediately throw
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        vi.mocked(archiveApi.on).mockImplementation((ev: string, cb: (err: any) => void) => {
-            if (ev === 'error') {
-                // Immediately invoke with a fake error once finalize is awaited
-                vi.mocked(archiveApi.finalize).mockImplementation(async () => {
-                    cb(new Error('zip-failed'));
-                    return undefined;
-                });
-            }
-        });
+        vi.mocked(archiveApi.on).mockImplementation(
+            (ev: string, cb: (err: Error) => void) => {
+                if (ev === 'error') {
+                    // Immediately invoke with a fake error once finalize is awaited
+                    vi.mocked(archiveApi.finalize).mockImplementation(
+                        async () => {
+                            cb(new Error('zip-failed'));
+                            return undefined;
+                        },
+                    );
+                }
+            },
+        );
 
         const entries = [
-            { id: 'a', absPath: '/abs/a.webp', downloadName: 'a.webp', archiveName: 'a.webp', contentType: 'image/webp', contentDisposition: '', meta: makeMeta('a', 'a.jpg') },
+            {
+                id: 'a',
+                absPath: '/abs/a.webp',
+                downloadName: 'a.webp',
+                archiveName: 'a.webp',
+                contentType: 'image/webp',
+                contentDisposition: '',
+                meta: makeMeta('a', 'a.jpg'),
+            },
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ] as any;
 
-        await expect(streamZip(res, entries, 'bundle')).rejects.toThrow(/zip-failed/);
+        await expect(streamZip(res, entries, 'bundle')).rejects.toThrow(
+            /zip-failed/,
+        );
     });
 });

@@ -2,18 +2,23 @@ import path from 'node:path';
 import fs from 'node:fs';
 import archiver from 'archiver';
 import type { Response } from 'express';
-import { readMeta, pathForStored } from './storage.service';
-import { ApiUploadMeta, MIME_TO_EXT, OutputMimeType } from '@image-web-convert/schemas';
+import { readMeta } from './storage.service';
+import { pathForStored } from './storage.paths';
+import {
+    ApiUploadMeta,
+    MIME_TO_EXT,
+    OutputMimeType,
+} from '@image-web-convert/schemas';
 import { normalizeAbsolutePath } from '@image-web-convert/node-shared';
 
 export type ResolvedDownload = {
     id: string;
-    absPath: string;             // absolute FS path to the processed asset
-    downloadName: string;        // suggested filename for single downloads (e.g., "<originalBase>.webp")
-    archiveName: string;         // filename to use inside a ZIP (unique, order-preserving)
+    absPath: string; // absolute FS path to the processed asset
+    downloadName: string; // suggested filename for single downloads (e.g., "<originalBase>.webp")
+    archiveName: string; // filename to use inside a ZIP (unique, order-preserving)
     contentType: OutputMimeType; // e.g., 'image/webp'
-    contentDisposition: string;  // precomputed header for single downloads
-    meta: ApiUploadMeta;         // sidecar metadata (not added to ZIP per requirements)
+    contentDisposition: string; // precomputed header for single downloads
+    meta: ApiUploadMeta; // sidecar metadata (not added to ZIP per requirements)
 };
 
 interface ResolvedFilesResponse {
@@ -21,7 +26,10 @@ interface ResolvedFilesResponse {
     missing: string[];
 }
 
-export async function resolveFilesByIds(sid: string, ids: string[]): Promise<ResolvedFilesResponse> {
+export async function resolveFilesByIds(
+    sid: string,
+    ids: string[],
+): Promise<ResolvedFilesResponse> {
     const found: ResolvedDownload[] = [];
     const missing: string[] = [];
 
@@ -32,7 +40,9 @@ export async function resolveFilesByIds(sid: string, ids: string[]): Promise<Res
             continue;
         }
         // Path must be absolute when sending in response
-        const absPath = normalizeAbsolutePath(pathForStored(sid, meta.output.storedName));
+        const absPath = normalizeAbsolutePath(
+            pathForStored(sid, meta.output.storedName),
+        );
         if (!fs.existsSync(absPath)) {
             missing.push(id);
             continue;
@@ -61,15 +71,12 @@ export async function resolveFilesByIds(sid: string, ids: string[]): Promise<Res
 export async function streamZip(
     res: Response,
     entries: ResolvedDownload[],
-    zipName: string
+    zipName: string,
 ): Promise<void> {
     const finalZip = sanitizeZipName(zipName);
 
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader(
-        'Content-Disposition',
-        buildContentDisposition(finalZip)
-    );
+    res.setHeader('Content-Disposition', buildContentDisposition(finalZip));
 
     const archive = archiver('zip', { zlib: { level: 9 } });
     archive.on('error', (err) => {

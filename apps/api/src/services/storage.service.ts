@@ -1,33 +1,15 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import fssync from 'node:fs';
 import type { UploadedFile } from 'express-fileupload';
 import { processImageToMimeType } from './image.service';
-import {
-    normalizeAbsolutePath,
-    secureId,
-} from '@image-web-convert/node-shared';
+import { secureId } from '@image-web-convert/node-shared';
 import {
     ApiUploadAccepted,
     MIME_TO_EXT,
     OutputMimeType,
     UploadMeta,
 } from '@image-web-convert/schemas';
-import { sessionDir } from './sessions.service';
-
-// ---------- Config (monorepo-root defaults; docker-friendly overrides) ----------
-// TODO: ADD DOCKER LOGIC
-//const isProd = process.env.NODE_ENV === 'production';
-
-const DEFAULT_UPLOAD_DIR = path.resolve(process.cwd(), 'data', 'uploads');
-export const UPLOAD_DIR = normalizeAbsolutePath(
-    process.env.UPLOAD_DIR || DEFAULT_UPLOAD_DIR,
-);
-
-// Ensure upload dir exists at module load
-if (!fssync.existsSync(UPLOAD_DIR)) {
-    fssync.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
+import { pathForStored, sessionMetaPath } from './storage.paths';
 
 export async function saveUploadFile(
     sid: string,
@@ -54,7 +36,7 @@ export async function saveUploadFile(
         const extension = MIME_TO_EXT[outputMime]?.[0];
         const storedName = `${id}.${extension}`;
         storedPath = pathForStored(sid, storedName);
-        metaPath = path.join(sessionDir(sid), `${id}.json`);
+        metaPath = sessionMetaPath(sid, id);
         await fs.writeFile(storedPath, processed.buffer);
 
         const meta: UploadMeta = {
@@ -154,15 +136,11 @@ export async function readMeta(
     sid: string,
     fileId: string,
 ): Promise<UploadMeta | null> {
-    const metaPath = path.join(sessionDir(sid), `${fileId}.json`);
+    const metaPath = sessionMetaPath(sid, fileId);
     try {
         const txt = await fs.readFile(metaPath, 'utf8');
         return JSON.parse(txt) as UploadMeta;
     } catch {
         return null;
     }
-}
-
-export function pathForStored(sid: string, storedName: string): string {
-    return path.join(sessionDir(sid), storedName);
 }

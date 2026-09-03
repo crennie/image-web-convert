@@ -1,10 +1,9 @@
-import path from 'node:path';
 import fs from 'node:fs/promises';
-import { UPLOAD_DIR } from './storage.service';
 import { secureId } from '@image-web-convert/node-shared';
 import { generateAccessToken } from '../auth/authUtils';
 import type { SessionImageConfig } from '@image-web-convert/schemas';
 import { getSessionImageConfig } from '../env';
+import { sessionDir, sessionInfoPath } from './storage.paths';
 
 //const isProd = process.env.NODE_ENV === 'production';
 
@@ -73,12 +72,4 @@ export async function writeSessionInfo(
 
 export function isSessionExpired(info: SessionInfo, now = new Date()): boolean {
     return now > new Date(info.expiresAt);
-}
-
-export function sessionInfoPath(sid: string): string {
-    return path.join(sessionDir(sid), 'session.info.json');
-}
-
-export function sessionDir(sid: string): string {
-    return path.join(UPLOAD_DIR, sid);
 }
