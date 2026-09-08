@@ -52,6 +52,10 @@ also configure the API's `CORS_ORIGIN` appropriately.
 
 ## Request lifecycle and storage
 
+The planned migration to backend-owned asynchronous operations is documented in
+[the implementation plan](docs/plans/asynchronous-conversions.md). The flow below
+describes the current implementation.
+
 The browser creates a short-lived session, uploads one multipart batch, and
 validates responses with the shared schemas. The API validates the token,
 manifest, output MIME, and effective limits; converts each image; stores the

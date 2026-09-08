@@ -1,0 +1,453 @@
+# Backend-owned asynchronous conversions: implementation plan
+
+Status: approved direction; implementation not started.
+
+This is the durable implementation plan for the six phases in section 11 of
+the design review. It is intended to be read and updated by Codex across runs.
+It does not authorize implementing every phase in one run: implement the phase
+requested by the user, or the next incomplete phase when asked to continue this
+plan. Follow repository instructions and inspect current code before editing.
+
+## Decisions and scope
+
+- The application runs locally as one persistent Node/Express API process for
+  one user. Production hosting, distributed coordination, and deployment
+  infrastructure are outside scope.
+- The backend owns manifest membership, options, readiness, scheduling, file
+  outcomes, cancellation, and aggregate status. React consumes snapshots.
+- Build the asynchronous UI as a new component with dedicated workflow hooks.
+  Preserve existing upload components and hooks unless an edit is small, clearly
+  necessary, and behavior-preserving. This constraint applies to every phase,
+  including any UI built alongside backend work; see Frontend behavior below.
+- Keep one conversion operation per existing session. Preserve bearer-token
+  authorization, filesystem storage, Express routes/services, shared Zod
+  contracts, and existing error-envelope conventions.
+- Keep the existing fixed session lifetime, including upload and queue time.
+  Do not add separate upload and download retention periods.
+- Use a process-owned scheduler and durable filesystem records. No database,
+  queue framework, SSE, WebSockets, or new frontend query dependency.
+- Start with one active conversion across the process, FIFO ready operations,
+  and manifest order within each operation. Public contracts must support
+  multiple processing files later without changing frontend orchestration.
+- Keep completed outputs after cancellation or another file's failure, until
+  session expiry. Stop future work at safe boundaries.
+- Closed-tab recovery is not a product requirement. Page exit may send a
+  best-effort cancellation request solely to save backend work. Delivery is not
+  guaranteed and the browser must not wait for or render its response.
+- Refresh is not a resume guarantee: page exit cancellation can include reload.
+  Do not add persistent browser credentials or a recovery UI for this version.
+  Backend restart recovery still protects state consistency and committed files.
+- Add explicit resource/admission limits and deadline behavior. Do not describe
+  promise timeouts as a way to interrupt native conversion or free its resources.
+
+## Current implementation anchors
+
+Recheck these files before implementing their corresponding phase:
+
+| Concern | Files |
+| --- | --- |
+| Workflow UI | `apps/web/app/routes/conversion/components/ConversionPage.tsx` |
+| Upload form and transport | `libs/ui/src/lib/file-upload/FileUpload.tsx`, `libs/ui/src/lib/file-upload/hooks/useFileUploads.ts` |
+| Cosmetic progress | `libs/ui/src/lib/file-progress/hooks/useFileProgress.ts` |
+| Session and downloads | `libs/ui/src/lib/session/SessionContext.tsx`, `libs/ui/src/lib/file-download/` |
+| API routing | `apps/api/src/api/index.ts`, `apps/api/src/routes/`, `apps/api/src/controllers/` |
+| Current orchestration | `apps/api/src/services/uploads.service.ts` |
+| Conversion | `apps/api/src/services/image.service.ts`, `apps/api/src/services/image.config.ts` |
+| Persistence | `apps/api/src/services/storage.service.ts`, `storage.paths.ts`, `sessions.service.ts` |
+| Lifecycle and limits | `apps/api/src/main.ts`, `app.ts`, `env.ts` |
+| Contracts | `libs/schemas/src/lib/api/api.ts`, `apiError.ts` |
+| Server integration | `apps/api-e2e/src/api/api.spec.ts` |
+| Browser tests | `apps/web-e2e/src/upload.spec.ts`, `apps/web-e2e/playwright.config.ts` |
+
+The old upload service starts all files with `Promise.allSettled`, waits for all
+results, writes session counts/sealing, and rolls back accepted outputs if that
+final write fails. Downloads require a sealed session. Input cleanup currently
+occurs inside `saveUploadFile` regardless of success. All three behaviors need
+deliberate replacement for operation-owned incremental commits.
+
+## Target contracts and invariants
+
+### State
+
+Operation states:
+
+`awaiting_uploads | queued | processing | completed | partially_completed | failed | cancelled`
+
+File states:
+
+`awaiting_upload | uploaded | processing | completed | failed | cancelled`
+
+Do not add file `uploading` or numeric encoding progress: network bytes belong
+to browser transport state. `uploaded` means durable backend acceptance, and
+also represents waiting for siblings or worker capacity.
+
+Persist an operation schema version, revision, session/operation IDs, creation
+request ID, ordered immutable file manifest, output MIME, effective processing
+settings, cancellation timestamp/reason, lifecycle timestamps, and expiry.
+Each file has a server-assigned ID, client correlation ID, sanitized name,
+declared/actual byte sizes, state, error, internal input reference, and committed
+output metadata when successful. Keep internal paths and token hashes out of
+public snapshots. Expose derived counts, including completed, failed, cancelled,
+and settled; do not maintain conflicting independent aggregate counters.
+
+Rules:
+
+1. Validate a nonempty manifest, unique client IDs, supported output MIME, and
+   effective count/size limits before creating slots. Backend limits prevail.
+2. File IDs and order are assigned at creation; uploads cannot add or replace
+   membership or options. Validate actual bytes against the declared slot size
+   and effective limits. Reserve limits for the whole manifest, not just outputs.
+3. A slot is accepted only after complete bytes are durably staged. An aborted
+   request leaves it awaiting upload. Retryable storage/network failures do not
+   resolve the readiness barrier.
+4. A permanent rejection attributable to a valid slot can mark it failed. Start
+   automatically when every slot is uploaded or permanently failed; if none can
+   be processed, settle failed. No start-processing endpoint or poll-driven work.
+5. Missing uploads wait for retry, cancellation, or session expiry. A failed
+   browser request alone must not permanently fail a slot.
+6. Persist queued readiness before waking the scheduler. Duplicate wakeups and
+   simultaneous final uploads must not duplicate conversion.
+7. Derive terminal outcome after all work settles: accepted user cancellation
+   wins as `cancelled`; otherwise all successes are `completed`, some successes
+   are `partially_completed`, and zero successes are `failed`.
+8. `cancelRequestedAt` is separate from terminal status. While active conversion
+   settles, snapshots remain active and report cancellation pending. Repeated
+   cancel is idempotent; cancellation after terminal completion is a no-op.
+9. Completed artifacts are immutable. A failed later write must never remove
+   earlier committed successes. Downloads authorize individual completed files.
+10. Short per-operation mutation locks serialize read/modify/write transitions.
+    Never hold such a lock while receiving bytes or running conversion.
+
+### HTTP interfaces
+
+Keep `POST /api/sessions` and existing authenticated file/meta/ZIP endpoints.
+
+| Method and path | Contract |
+| --- | --- |
+| `POST /api/sessions/:sid/conversions` | Manifest, options, client creation request ID; 201 plus operation snapshot and slots. Same request ID and intent returns existing operation; conflicting intent is 409. |
+| `GET /api/sessions/:sid/conversions/:operationId` | 200 authoritative snapshot, including per-file outcomes and output references; no mutation required to advance work. |
+| `PUT /api/sessions/:sid/conversions/:operationId/files/:fileId` | Exactly one multipart file; acknowledge after durable acceptance, without awaiting conversion. |
+| `POST /api/sessions/:sid/conversions/:operationId/cancel` | Idempotent cancellation command; return current snapshot, including pending cancellation when relevant. |
+
+Authenticate and validate slot identity before multipart parsing where possible;
+recheck state before committing staged bytes. Reject simultaneous uploads to the
+same slot. Accepted slots are immutable: after a lost response, GET reveals
+acceptance and a repeated PUT returns existing acceptance without replacing bytes
+or scheduling twice. Clean duplicate request staging. Never accept an operation ID
+or file ID merely because a matching path exists; check session association.
+
+Use shared `{ type, message }` errors: 400 invalid request/options, 401 invalid
+token, 403 expired session, 404 missing operation/file, 409 stale/conflicting
+upload, 413 limits, and 500/503 storage/service failure as appropriate. File
+errors need a stable type plus message for unsupported/malformed image,
+conversion failure, storage failure, timeout, and interrupted execution. Preserve
+exceptions at existing converter/storage boundaries and translate in application
+services; do not introduce a project-wide Result framework. Partial operation
+outcomes are data in a successful status GET, not HTTP 207.
+
+### Resource limits, deadlines, and shutdown
+
+Initial defaults below are implementation targets, configurable and validated
+in `env.ts`. Verify converter-specific options against the installed version.
+
+| Setting | Initial policy |
+| --- | --- |
+| Existing session file/byte/TTL limits | Keep current defaults: 20 files, 20,000,000 bytes/file, 500,000,000 bytes/session, 15 minutes. |
+| Active conversion files | One globally. Raising concurrency is a later measured change. |
+| Active nonterminal operations | Default 3 globally; reject excess creation with a typed capacity error. Count persisted operations during startup. |
+| Simultaneous upload requests | Default 2 globally, with one per slot; browser also sends at most 2. Reject excess admission before parsing bytes. |
+| Upload idle timeout | Default 60 seconds without incoming bytes; abort/clean request staging, leave slot retryable. |
+| Upload total deadline | Default 5 minutes, additionally bounded by session expiry; handle independently of idle timeout. |
+| Per-file conversion deadline | Default 120 seconds from converter invocation; cooperative deadline semantics below. |
+| Pixel and dimension limits | Preserve existing 200,000,000-pixel input limit and 8192 output dimension; centralize configurable limits and test enforcement. |
+| Shutdown grace | Keep an explicit bounded grace period (initially 10 seconds); stop admissions/claims and wait for active work before exit when possible. |
+
+These limits bound admitted work, not exact RAM consumption, CPU percentage, or
+network bytes per second. Do not add traffic shaping or infer unlimited
+concurrency from workstation CPU count. Audit HEIC preprocessing separately:
+Sharp's input-pixel limit does not prove the preceding HEIC decoder is bounded.
+Record any decoder limitation and measure representative HEIC responsiveness.
+
+Use converter-supported timeouts only where actually available. A cooperative
+deadline requests stopping further work and invalidates the active file's
+uncommitted result. When the invocation settles, discard its late output, record
+`conversion_timeout`, cancel remaining files with a timeout reason, and settle
+the operation failed or partially completed according to prior successes.
+Do not release the global slot or delete an input still in use simply because a
+timer fired. Keep the operation active with a stop reason until the invocation
+has settled. Never rely on `Promise.race` as hard cancellation.
+
+This first version does not guarantee a hard wall-clock CPU cutoff; a blocked
+event loop may also delay timers and cancel requests. If a strict cutoff becomes
+required, document and separately scope execution in a terminable Node child
+process before claiming that guarantee. Do not silently introduce that
+architecture or a dependency during these phases.
+
+Expiry uses the same stop mechanism: reject new uploads and work, preserve
+already committed results until the existing expiry boundary, and clean data
+once no active conversion/download is using it. Expiry does not extend access.
+User cancellation differs from timeout: let the active file finish and retain
+its success, then finalize cancelled. Check stop conditions before every claim
+and again before output publication.
+
+### Persistence and recovery
+
+Extend the existing session directory using `storage.paths.ts`:
+
+```text
+session.info.json
+conversion.info.json
+inputs/<file-id>
+<file-id>.<output-extension>
+<file-id>.json
+```
+
+Request staging is not accepted input. Promote complete uploads into the session
+filesystem before committing `uploaded`; account for source/destination paths on
+different filesystems by copying into destination staging before rename when
+needed. Write snapshots/output/metadata via temporary files and rename. Define
+write ordering and reconciliation explicitly; several JSON/filesystem writes
+are not one transaction.
+
+Publish a complete output and metadata before recording file completion. Delete
+input after its outcome is persisted. Retain enough commit evidence to reconcile
+a crash between artifact publication and snapshot update. Orphaned/partial
+artifacts must not become downloadable just because a sidecar exists.
+
+Startup recovery before readiness:
+
+- Preserve valid completed files.
+- Reconcile demonstrably complete commits left between persistence steps.
+- Mark other interrupted processing files `failed` / `processing_interrupted`;
+  do not blindly retry conversion. Continue remaining uploaded files.
+- Rediscover queued work, including readiness persisted before a lost wakeup.
+- Respect cancellation/timeout/expiry before scheduling anything.
+- Keep awaiting-upload slots waiting while unexpired; remove incomplete staging.
+- Quarantine/report invalid records without crashing recovery for unrelated
+  sessions or pretending storage corruption is an ordinary not-found response.
+
+Add coordinated startup/periodic expiry and orphan cleanup. Do not delete files
+used by active conversion/download. Track scheduler ownership and timers through
+application lifecycle wiring so server tests can start and stop cleanly.
+
+### Frontend behavior
+
+Create a new app-owned `ConversionOperationPanel` (name may follow local naming
+conventions) under `apps/web/app/routes/conversion/components/`, with dedicated
+operation polling and slot-upload hooks. It owns presentation and transport for
+the new workflow, not backend lifecycle decisions. Keep workflow-specific code
+in the app initially; do not generalize it into the shared UI library prematurely.
+
+Do not retrofit `FileUpload`, `useFileUploads`, cosmetic progress components, or
+the existing `FileDownload` to implement this workflow. Reuse existing presentational
+primitives, selection helpers, and previews through their existing interfaces
+where they fit. Build new composition or result rows when old interfaces require
+batch FormData, local File objects, or synchronous response state. Avoid copying
+the old workflow wholesale into the new component.
+
+Small edits to existing components are permitted only when obvious and
+uncontroversial: for example an optional presentation prop with unchanged defaults
+or a necessary import/export. Changing submission contracts, state ownership,
+side effects, or existing behavior is not such an edit. If that becomes necessary,
+explain the concrete need and obtain user direction before expanding the change.
+The intentional route/page wiring change to mount the new component at cutover
+is in scope; keep it narrow and preserve the old workflow until cutover validation.
+
+The user-visible changes are:
+
+- File selection, previews, output-format choice, and one submit action remain.
+- Each file shows local upload progress, then backend states such as waiting,
+  processing, completed, failed, or cancelled.
+- Batch upload progress and processing counts are displayed separately.
+- Cancel shows a pending state while active backend work settles.
+- Successful files become downloadable while siblings are still processing;
+  partial failures and cancellation retain those results and show file errors.
+- Retryable upload and polling problems have distinct presentation from backend
+  conversion failures. No separate start-processing button is added.
+
+The default sequence remains backend/contracts first and UI integration in phase
+5. If a requested phase includes an early UI slice, build it in this new component
+against shared snapshot fixtures or available endpoints, with component tests.
+Do not turn a fixture/demo into a second frontend workflow state machine, wire
+incomplete behavior into the active route, or expand a backend-only phase into UI
+work without a request.
+
+Use existing React/fetch patterns plus one small polling hook; use an upload
+transport exposing actual progress events, such as XMLHttpRequest. Store local
+File objects, previews, slot correlations, transport progress, request handles,
+and dialog/request state in React. Do not store an independent domain state
+machine or infer readiness/completion from upload promises.
+
+Poll active operations approximately every second with one request in flight,
+backoff, Retry-After support, and stale-revision protection. Stop on terminal
+state/access expiry. A polling failure is a connection problem, not an operation
+failure. Status reads need a dedicated rate budget (initially 180/minute for the
+local user), excluded from the current global 100/minute budget while retaining
+authorization and appropriate abuse limits. Keep command limits separately.
+
+Render successful outputs from backend metadata, without requiring local files
+or reconstructing names/extensions. Show completed/failed/cancelled counts and
+current file states; never invent encoding percentages. Label multipart upload
+progress as transport progress and backend acceptance separately.
+
+Explicit Cancel aborts local upload requests, sends the backend command, and
+continues reading authoritative status until settled. For page exit, use a
+small best-effort authenticated `fetch` with `keepalive: true` from an appropriate
+page lifecycle event, discard the response, and catch errors without UI or retry
+loops. Do not use sendBeacon if it loses the required Authorization header. Do
+not cancel merely on visibility changes or React effect cleanup/Strict Mode
+remounts. Guard terminal operations. Do not add unload confirmation dialogs or
+guarantee delivery. Test that lost exit cancellation still leaves a bounded,
+backend-owned operation that settles or expires.
+
+## Implementation phases and completion gates
+
+All phases are initially pending. Update the checkbox and execution log only
+after the completion gate passes. Record blockers and failing checks honestly.
+
+### Phase 1 — Contracts and transitions
+
+- [ ] Complete
+
+Add shared request/snapshot/error schemas and application-owned transition
+functions. Keep existing routes/UI working. Encode immutable membership,
+readiness, cancellation precedence, timeout/expiry reasons, and derived counts.
+Choose concrete module names following existing services; avoid a DDD framework.
+
+Gate: schema and transition unit tests cover creation/limits, duplicate IDs,
+file association, no premature processing, last-upload readiness, permanent
+upload rejection, all-success/partial/all-failed outcomes, cancellation before
+work, terminal idempotency, and preservation of successes. Relevant schema/API
+unit tests and typechecking pass.
+
+### Phase 2 — Durable storage and per-file commits
+
+- [ ] Complete
+
+Implement operation persistence, stable file IDs, staging promotion, serialized
+updates, individual artifact publication, and reconciliation functions. Separate
+conversion from input lifetime ownership; keep old synchronous behavior usable
+until cutover. Do not retrofit all unrelated storage helpers.
+
+Gate: filesystem integration tests cover successful commits, upload interruption,
+duplicate writes, lost updates, output/metadata/snapshot write failures, every
+important crash boundary, committed-success preservation, and restart
+reconciliation. No whole-operation rollback of committed successes.
+
+### Phase 3 — Scheduler, limits, cancellation, and lifecycle
+
+- [ ] Complete
+
+Add process-owned scheduling with injected converter/storage/clock boundaries,
+validated resource settings, startup recovery, shutdown, deadlines, and cleanup.
+Persist each transition; the queue in memory is only an optimization. Readiness
+and periodic recovery must not depend on browser polling. Keep the global claim
+until active conversion has actually settled, including timeout/cancel paths.
+
+Gate: deterministic deferred-converter tests prove concurrency one, FIFO and
+manifest order, duplicate wakeup safety, cancellation before/between/during files,
+late success behavior, timeout behavior, admission limits, expiry, shutdown, and
+recovery without a browser. Run real PNG and representative HEIC/AVIF smoke
+checks and record elapsed time/responsiveness; no absolute performance target is
+assumed. Document any unsupported hard-timeout or decoder-limit behavior.
+
+### Phase 4 — HTTP endpoints and completed-file downloads
+
+- [ ] Complete
+
+Wire creation/upload/status/cancel routes and services, authentication before
+multipart work, slot admission/limits/timeouts, typed errors, idempotency, and
+polling rate limits. Make downloads consult committed per-file status for new
+operations while preserving legacy sealed-session behavior during migration.
+
+Gate: real Express integration tests prove automatic processing after the final
+upload response, progress without GET calls, status/cancel races, cross-session
+rejection, truncated/disconnected upload cleanup, retry after lost acknowledgement,
+simultaneous final uploads, capacity rejection, and downloads/ZIPs containing
+successful files while siblings are active or cancelled. Polling at the planned
+cadence does not exhaust the command budget. Existing legacy tests still pass.
+
+### Phase 5 — Frontend cutover
+
+- [ ] Complete
+
+Build the new `ConversionOperationPanel` and dedicated hooks described above,
+using manifest creation, bounded slot upload transport, polling, and real progress.
+Render backend snapshots/results, add explicit cancellation, and implement the
+best-effort page-exit behavior. Reuse selection/previews/advisory validation where
+existing interfaces fit. Mount the new component through a narrow route/page
+wiring change once integration is verified; do not rewrite existing upload
+components or use cosmetic progress in the new flow. Do not build refresh/closed-tab
+recovery features.
+
+Gate: component/hook tests cover snapshots, unknown connection state, stale
+responses, polling cleanup/backoff, upload progress/abort/retry, explicit pending
+cancellation, terminal results without local files, and page-exit request errors
+being ignored. Verify ordinary rerenders/Strict Mode do not trigger cancellation.
+Verify existing upload component contracts/tests remain intact, except for any
+documented small behavior-preserving edits. Review the diff against the new
+component boundary before marking this phase complete.
+
+### Phase 6 — End-to-end verification and retirement
+
+- [ ] Complete
+
+Add real-browser/API scenarios; the current Playwright suite starts only the web
+app and mocks API requests, so give real conversion tests a controlled API
+lifecycle and isolated storage. Retire the superseded backend synchronous upload
+path after checking remaining consumers. Leave existing shared upload/download
+components and cosmetic progress implementations intact in this migration;
+their deletion or broad cleanup is a separately scoped task. Update
+README with the actual lifecycle, settings, timeout limitations, local single
+process assumption, storage recovery, and page-exit semantics.
+
+Gate: real E2E tests cover full batch/download, partial conversion failure,
+cancellation preserving results, abort/retry of an upload, and best-effort exit
+cancellation. Server integration covers restart and non-delivery of exit cancel.
+Run full relevant validation below; review final diff for unrelated changes.
+
+## Validation and handoff protocol
+
+Use the existing npm lockfile and Nx targets. Inspect target names/configuration
+before running commands; do not install dependencies solely for this plan.
+For phases 1–5, select relevant projects/tests. For final integration use:
+
+```sh
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run lint
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run typecheck
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm test
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run build
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx e2e @image-web-convert/api-e2e
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx e2e @image-web-convert/web-e2e
+```
+
+Do not change unrelated code to fix baseline failures. Use existing deterministic
+test patterns and isolated storage; no real user session data in tests. Review
+`git diff` and report changed behavior, tests, limitations, and next phase.
+Do not push or create remote resources. Commit locally only if requested by the
+user, including a request to prepare work for export.
+
+At the end of an implementation run, append an execution-log entry with:
+
+- Date and phase attempted/completed.
+- Files/modules changed and invariants established.
+- Exact validation commands and outcomes, including existing failures.
+- Any evidence-based deviation from this plan and why.
+- Remaining work and the next independently verifiable action.
+
+Suggested continuation prompt:
+
+> Read `docs/plans/asynchronous-conversions.md` and repository instructions.
+> Implement the next incomplete phase only, run its validation, inspect the
+> diff, and update the plan's checkbox and execution log. Preserve unrelated
+> changes. Do not add dependencies or expand scope without authorization.
+
+## Execution log
+
+- 2026-09-08: Created this plan from the source-based design review and user
+  clarifications. All implementation phases remain pending. Documentation only;
+  no runtime changes or implementation tests performed.
+- 2026-09-08: Added the user's new-component requirement for asynchronous UI,
+  including early UI slices, narrow cutover wiring, and preservation of existing
+  upload components. Updated phases 5 and 6 to respect that boundary. All phases
+  remain pending; documentation only.
