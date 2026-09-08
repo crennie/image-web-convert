@@ -1,6 +1,6 @@
 # Backend-owned asynchronous conversions: implementation plan
 
-Status: approved direction; implementation not started.
+Status: phase 1 complete; phases 2–6 pending.
 
 This is the durable implementation plan for the six phases in section 11 of
 the design review. It is intended to be read and updated by Codex across runs.
@@ -302,12 +302,12 @@ backend-owned operation that settles or expires.
 
 ## Implementation phases and completion gates
 
-All phases are initially pending. Update the checkbox and execution log only
+Update each phase's checkbox and the execution log only
 after the completion gate passes. Record blockers and failing checks honestly.
 
 ### Phase 1 — Contracts and transitions
 
-- [ ] Complete
+- [x] Complete
 
 Add shared request/snapshot/error schemas and application-owned transition
 functions. Keep existing routes/UI working. Encode immutable membership,
@@ -451,3 +451,49 @@ Suggested continuation prompt:
   including early UI slices, narrow cutover wiring, and preservation of existing
   upload components. Updated phases 5 and 6 to respect that boundary. All phases
   remain pending; documentation only.
+- 2026-09-08: Completed phase 1 (contracts and transitions).
+  - Added `libs/schemas/src/lib/api/conversions.ts` and its public exports:
+    strict creation intent, server slot IDs, discriminated file states, operation
+    snapshots, per-file errors, stop reasons, and counts. Extended the existing
+    API error union without changing legacy contracts.
+  - Added `apps/api/src/services/conversions.service.ts`: pure creation,
+    upload acceptance/permanent rejection, file start/finish, stop requests,
+    derived counts, and explicit public snapshot projection. Inputs are not
+    mutated. Backend processing defaults and effective session limits are
+    copied into application state; snapshots omit these internal fields.
+  - Readiness resolves automatically in upload transitions. Cancellation keeps
+    active work nonterminal and preserves its eventual success. Timeout/expiry
+    rejects late uncommitted success only after invocation settlement. Accepted
+    upload acknowledgement is replayable even after ordinary batch completion;
+    stopped/expired operations still reject uploads. Processing status remains
+    stable between files once an operation has started.
+  - Added 47 tests (15 schema, 32 service) covering manifest limits/IDs, byte
+    validation, association, readiness, outcomes, immutable transitions,
+    cancellation, timeout/expiry, snapshots, and future multi-file processing
+    representation. Existing schema/API tests remain passing.
+  - Restored existing locked dependencies with
+    `npm ci --cache /workspaces/image-web-convert/.npm-cache --no-audit --no-fund`;
+    moved the temporary npm cache into ignored `node_modules/.npm-cache` after
+    installation. No dependency manifests or lockfiles changed.
+  - Initial validation:
+    `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false ./node_modules/.bin/nx run-many -t test typecheck -p @image-web-convert/schemas @image-web-convert/api`.
+    Tests passed; API typechecking exposed narrowing errors in the new throwing
+    helper. Fixed the helper declaration. Nx also emitted an unconnected-cloud
+    warning, so subsequent checks explicitly disabled cloud usage.
+  - Intermediate validation:
+    `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t typecheck lint -p @image-web-convert/schemas @image-web-convert/api`
+    passed after that fix.
+  - Final validation:
+    `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck lint -p @image-web-convert/schemas @image-web-convert/api`.
+    Passed: 25 schema tests, 120 API tests, both project typechecks/lints, and
+    dependent schema/library builds. Lint retained two existing
+    `no-explicit-any` warnings in `files.service.spec.ts` (lines 235 and 272).
+    Changed TypeScript files were formatted with the installed Prettier.
+    `git diff --check` passed; final review found no route, UI, dependency, or
+    unrelated runtime edits.
+  - No scope deviation: persistence, locking, ID generation, request idempotency
+    coordination, worker scheduling, timers, and routes remain future phases.
+    The transition functions accept caller-supplied IDs/time and do no I/O.
+  - Next action: phase 2, durable operation/input storage and per-file commit
+    reconciliation. Persist transition results before scheduling work or
+    acknowledging uploads; add internal input references in that phase.
