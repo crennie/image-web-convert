@@ -315,6 +315,29 @@ export function rejectConversionUpload(
     return settle(next, now);
 }
 
+/** Recovery may discover a lost accepted input before conversion starts, even
+ * while another slot is still awaiting upload. Do not manufacture a start. */
+export function failUploadedConversionFile(
+    operation: ConversionOperation,
+    fileId: string,
+    error: ConversionFileError,
+    now: Date,
+): ConversionOperation {
+    const index = fileIndex(operation, fileId);
+    assertCanWork(operation, now);
+    const file = operation.files[index];
+    if (file.status !== 'uploaded')
+        fail('conversion_conflict', 'Only an uploaded file can lose its input');
+    const next = changed(operation, now);
+    next.files[index] = {
+        ...file,
+        status: 'failed',
+        error: ConversionFileErrorSchema.parse(error),
+        finishedAt: timestamp(now),
+    };
+    return settle(next, now);
+}
+
 /** Scheduling policy/concurrency lives in the later worker, not this contract. */
 export function startConversionFile(
     operation: ConversionOperation,

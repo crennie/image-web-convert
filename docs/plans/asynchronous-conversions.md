@@ -1,6 +1,6 @@
 # Backend-owned asynchronous conversions: implementation plan
 
-Status: phase 1 complete; phases 2–6 pending.
+Status: phases 1–2 complete; phases 3–6 pending.
 
 This is the durable implementation plan for the six phases in section 11 of
 the design review. It is intended to be read and updated by Codex across runs.
@@ -198,6 +198,8 @@ Extend the existing session directory using `storage.paths.ts`:
 session.info.json
 conversion.info.json
 inputs/<file-id>
+.conversion-staging/<temporary-id>
+.conversion-commits/<file-id>.json
 <file-id>.<output-extension>
 <file-id>.json
 ```
@@ -208,6 +210,14 @@ different filesystems by copying into destination staging before rename when
 needed. Write snapshots/output/metadata via temporary files and rename. Define
 write ordering and reconciliation explicitly; several JSON/filesystem writes
 are not one transaction.
+
+The phase 2 implementation stores `{ operation, inputs }` in
+`conversion.info.json`. Input references contain a stable stored name, byte
+count, and SHA-256 digest. Per-file commit receipts contain operation/file
+association, final metadata, output fingerprint, and original completion time.
+Output and metadata are published before the receipt, and the receipt before
+the completed operation snapshot. Recovery requires both matching artifacts and
+the receipt; a metadata sidecar alone does not establish completion.
 
 Publish a complete output and metadata before recording file completion. Delete
 input after its outcome is persisted. Retain enough commit evidence to reconcile
@@ -322,7 +332,7 @@ unit tests and typechecking pass.
 
 ### Phase 2 — Durable storage and per-file commits
 
-- [ ] Complete
+- [x] Complete
 
 Implement operation persistence, stable file IDs, staging promotion, serialized
 updates, individual artifact publication, and reconciliation functions. Separate
@@ -497,3 +507,67 @@ Suggested continuation prompt:
   - Next action: phase 2, durable operation/input storage and per-file commit
     reconciliation. Persist transition results before scheduling work or
     acknowledging uploads; add internal input references in that phase.
+- 2026-09-09: Completed phase 2 (durable storage and per-file commits), after
+  committing phase 1 locally as `3a4e2d5` at the user's request.
+  - Added `conversion-storage.schema.ts` and `conversion-storage.service.ts`
+    under `apps/api/src/services/`, and operation-owned paths in
+    `storage.paths.ts`. The store exposes create/read/update, upload acceptance,
+    output/failure commits, verified completed-output lookup, and explicit
+    startup recovery. Records are validated on read/write; malformed records and
+    storage I/O failures are distinct from operation-not-found errors.
+  - Input staging copies into the destination filesystem, validates actual
+    bytes, records a fingerprint, and atomically publishes acceptance. Request
+    cleanup cannot delete accepted input. Per-session mutation locks are shared
+    across store instances in one process; per-file claims reject simultaneous
+    duplicate upload/output writes. Large input copies and output staging run
+    outside the mutation lock, with lifecycle rechecks before publication.
+  - Snapshots and JSON artifacts use temporary-write, file sync, rename, and
+    directory sync. Per-file commit receipts resolve the crash boundary between
+    output/metadata publication and operation-state persistence. A failed later
+    commit never rolls back earlier successes. Snapshot failures after receipt
+    publication block further mutations until recovery, avoiding accidental
+    rollback or contradictory cancellation of an already published result.
+  - Recovery verifies committed artifacts, restores complete pending commits at
+    their original completion time, marks interrupted conversions failed, keeps
+    valid uploaded siblings, handles missing/corrupt input, honors stop/expiry,
+    and removes abandoned staging/partial artifacts after durable settlement.
+    Added the application transition `failUploadedConversionFile` so missing
+    input can fail before conversion without inventing a processing timestamp.
+  - During resumed review, fixed a receipt/snapshot publication race: initial
+    reads used for mutations now share the publication lock before checking for
+    interrupted commits. An ordinary in-flight publication is not a crash.
+  - Added 36 real-filesystem integration tests, including a real Sharp
+    conversion, write failures at output/metadata/receipt/snapshot boundaries,
+    input cleanup failure, cross-filesystem staging strategy, concurrent final
+    uploads, upload replay during publication, cancellation/timeout races,
+    restart reconciliation, corrupted artifacts, and preservation of successes.
+    Tests use isolated temporary directories inside the repository.
+  - Validation passed:
+    `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck lint -p @image-web-convert/api @image-web-convert/schemas`.
+    156 API tests and 25 schema tests passed; typechecking/lint passed with only
+    the same two pre-existing `no-explicit-any` warnings in
+    `files.service.spec.ts`. The 35-test initial storage suite also passed before
+    the final race regression was added.
+  - A focused rerun initially used unsupported Vitest option `--testFile`
+    through Nx and failed at CLI parsing (no tests ran). Corrected command:
+    `./node_modules/.bin/vitest run --config apps/api/vite.config.ts conversion-storage.service.spec.ts`.
+    All 36 storage tests passed after the final test synchronization adjustment.
+  - Existing HTTP flow validation passed:
+    `TMPDIR=/workspaces/image-web-convert/apps/api/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`.
+    API production build and all 3 existing server E2E tests passed. TMPDIR kept
+    integration-test files within the workspace. Changed TypeScript files were
+    formatted; final diff/whitespace review passed.
+  - Scope/implementation detail: a small per-file receipt was added to make
+    multi-file publication recoverable without a database. Directory fsync is
+    exercised on the current Linux filesystem; this is not a guarantee for
+    every OS/filesystem. The original synchronous services/routes/UI and
+    dependency manifests remain unchanged.
+  - Next action: phase 3, scheduler/resource limits/lifecycle wiring. Call
+    `recoverAfterRestart` only before accepting requests or running converters;
+    recovery is not safe against live conversion work. The startup coordinator
+    must catch/report or quarantine invalid sessions independently, discover
+    pending operations, and schedule remaining uploaded files (including a
+    recovered `processing` operation with no active invocation). No scheduler,
+    automatic startup scan, periodic expiry sweeper, or new endpoints are wired
+    yet. Phase 4 must use the completed-output gate for new-operation downloads;
+    preserve legacy sealed-session download behavior until that cutover.
