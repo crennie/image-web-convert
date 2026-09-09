@@ -12,17 +12,21 @@ import {
     errorTranslator,
 } from '@image-web-convert/observability';
 import apiRouter from './api/index.js';
+import { createConversionRuntime, type ConversionRuntime } from './services/conversion-runtime.service.js';
 
 export type AppDeps = {
-    // future: inject logger, metrics, etc.
-    test: string;
+    conversions?: ConversionRuntime;
 };
 
 export async function createApp(
-    // deps?: AppDeps
+    deps: AppDeps = {},
 ): Promise<express.Express> {
     const env = loadEnv();
     const app = express();
+    // Construct without starting timers. The process entrypoint starts recovery
+    // before listening and owns shutdown; server tests can inject/control it.
+    const conversions = deps.conversions ?? createConversionRuntime();
+    app.locals.conversions = conversions;
 
     // 0) Init OpenTelemetry logging
     if (env.ENABLE_OTEL) {
@@ -119,7 +123,7 @@ export async function createApp(
     });
 
     app.get('/readyz', (req, res) => {
-        if (!isReady) {
+        if (!isReady || !conversions.isReady()) {
             return res.status(503).json({ status: 'starting' });
         }
         return res.json({ status: 'ready' });

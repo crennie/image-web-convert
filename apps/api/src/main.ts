@@ -12,27 +12,32 @@ import { initTelemetry } from '@image-web-convert/observability';
     async function main() {
         const app = await createApp();
         const server = http.createServer(app);
+        const conversions = app.locals.conversions;
 
-        // Start server
+        // Recovery and scheduler ownership must precede accepting requests.
+        await conversions.start();
         server.listen(env.PORT, () => {
             // mark ready once we are listening
             app.locals.setReady?.(true);
             console.log(`API listening on http://0.0.0.0:${env.PORT}`);
         });
 
+        let shuttingDown = false;
         const shutdown = (signal: string) => {
+            if (shuttingDown) return;
+            shuttingDown = true;
             console.log(`\n${signal} received. Shutting down...`);
             app.locals.setReady?.(false);
-            server.close((err) => {
-                if (err) {
-                    console.error('Error during server close:', err);
-                    process.exit(1);
-                }
-                process.exit(0);
+            // HTTP closure alone does not imply background conversion drained.
+            const fallback = setTimeout(() => process.exit(1), env.CONVERSION_SHUTDOWN_GRACE_MS).unref();
+            const httpClosed = new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
+            void Promise.all([httpClosed, conversions.stop()]).then(([, result]) => {
+                clearTimeout(fallback);
+                process.exit(result.drained ? 0 : 1);
+            }).catch(err => {
+                console.error('Error during shutdown:', err);
+                process.exit(1);
             });
-
-            // Fallback hard-exit if something hangs
-            setTimeout(() => process.exit(1), 10_000).unref();
         };
 
         process.on('SIGINT', () => shutdown('SIGINT'));

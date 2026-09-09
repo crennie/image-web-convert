@@ -17,6 +17,7 @@ import {
     finishConversionFile,
     requestConversionStop,
     failUploadedConversionFile,
+    isConversionTerminal,
     ConversionTransitionError,
     type ConversionOperation,
 } from './conversions.service';
@@ -764,6 +765,73 @@ export function createConversionStorage(
         });
     }
 
+    /** Discover operation directories only; never read legacy session secrets. */
+    async function listSessions(): Promise<string[]> {
+        let entries;
+        try {
+            entries = await fs.readdir(root, { withFileTypes: true });
+        } catch (error) {
+            if (missing(error)) return [];
+            throw error;
+        }
+        const sessions: string[] = [];
+        for (const entry of entries) {
+            if (
+                !entry.isDirectory() ||
+                !ConversionIdSchema.safeParse(entry.name).success
+            )
+                continue;
+            try {
+                await fs.stat(paths(entry.name).info);
+                sessions.push(entry.name);
+            } catch (error) {
+                if (!missing(error)) throw error;
+            }
+        }
+        return sessions.sort();
+    }
+
+    async function pruneSettledInputs(sid: string): Promise<void> {
+        const location = paths(sid);
+        await serialized(location.info, async () => {
+            const record = await read(sid);
+            for (const file of record.operation.files) {
+                if (
+                    ['completed', 'failed', 'cancelled'].includes(
+                        file.status,
+                    ) &&
+                    !uploadClaims.has(location.input(file.id))
+                ) {
+                    await removeIfPresent(location.input(file.id));
+                }
+            }
+        });
+    }
+
+    /** Runtime must hold exclusive session-cleanup ownership, with no live
+     * request/download/converter leases. Never delete legacy-only sessions. */
+    async function deleteExpired(sid: string): Promise<boolean> {
+        const location = paths(sid);
+        return serialized(location.info, async () => {
+            const record = await read(sid);
+            if (
+                !isConversionTerminal(record.operation) ||
+                now().getTime() < new Date(record.operation.expiresAt).getTime()
+            )
+                return false;
+            if (
+                record.operation.files.some(
+                    (file) =>
+                        uploadClaims.has(location.input(file.id)) ||
+                        outputClaims.has(location.receipt(file.id)),
+                )
+            )
+                return false;
+            await fs.rm(location.directory, { recursive: true });
+            await syncDirectory(root);
+            return true;
+        });
+    }
     return {
         create,
         read,
@@ -773,5 +841,8 @@ export function createConversionStorage(
         commitFailure,
         completedOutput,
         recoverAfterRestart,
+        listSessions,
+        deleteExpired,
+        pruneSettledInputs,
     };
 }

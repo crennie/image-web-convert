@@ -1,6 +1,6 @@
 # Backend-owned asynchronous conversions: implementation plan
 
-Status: phases 1–2 complete; phases 3–6 pending.
+Status: phases 1–3 complete; phases 4–6 pending.
 
 This is the durable implementation plan for the six phases in section 11 of
 the design review. It is intended to be read and updated by Codex across runs.
@@ -346,7 +346,7 @@ reconciliation. No whole-operation rollback of committed successes.
 
 ### Phase 3 — Scheduler, limits, cancellation, and lifecycle
 
-- [ ] Complete
+- [x] Complete
 
 Add process-owned scheduling with injected converter/storage/clock boundaries,
 validated resource settings, startup recovery, shutdown, deadlines, and cleanup.
@@ -571,3 +571,63 @@ Suggested continuation prompt:
     automatic startup scan, periodic expiry sweeper, or new endpoints are wired
     yet. Phase 4 must use the completed-output gate for new-operation downloads;
     preserve legacy sealed-session download behavior until that cutover.
+
+
+### Phase 3 completion — 2026-09-09
+
+- Phase 2 was committed as `f51dd32` before this work.
+- Added `conversion-runtime.service.ts`: one process-owned sequential worker per
+  storage root, FIFO ready operations and manifest order, durable claims and
+  outcomes, periodic rediscovery (default 1 second), startup recovery before
+  readiness, and bounded shutdown. Repeated wakeups cannot duplicate work.
+  Invalid session records are reported and isolated; runtime mutation failures
+  stop scheduling and readiness rather than guessing durable state.
+- Added global operation/upload admission, independent idle/total upload timers,
+  session-use leases, cooperative conversion deadlines, and terminal expired
+  session cleanup. Timed-out uploads retain capacity until transport settlement;
+  timed-out conversions retain their slot/input until invocation settlement.
+  Cancellation preserves active-file success; timeout/expiry reject late results.
+- `main.ts` starts recovery before listening and drains HTTP plus runtime work on
+  shutdown. `createApp` constructs/injects the runtime without starting timers;
+  readiness requires the runtime to be ready. Tests that need scheduling must
+  explicitly start and stop their injected runtime.
+- Validated environment settings: `CONVERSION_MAX_OPERATIONS` (3),
+  `CONVERSION_MAX_UPLOADS` (2), `CONVERSION_UPLOAD_IDLE_MS` (60000),
+  `CONVERSION_UPLOAD_TOTAL_MS` (300000), `CONVERSION_FILE_TIMEOUT_MS` (120000),
+  `CONVERSION_SWEEP_INTERVAL_MS` (1000), `CONVERSION_SHUTDOWN_GRACE_MS` (10000),
+  `CONVERSION_MAX_INPUT_PIXELS` (200000000), `CONVERSION_MAX_DIMENSION` (8192).
+  Current worker ceilings also constrain recovered operations' stored options.
+- The installed Sharp supports `.timeout({ seconds })` (integer, at most 3600).
+  It measures libvips processing, excluding thread-pool waiting; the application
+  deadline additionally checks elapsed time after conversion settles. Neither
+  mechanism guarantees a hard wall-clock cutoff.
+- HEIC limitation confirmed in installed `heic-decode`/`heic-convert`: decoding
+  allocates width × height × 4 bytes before Sharp sees the image, and JPEG
+  preprocessing uses synchronous `jpeg-js.encode`. No caller-provided pixel
+  ceiling or abort signal protects that preceding decode. The configured Sharp
+  pixel limit therefore does not bound HEIC preprocessing memory or CPU. A hard
+  cutoff would require separately scoped process isolation.
+- Real scheduler smoke test uses a generated 1024×768 PNG, repository
+  `apps/api/test_data/photo.heic`, and a 256-pixel output ceiling. One container
+  run measured PNG→WebP 29 ms, HEIC→WebP 1311 ms, PNG→AVIF 59 ms. Maximum gaps
+  between nominal 10 ms timer samples were 10/1238/14 ms respectively. These are
+  observations, not performance guarantees; HEIC noticeably delays HTTP/timers.
+- Validation passed:
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test lint -p @image-web-convert/api`
+    — 191 tests, including 24 runtime tests and a real-encoder smoke test;
+    lint has only the two existing `files.service.spec.ts` warnings.
+  - `./node_modules/.bin/tsc --build apps/api/tsconfig.json --emitDeclarationOnly --force`
+    — production and test TypeScript checked without relying on Nx cache.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true TMPDIR=/workspaces/image-web-convert/tmp ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
+    — production API build and four HTTP tests, including readiness gating.
+- Next action: phase 4. Wire authenticated commands to runtime methods and shared
+  snapshots. `createOperation` currently returns a stored record; implement
+  HTTP creation idempotency before admission for retries. Acquire `beginUpload`
+  before multipart parsing; call `touch` on incoming bytes, abort transport in its
+  timeout callback, call `assertActive` before acceptance, and `release` only on
+  actual request settlement. Validate session/operation/slot association before
+  admission. Hold `acquireSessionUse` throughout each output/ZIP stream and
+  release on close/error. These interfaces do not replace authorization.
+  Existing legacy upload/download routes and UI remain unchanged: their old
+  concurrency is not governed by this scheduler during migration. No new HTTP
+  endpoints or frontend workflow were added in phase 3.
