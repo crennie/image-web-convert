@@ -1,19 +1,15 @@
-import path from 'node:path';
 import fs from 'node:fs';
 import { Router } from 'express';
 import fileUpload from 'express-fileupload';
 import { create as createUpload } from '../controllers/uploads.controller';
-import { normalizeAbsolutePath } from '@image-web-convert/node-shared';
+import { UPLOAD_TMP_DIR } from '../services/storage.paths';
+export { UPLOAD_TMP_DIR } from '../services/storage.paths';
 import { getSessionImageConfig } from '../env';
 
 const uploadsRouter: Router = Router({ mergeParams: true });
 const imageConfig = getSessionImageConfig();
 
 // ---- router-scoped upload middleware (only affects /upload routes) ----
-export const UPLOAD_TMP_DIR = normalizeAbsolutePath(
-    process.env.UPLOAD_TMP_DIR ?? path.resolve(process.cwd(), 'data', 'tmp'),
-);
-
 // ensure temp dir exists (needed when useTempFiles: true)
 if (!fs.existsSync(UPLOAD_TMP_DIR)) {
     fs.mkdirSync(UPLOAD_TMP_DIR, { recursive: true });

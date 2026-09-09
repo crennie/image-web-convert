@@ -335,6 +335,7 @@ export function createConversionStorage(
         operationId: string,
         fileId: string,
         tempPath: string,
+        assertRequestActive: () => void = () => undefined,
     ): Promise<StoredConversion> {
         const location = paths(sid);
         const key = location.input(fileId);
@@ -387,6 +388,7 @@ export function createConversionStorage(
             return await serialized(location.info, async () => {
                 const latest = await read(sid, operationId);
                 await pendingCommit(latest);
+                assertRequestActive();
                 const operation = acceptConversionUpload(
                     latest.operation,
                     fileId,

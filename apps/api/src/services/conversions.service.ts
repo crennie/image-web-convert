@@ -98,7 +98,7 @@ function timestamp(now: Date): string {
     return now.toISOString();
 }
 
-function sanitizeName(name: string): string {
+export function sanitizeConversionFileName(name: string): string {
     // Treat both separator styles as paths regardless of the local OS.
     return (
         (name.split(/[/\\]/).pop() ?? '')
@@ -165,7 +165,7 @@ export function createConversionOperation(
         files: intent.files.map((file, index) => ({
             id: context.fileIds[index],
             clientId: file.clientId,
-            name: sanitizeName(file.name),
+            name: sanitizeConversionFileName(file.name),
             declaredBytes: file.sizeBytes,
             status: 'awaiting_upload',
         })),

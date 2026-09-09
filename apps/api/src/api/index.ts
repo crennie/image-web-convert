@@ -3,10 +3,17 @@ import sessionsRouter from '../routes/sessions.routes';
 import uploadsRouter from '../routes/uploads.routes';
 import filesRouter from '../routes/files.routes';
 
-const apiRouter: Router = Router();
+import createConversionsRouter from '../routes/conversions.routes';
+import conversionFilesRouter from '../routes/conversion-files.routes';
 
-apiRouter.use('/sessions', sessionsRouter);
-apiRouter.use('/sessions/:sid/uploads', uploadsRouter);
-apiRouter.use('/sessions/:sid/files', filesRouter);
+export default function createApiRouter(): Router {
+    const apiRouter: Router = Router();
 
-export default apiRouter;
+    apiRouter.use('/sessions', sessionsRouter);
+    apiRouter.use('/sessions/:sid/uploads', uploadsRouter);
+    apiRouter.use('/sessions/:sid/conversions', createConversionsRouter());
+    apiRouter.use('/sessions/:sid/files', conversionFilesRouter);
+    apiRouter.use('/sessions/:sid/files', filesRouter);
+
+    return apiRouter;
+}

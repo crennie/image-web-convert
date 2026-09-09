@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { secureId } from '@image-web-convert/node-shared';
 import {
     ApiCreateConversionRequestSchema,
@@ -26,6 +27,7 @@ import {
 } from './image.service';
 import {
     createConversionOperation,
+    sanitizeConversionFileName,
     isConversionTerminal,
     requestConversionStop,
     startConversionFile,
@@ -448,20 +450,6 @@ export function createConversionRuntime(
         await previous;
         try {
             assertAccepting();
-            const existing = await records();
-            if (
-                existing.filter(
-                    (record) => !isConversionTerminal(record.operation),
-                ).length +
-                    blockedSessions.size >=
-                config.maxOperations
-            ) {
-                throw new ConversionTransitionError(
-                    'conversion_capacity_exceeded',
-                    'Too many active conversion operations',
-                );
-            }
-            // Validate manifest first to derive the number of server-owned slots.
             const parsed = ApiCreateConversionRequestSchema.safeParse(request);
             if (!parsed.success)
                 throw new ConversionTransitionError(
@@ -469,6 +457,52 @@ export function createConversionRuntime(
                     'Invalid conversion manifest or options',
                 );
             const intent = parsed.data;
+            const existing = await records();
+            const prior = existing.find(
+                (record) => record.operation.sessionId === session.id,
+            );
+            if (prior) {
+                if (
+                    prior.operation.requestId !== intent.requestId ||
+                    prior.operation.files.length !== intent.files.length
+                )
+                    throw new ConversionTransitionError(
+                        'conversion_conflict',
+                        'Session already has a different conversion intent',
+                    );
+                const existingManifest = prior.operation.files.map((file) => ({
+                    clientId: file.clientId,
+                    name: file.name,
+                    sizeBytes: file.declaredBytes,
+                }));
+                const requestedManifest = intent.files.map((file) => ({
+                    ...file,
+                    name: sanitizeConversionFileName(file.name),
+                }));
+                if (
+                    !isDeepStrictEqual(
+                        prior.operation.options,
+                        intent.options,
+                    ) ||
+                    !isDeepStrictEqual(existingManifest, requestedManifest)
+                )
+                    throw new ConversionTransitionError(
+                        'conversion_conflict',
+                        'Session already has a different conversion intent',
+                    );
+                return prior;
+            }
+            if (
+                existing.filter(
+                    (record) => !isConversionTerminal(record.operation),
+                ).length +
+                    blockedSessions.size >=
+                config.maxOperations
+            )
+                throw new ConversionTransitionError(
+                    'conversion_capacity_exceeded',
+                    'Too many active conversion operations',
+                );
             const operation = createConversionOperation(intent, {
                 id: secureId(),
                 sessionId: session.id,
@@ -495,10 +529,17 @@ export function createConversionRuntime(
         oid: string,
         fileId: string,
         tempPath: string,
+        assertRequestActive?: () => void,
     ) {
         const release = acquireSessionUse(sid);
         try {
-            return await store.acceptUpload(sid, oid, fileId, tempPath);
+            return await store.acceptUpload(
+                sid,
+                oid,
+                fileId,
+                tempPath,
+                assertRequestActive,
+            );
         } finally {
             release();
             wake();
@@ -643,6 +684,8 @@ export function createConversionRuntime(
     }
 
     return {
+        read: store.read,
+        completedOutput: store.completedOutput,
         start,
         stop,
         wake,

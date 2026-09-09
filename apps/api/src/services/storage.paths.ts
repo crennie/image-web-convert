@@ -12,6 +12,10 @@ export const UPLOAD_DIR = normalizeAbsolutePath(
     process.env.UPLOAD_DIR || DEFAULT_UPLOAD_DIR,
 );
 
+export const UPLOAD_TMP_DIR = normalizeAbsolutePath(
+    process.env.UPLOAD_TMP_DIR ?? path.resolve(process.cwd(), 'data', 'tmp'),
+);
+
 export function sessionDir(sid: string): string {
     return path.join(UPLOAD_DIR, sid);
 }

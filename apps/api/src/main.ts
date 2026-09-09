@@ -15,6 +15,9 @@ import { initTelemetry } from '@image-web-convert/observability';
         const conversions = app.locals.conversions;
 
         // Recovery and scheduler ownership must precede accepting requests.
+        const { recoverConversionRequestStaging } = await import('./services/conversion-upload.service.js');
+        const { UPLOAD_TMP_DIR } = await import('./services/storage.paths.js');
+        await recoverConversionRequestStaging(UPLOAD_TMP_DIR);
         await conversions.start();
         server.listen(env.PORT, () => {
             // mark ready once we are listening

@@ -29,12 +29,13 @@ interface ResolvedFilesResponse {
 export async function resolveFilesByIds(
     sid: string,
     ids: string[],
+    metadataReader: typeof readMeta = readMeta,
 ): Promise<ResolvedFilesResponse> {
     const found: ResolvedDownload[] = [];
     const missing: string[] = [];
 
     for (const id of ids) {
-        const meta = await readMeta(sid, id);
+        const meta = await metadataReader(sid, id);
         if (!meta) {
             missing.push(id);
             continue;

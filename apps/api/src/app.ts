@@ -11,7 +11,7 @@ import {
     requestContext,
     errorTranslator,
 } from '@image-web-convert/observability';
-import apiRouter from './api/index.js';
+import createApiRouter from './api/index.js';
 import { createConversionRuntime, type ConversionRuntime } from './services/conversion-runtime.service.js';
 
 export type AppDeps = {
@@ -98,13 +98,14 @@ export async function createApp(
         max: env.RATE_LIMIT_MAX,
         standardHeaders: true,
         legacyHeaders: false,
-        skip: (req) => req.path === '/healthz' || req.path === '/readyz',
+        skip: (req) => req.path === '/healthz' || req.path === '/readyz' ||
+            (req.method === 'GET' && /^\/api\/sessions\/[^/]+\/conversions\/[^/]+\/?$/.test(req.path)),
     });
     app.use(limiter);
 
 
     // --------- API (Session/File Upload/Download) Handler ----
-    app.use('/api', apiRouter);
+    app.use('/api', createApiRouter());
 
     // ---------- Health & readiness ----------
     // Ready flag toggled by index.ts when server is listening

@@ -117,7 +117,7 @@ describe('processUploadBatch', () => {
                 info(),
             ),
         ).rejects.toBeInstanceOf(UploadClaimConflictError);
-        expect(saveUploadFile).toHaveBeenCalledTimes(1);
+        await vi.waitFor(() => expect(saveUploadFile).toHaveBeenCalledTimes(1));
         finish(accepted('first'));
         await first;
 
@@ -133,6 +133,7 @@ describe('processUploadBatch', () => {
             .mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)))
             .mockResolvedValueOnce(accepted('second'));
         const first = processUploadBatch('one', 'image/webp', [input('a')], info());
+        await vi.waitFor(() => expect(saveUploadFile).toHaveBeenCalledTimes(1));
         await expect(
             processUploadBatch('two', 'image/webp', [input('b')], info()),
         ).resolves.toBeDefined();

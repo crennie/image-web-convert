@@ -1,6 +1,6 @@
 # Backend-owned asynchronous conversions: implementation plan
 
-Status: phases 1–3 complete; phases 4–6 pending.
+Status: phases 1–4 complete; phases 5–6 pending.
 
 This is the durable implementation plan for the six phases in section 11 of
 the design review. It is intended to be read and updated by Codex across runs.
@@ -291,8 +291,8 @@ machine or infer readiness/completion from upload promises.
 Poll active operations approximately every second with one request in flight,
 backoff, Retry-After support, and stale-revision protection. Stop on terminal
 state/access expiry. A polling failure is a connection problem, not an operation
-failure. Status reads need a dedicated rate budget (initially 180/minute for the
-local user), excluded from the current global 100/minute budget while retaining
+failure. Status reads need a dedicated rate budget (implemented as 240/minute/IP for the
+local application), excluded from the current global 100/minute budget while retaining
 authorization and appropriate abuse limits. Keep command limits separately.
 
 Render successful outputs from backend metadata, without requiring local files
@@ -363,7 +363,7 @@ assumed. Document any unsupported hard-timeout or decoder-limit behavior.
 
 ### Phase 4 — HTTP endpoints and completed-file downloads
 
-- [ ] Complete
+- [x] Complete
 
 Wire creation/upload/status/cancel routes and services, authentication before
 multipart work, slot admission/limits/timeouts, typed errors, idempotency, and
@@ -397,6 +397,107 @@ being ignored. Verify ordinary rerenders/Strict Mode do not trigger cancellation
 Verify existing upload component contracts/tests remain intact, except for any
 documented small behavior-preserving edits. Review the diff against the new
 component boundary before marking this phase complete.
+
+#### Phase 5 fresh-session implementation handoff
+
+Phases 1–4 are complete. Implement phase 5 only when asked to continue; do not
+retire legacy APIs or start phase 6 automatically. The phase 4 execution log below
+is the authoritative description of the implemented HTTP behavior.
+
+Read these anchors before editing:
+
+- `apps/web/app/routes/conversion/index.tsx`: currently mounts `ConversionPage`.
+  Prefer changing this mount to the new panel/composition, preserving the old
+  `ConversionPage` and its tests. Retain the page layout/error boundary through
+  composition as appropriate. This narrow route cutover is explicitly authorized.
+- `apps/web/app/routes/conversion/components/ConversionPage.tsx` and its existing
+  tests: reference for current capabilities, not the place to build the new flow.
+- `libs/ui/src/lib/session/SessionContext.tsx`,
+  `libs/ui/src/lib/file-upload/hooks/useFileItems.ts`, shared UI public exports,
+  and presentational file primitives: inspect which interfaces can be reused.
+- `libs/ui/src/lib/api-url.ts` and
+  `libs/ui/src/lib/file-download/hooks/useFileDownloads.ts`: existing API base,
+  authorization, filename, blob download, and object-URL cleanup conventions.
+  `API_URL` already includes the `/api` base by default. Follow package export
+  boundaries; a small public export is permissible if needed.
+- `libs/schemas/src/lib/api/conversions.ts`,
+  `apps/api/src/controllers/conversions.controller.ts`, and
+  `apps/api/src/__tests__/conversions-api.spec.ts`: exact request/response contracts
+  and examples of races, retries, partial results, and cancellation.
+- `apps/web/vite.config.ts`, `apps/web/app/setupTests.tsx`, existing web/UI Vitest
+  tests, and `apps/web-e2e/src/upload.spec.ts`: validation conventions. The existing
+  Playwright upload scenario mocks the legacy API and will need a focused fixture
+  update if run against the cutover route; real API/browser lifecycle work belongs
+  to phase 6. Keep shared legacy component tests intact.
+
+Suggested new app-owned files are `components/ConversionOperationPanel.tsx`,
+`hooks/useConversionOperation.ts`, `hooks/useConversionUploads.ts`, and a small
+transport/API helper under the conversion route. Names may follow local patterns.
+Keep snapshot consumption, network transport, and presentation separable enough
+to test. Do not introduce a frontend domain state machine or new dependency.
+
+Transport contract and implementation details:
+
+1. Obtain a session with the existing session API/context. Freeze the selected
+   batch intent on submit, generate one creation `requestId`, and retain it for
+   retries. POST `{ requestId, options: { outputMime }, files: [{ clientId, name,
+   sizeBytes }] }`. Output MIME is the only public conversion option currently.
+   Parse the direct response with `ApiConversionOperationSchema`; there is no
+   outer `operation` property. Map local files to server slots by `clientId`, not
+   display name or request completion order.
+2. Upload at most two slots concurrently with XMLHttpRequest (or an already
+   available transport exposing actual byte events). PUT one multipart file per
+   slot, with no additional form fields; let the browser set its boundary. Every
+   conversion/status/cancel/download request needs the session bearer token.
+   Scheduling byte transfer is frontend transport work; readiness, conversion
+   order, completion, and aggregate outcomes remain backend-owned.
+3. Multipart progress includes framing bytes. Label it as transport progress,
+   handle unknown totals honestly, and keep it separate from backend acceptance
+   and processing counts. Reset per-attempt counters on retry so bytes are not
+   counted twice. A locally aborted request is not proof of backend cancellation.
+4. Start status polling after creation, including while uploads are in flight.
+   Use approximately 1000 ms, one outstanding request, capped retry backoff and
+   `Retry-After`. Merge snapshots from all request sources by operation ID and
+   revision; a late PUT/GET/cancel response must not overwrite a newer snapshot
+   or a new batch. Abort/ignore stale requests when identity changes.
+5. After a lost upload response, read authoritative state before retrying. An
+   accepted/processing/completed slot needs no replacement upload; an awaiting
+   slot may be retried using the same local file. Treat 409 in-progress/conflict
+   as a reason to reconcile state, not an automatic permanent file failure.
+   Server file errors are authoritative; network errors do not settle a batch.
+6. Explicit Cancel stops queued local transfers, aborts active transfers, sends
+   the cancel command, and keeps polling until terminal. If that command fails,
+   show an unknown/pending connection state and allow retry; never synthesize a
+   cancelled operation. Page-exit cancellation instead uses `pagehide` with
+   authenticated `fetch(..., { keepalive: true })`, ignores its response/errors,
+   and does not run on ordinary effect cleanup, rerender, or visibility changes.
+7. Render completed result rows from `file.output.meta` and server URLs, even
+   without local File objects. Downloads require authenticated fetch/blob
+   handling rather than unauthenticated links. ZIP requests use `{ ids,
+   archiveName? }` with completed IDs only. Respect session expiry and revoke
+   preview/download object URLs. Do not expose credentials in URLs or persist
+   them for reload recovery.
+8. A session can own only one operation. A deliberate new batch must use a fresh
+   session; `startSession()` currently reuses an unexpired cached session. Do not
+   clear it on retryable failures, and do not assume `clearSession()` followed by
+   `startSession()` in the same render closure returns a new session. Test the
+   new-batch transition explicitly and retain the prior session while its results
+   are still displayed.
+
+Build and test the new panel against controlled snapshots/transports first, then
+switch the route mount. Add accessible status/error text, labelled cancel/retry
+controls, separate upload and processing summaries, and successful result actions.
+Use the phase 5 gate above plus tests for duplicate creation retry, repeated local
+filenames, lost upload acknowledgement, new-batch session isolation, and stale
+responses across operation changes.
+
+Validation should include existing Nx `test`, `typecheck`, and `lint` targets for
+`@image-web-convert/web` and `@image-web-convert/ui`, plus the web build and the
+relevant mocked Playwright flow after cutover. Confirm available targets/config
+first; run lint separately from tests to avoid temporary-directory scan races.
+Use existing dependencies. Record exact commands, outcomes, any baseline failures,
+and the remaining phase 6 work in this plan. Mark phase 5 complete only after its
+component boundary, tests, and narrow route cutover have been reviewed.
 
 ### Phase 6 — End-to-end verification and retirement
 
@@ -631,3 +732,81 @@ Suggested continuation prompt:
   Existing legacy upload/download routes and UI remain unchanged: their old
   concurrency is not governed by this scheduler during migration. No new HTTP
   endpoints or frontend workflow were added in phase 3.
+
+
+### Phase 4 completion — 2026-09-09
+
+- Added authenticated Express conversion routes/controllers:
+  `POST /api/sessions/:sid/conversions`,
+  `GET /api/sessions/:sid/conversions/:operationId`,
+  `PUT /api/sessions/:sid/conversions/:operationId/files/:fileId`, and
+  `POST /api/sessions/:sid/conversions/:operationId/cancel`.
+  All successful responses contain the shared `ApiConversionOperation` snapshot
+  directly; creation (including an idempotent retry) returns 201, other commands
+  and status return 200. No separate start command exists.
+- Creation uses the shared manifest contract (`requestId`, `options.outputMime`,
+  ordered `files` with `clientId`, `name`, `sizeBytes`). Server-generated slot IDs
+  appear in the snapshot. A matching request ID plus normalized manifest/options
+  returns the existing operation before capacity checks; conflicting intent is
+  409. A simultaneous creation/legacy claim can return retryable 409
+  `upload_in_progress`. The common local session claim plus durable operation
+  detection prevents legacy processing from sharing an operation's session.
+- Upload accepts exactly one multipart file (any field name), with no additional
+  fields/files. Authenticate and check operation/slot association before parsing.
+  Already accepted slots return their existing snapshot without replacing bytes.
+  The server spools the raw request into an isolated temporary directory, with a
+  cap of declared file bytes plus 64 KiB of multipart framing, then uses Node 22's
+  multipart parser. This decoder buffers the bounded body; memory consumption is
+  proportional to the configured file size and upload concurrency, not constant.
+  No parser dependency was added and the legacy upload middleware stays in use
+  for legacy requests.
+- Incomplete/disconnected/timed-out or malformed multipart requests leave the
+  slot retryable. Transport that exceeds the framing cap may have its connection
+  closed before an error response can be delivered; it also stays retryable.
+  An otherwise complete single-file upload with a byte mismatch/oversized file
+  receives 400/413 and permanently fails its slot, allowing uploaded siblings to
+  proceed. Unsupported/malformed image decoding is represented as a per-file
+  `conversion_failed` outcome from the existing converter exception boundary;
+  status GET remains 200 with authoritative partial/failure results.
+- Upload admission lasts through pipeline settlement and temporary cleanup.
+  Idle and total deadlines explicitly close the captured request socket (stream
+  teardown may detach it from `IncomingMessage`). Storage rechecks request
+  validity inside the publication lock after copying staged bytes. Startup
+  removes abandoned `conversion-XXXXXX` request directories before listening;
+  legacy temporary files and authoritative operation records are untouched.
+- Status polling has a separate 240 requests/minute/IP budget and `no-store`
+  responses. Matching GETs do not consume the existing command rate limit, so
+  500–1000 ms polling leaves capacity for uploads and cancellation. Commands
+  retain the existing application limiter.
+- Added an operation-aware download router before the legacy file router.
+  Existing individual file, metadata, and ZIP URLs now verify committed per-file
+  results for operation sessions, regardless of operation sealing/completion.
+  ZIPs include requested completed outputs and report missing/pending IDs through
+  the existing `X-Missing-Ids` header. Session-use leases cover response finish or
+  close so expiry cleanup cannot remove files during downloads. Sessions without
+  an operation continue through the legacy sealed-session controllers.
+- Validation passed:
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx test @image-web-convert/api`
+    — 213 tests, including 22 new real-HTTP tests with injected converters for
+    deterministic races, retries, limits, cancellation, partial downloads/ZIPs,
+    polling budget, failed storage, abort cleanup, failed ZIP stream closure, and
+    startup request cleanup.
+  - `./node_modules/.bin/tsc --build apps/api/tsconfig.json --emitDeclarationOnly --force`
+    — production and test TypeScript, without relying on Nx cache.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx lint @image-web-convert/api`
+    — no errors; two existing warnings in `files.service.spec.ts`. Run lint after
+    tests: running both simultaneously can race ESLint's scan of temporary test
+    directories (observed ENOENT; sequential validation passes).
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true TMPDIR=/workspaces/image-web-convert/tmp ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
+    — production API build and all four existing HTTP lifecycle tests pass.
+- Next action: phase 5, the new operation UI and dedicated transport/polling hooks.
+  Reuse the contracts/URLs above, send at most two uploads, render backend
+  snapshots and real network byte progress, and preserve the existing UI
+  components as stipulated. No frontend files or dependencies changed in phase 4.
+
+
+- 2026-09-09 handoff review: Expanded phase 5 with exact API/transport contracts,
+  source anchors, session/retry/revision rules, cutover boundaries, and validation
+  expectations for a fresh session. Corrected the earlier polling-budget example
+  to the implemented 240 requests/minute/IP. Documentation only in this handoff;
+  no UI implementation or additional test execution.
