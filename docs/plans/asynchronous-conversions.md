@@ -1,6 +1,6 @@
 # Backend-owned asynchronous conversions: implementation plan
 
-Status: phases 1–4 complete; phases 5–6 pending.
+Status: phases 1–5 complete; phase 6 pending.
 
 This is the durable implementation plan for the six phases in section 11 of
 the design review. It is intended to be read and updated by Codex across runs.
@@ -379,7 +379,7 @@ cadence does not exhaust the command budget. Existing legacy tests still pass.
 
 ### Phase 5 — Frontend cutover
 
-- [ ] Complete
+- [x] Complete
 
 Build the new `ConversionOperationPanel` and dedicated hooks described above,
 using manifest creation, bounded slot upload transport, polling, and real progress.
@@ -810,3 +810,98 @@ Suggested continuation prompt:
   expectations for a fresh session. Corrected the earlier polling-budget example
   to the implemented 240 requests/minute/IP. Documentation only in this handoff;
   no UI implementation or additional test execution.
+
+
+### Phase 5 completion — 2026-09-16
+
+- Built the app-owned asynchronous feature under
+  `apps/web/app/routes/conversion/`: `ConversionOperationPanel` composes local
+  selection and authoritative status/results presentation; `useConversionOperation`
+  integrates React and the existing session abstraction; `conversionController.ts`
+  owns local commands and batch identity; feature API, XHR queue, polling, and
+  pure view-model modules have independent test boundaries. The route now mounts
+  the new panel. The old `ConversionPage`, upload/download/progress components,
+  hooks, and their tests remain unchanged.
+- A keyed feature-local instance of the existing `SessionProvider` supplies one
+  session per deliberate batch. Creation retries retain the frozen manifest,
+  request ID, session, client IDs, and server slots. A new batch remounts the
+  boundary; prior results retain their session until the user chooses that action.
+  No shared session semantics changed. The only shared UI edit exports the
+  existing `API_URL`; session credentials do not reach presentation children.
+- One controller epoch rejects callbacks after batch cleanup; one pure merge
+  function enforces session/operation association and increasing revisions across
+  creation, upload, status, reconciliation, and cancellation. Backend lifecycle,
+  outcomes, outputs, and aggregate counts exist only in the authoritative snapshot.
+  Local state covers commands, connection readiness, selection, and transport.
+- One queue admits at most two uploads, resets byte counters per attempt, tracks
+  client/server identities, and aborts/cleans requests on stop. Explicit retries
+  first GET authoritative state; accepted slots are never replaced. Network,
+  reconciliation/conflict, session, creation, polling, cancellation, download,
+  and backend outcome errors remain distinct. Rejected manifests offer a new
+  batch; ambiguous creation failures retain their identities for retry.
+- Polling uses recursive timeouts, one in-flight poll, a one-second healthy
+  cadence, exponential backoff capped at 15 seconds, and Retry-After (which may
+  require a longer delay). Terminal snapshots and access expiry stop polling.
+  Session expiry also stops pending creation/uploads/downloads. Temporary
+  connectivity failures never synthesize backend failure or cancellation.
+- Explicit cancellation stops local transfers and sends a command while polling
+  continues. A late command failure cannot overwrite cancellation confirmed by
+  polling. `pagehide` alone sends authenticated best-effort keepalive cancellation;
+  Strict Mode, visibility changes, rerenders, and ordinary cleanup do not send it.
+- Results use backend output metadata and authenticated file/ZIP downloads without
+  local File objects. Selection and download object URLs are cleaned up. Native
+  controls have accessible names and disabled semantics; per-file text is associated
+  with its row, and a restrained live region announces backend counts/status.
+  No focus moves on polling. Selection is disabled until hydration attaches its
+  command handlers, preventing clicks on inert server-rendered controls.
+- Pre-cutover review explicitly checked the ten supplemental architecture points:
+  no mirrored backend state, raw networking in presentation, child session/token
+  knowledge, unguarded old-operation responses, orphaned timers/request handles,
+  cleanup-triggered cancellation, network-as-domain errors, duplicate upload
+  schedulers, synchronous batch-completion assumptions, or new generic/shared
+  workflow frameworks. Uploads and polling are plain independently testable
+  transports rather than additional thin hooks. No dependencies were added.
+- Added 32 focused tests (13 transport/view-model, 15 controller, 4 component).
+  Coverage includes concurrency, XHR progress/abort/handler cleanup, identity and
+  revision races, lost acknowledgement/reconciliation, duplicate filenames,
+  creation idempotency, session replacement, backoff/Retry-After/expiry, progressive
+  results without local files, cancellation uncertainty, and Strict Mode/page exit.
+- Updated the existing mocked Playwright scenario for manifest creation, PUT
+  slots, GET polling, and authenticated progressive download. Keyboard selection,
+  pending selection, and removal remain covered. The fixture imports shared
+  contract types; `nx sync` added the required schema project reference to
+  `apps/web-e2e/tsconfig.json`. Its unrelated base-path ordering change was reverted.
+- Prerequisites: restored locked dependencies with
+  `npm ci --cache /workspaces/image-web-convert/.npm-cache --no-audit --no-fund`
+  and moved that cache to ignored `node_modules/.npm-cache`. Installed browser
+  binaries within the repository using
+  `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright ./node_modules/.bin/playwright install chromium firefox webkit`.
+  The installer warned about missing native libraries; verification used Chromium.
+  No OS packages, production dependencies, manifests, or lockfiles were changed.
+- Initial validation exposed unsupported `replaceAll` in the frontend TS library
+  target and unrealistic 2099 fixture expiries overflowing timers. Both were fixed;
+  new lint warnings were removed. An intermediate Nx run required
+  `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx sync`
+  for the E2E schema reference. The first Chromium run timed out on file selection
+  before hydration; the production readiness guard fixed it, and subsequent runs
+  passed. No failed checks were hidden or unrelated code changed to satisfy them.
+- Final validation passed:
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck -p @image-web-convert/web @image-web-convert/ui`
+    — 55 web and 49 UI tests; both project typechecks and dependencies passed.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t lint -p @image-web-convert/web @image-web-convert/ui @image-web-convert/web-e2e`
+    — no errors or new warnings. Existing warnings: `root.tsx` explicit any,
+    and two unnecessary escapes in legacy `FileDownload.tsx`.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx build @image-web-convert/web`
+    — client/server builds passed. Existing landing-page sourcemap/directive
+    diagnostics and tool environment warnings remain.
+  - `PLAYWRIGHT_HTML_OPEN=never PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/playwright test --config apps/web-e2e/playwright.config.ts --project chromium --reporter line`
+    — all five mocked browser tests passed.
+  - `./node_modules/.bin/tsc --build apps/web-e2e/tsconfig.json --emitDeclarationOnly`
+    — E2E fixture/config typechecking passed.
+  - Changed code was formatted with installed Prettier; final diff and
+    `git diff --check` passed, with no backend or legacy workflow edits.
+- Remaining work: phase 6 real-browser/API lifecycle verification and deliberate
+  legacy retirement. No real-backend browser tests or legacy endpoint removal were
+  undertaken in phase 5. Firefox/WebKit browser execution remains unverified in
+  this container. Next action: implement phase 6 only when requested, beginning
+  with real API/browser lifecycle fixtures and preservation of progressive results.

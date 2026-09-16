@@ -1,9 +1,14 @@
-import ConversionPage from "./components/ConversionPage";
+import ConversionOperationPanel from './components/ConversionOperationPanel';
 
-export type ConversionState = 'select' | 'upload' | 'upload_complete' | 'upload_error' | 'download';
+export type ConversionState =
+    | 'select'
+    | 'upload'
+    | 'upload_complete'
+    | 'upload_error'
+    | 'download';
 
 function Conversion() {
-    return <ConversionPage />
+    return <ConversionOperationPanel />;
 }
 
 export default Conversion;
