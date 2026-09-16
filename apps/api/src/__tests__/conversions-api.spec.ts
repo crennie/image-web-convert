@@ -8,6 +8,10 @@ import {
     type ApiConversionOperation,
 } from '@image-web-convert/schemas';
 import type { ProcessInput, ProcessOutput } from '../services/image.service';
+import type { getConversionRuntimeConfig } from '../env';
+
+// HTTP/filesystem integration runs alongside builds and browser tests in CI.
+vi.setConfig({ testTimeout: 15_000, hookTimeout: 20_000 });
 
 let directory: string;
 let root: string;
@@ -17,6 +21,7 @@ let server: Server;
 let runtime: ReturnType<
     typeof import('../services/conversion-runtime.service').createConversionRuntime
 >;
+let runtimeConfig: ReturnType<typeof getConversionRuntimeConfig>;
 let createRuntime: typeof import('../services/conversion-runtime.service').createConversionRuntime;
 let createApp: typeof import('../app').createApp;
 let createSession: typeof import('../services/sessions.service').create;
@@ -72,17 +77,14 @@ beforeEach(async () => {
     sockets = [];
     convert = vi.fn(async () => output);
     const { getConversionRuntimeConfig } = await import('../env');
-    runtime = createRuntime({
-        root,
-        convert,
-        config: {
-            ...getConversionRuntimeConfig({}),
-            uploadIdleMs: 300,
-            uploadTotalMs: 1500,
-            sweepIntervalMs: 100,
-            shutdownGraceMs: 100,
-        },
-    });
+    runtimeConfig = {
+        ...getConversionRuntimeConfig({}),
+        uploadIdleMs: 10_000,
+        uploadTotalMs: 30_000,
+        sweepIntervalMs: 100,
+        shutdownGraceMs: 5_000,
+    };
+    runtime = createRuntime({ root, convert, config: runtimeConfig });
     await runtime.start();
     const app = await createApp({ conversions: runtime });
     app.locals.setReady(true);
@@ -99,7 +101,8 @@ afterEach(async () => {
     releases.forEach((release) => release());
     await runtime.whenIdle();
     await new Promise<void>((resolve) => server.close(() => resolve()));
-    await runtime.stop();
+    // stop() can resolve without draining; never delete live storage silently.
+    expect(await runtime.stop()).toEqual({ drained: true });
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(temp, { recursive: true, force: true });
     vi.restoreAllMocks();
@@ -169,11 +172,10 @@ function cancel(session: Session, op: ApiConversionOperation) {
     });
 }
 async function eventually(test: () => boolean | Promise<boolean>) {
-    for (let i = 0; i < 200; i++) {
-        if (await test()) return;
-        await delay(10);
-    }
-    expect(await test()).toBe(true);
+    await vi.waitFor(async () => expect(await test()).toBe(true), {
+        timeout: 10_000,
+        interval: 20,
+    });
 }
 function holdNext() {
     let release!: () => void;
@@ -409,11 +411,15 @@ it('rejects duplicate slot and excess transport admission before parsing, and cl
 });
 
 it('aborts idle uploads and permits a clean retry', async () => {
+    // Only this scenario needs a short idle deadline. The runtime retains the
+    // config object, so set it before admitting the incomplete request.
+    runtimeConfig.uploadIdleMs = 1_000;
     const session = await createSession();
     const op = await operation(session, 1);
     partial(session, op);
     await eventually(async () => (await fs.readdir(temp)).length === 1);
     await eventually(async () => (await fs.readdir(temp)).length === 0);
+    runtimeConfig.uploadIdleMs = 10_000;
     expect((await upload(session, op)).status).toBe(200);
 });
 
@@ -518,6 +524,8 @@ it('keeps storage failures retryable and checks transport validity immediately b
 });
 
 it('applies the total upload deadline even while bytes keep arriving', async () => {
+    // Keep idle longer than total so an idle timeout cannot satisfy this test.
+    runtimeConfig.uploadTotalMs = 1_500;
     const session = await createSession();
     const op = await operation(session, 1);
     const request = partial(session, op);

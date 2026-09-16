@@ -905,3 +905,28 @@ Suggested continuation prompt:
   undertaken in phase 5. Firefox/WebKit browser execution remains unverified in
   this container. Next action: implement phase 6 only when requested, beginning
   with real API/browser lifecycle fixtures and preservation of progressive results.
+
+### CI timeout follow-up — 2026-09-16
+
+- The reported CI failure occurred during a valid retry in the phase-4 HTTP
+  framing-limit test, followed by storage-ownership conflicts in later tests.
+  The latest frontend commit did not introduce these API tests.
+- Raised test-only ordinary upload deadlines from 300 ms idle / 1500 ms total
+  to 10 seconds idle / 30 seconds total, and shutdown grace from 100 ms to
+  5 seconds in `apps/api/src/__tests__/conversions-api.spec.ts`. This file now
+  allows 15 seconds per test, 20 seconds per hook, and 10 seconds for eventual
+  assertions. Production timeouts and CI parallelism are unchanged.
+- The idle-timeout scenario alone uses a 1-second idle deadline, then restores
+  the ordinary deadline before its valid retry. The total-timeout scenario alone
+  uses a 1.5-second total deadline while retaining a longer idle deadline, so an
+  accidental idle timeout cannot satisfy it. Teardown checks `{ drained: true }`
+  before removing and reusing storage instead of ignoring incomplete shutdown.
+- Validation passed:
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx test @image-web-convert/api`
+    — all 213 tests, including all 22 HTTP tests.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx typecheck @image-web-convert/api`
+    — passed.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx lint @image-web-convert/api`
+    — passed with the two existing `files.service.spec.ts` warnings.
+  - Prettier and `git diff --check` passed. The CI runner itself has not been
+    rerun locally; the next verification is the normal GitHub Actions run.
