@@ -8,3 +8,4 @@ export * from './lib/file-upload';
 export * from './lib/file-download';
 export * from './lib/file-progress';
 export * from './lib/utils';
+export { API_URL } from './lib/api-url';
