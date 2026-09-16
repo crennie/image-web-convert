@@ -12,6 +12,9 @@ export type ProcessInput = {
     inputPath: string; // absolute path to temp file
     outputMime: OutputMimeType;
     options?: Partial<ImageProcessingOptions>;
+    // Optional worker budget for libvips encoding; does not cover HEIC decoding
+    // or waiting for a libuv thread. The runtime also enforces a wall deadline.
+    timeoutSeconds?: number;
 };
 
 export type ProcessOutput = {
@@ -46,6 +49,7 @@ export async function processImageToMimeType({
     inputPath,
     outputMime,
     options,
+    timeoutSeconds,
 }: ProcessInput): Promise<ProcessOutput> {
     const opts: ImageProcessingOptions = { ...DEFAULT_IMG_OPTS, ...options };
 
@@ -129,6 +133,7 @@ export async function processImageToMimeType({
     }
 
     // 5) Encode
+    if (timeoutSeconds !== undefined) pipeline = pipeline.timeout({ seconds: timeoutSeconds });
     const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
 
     return {

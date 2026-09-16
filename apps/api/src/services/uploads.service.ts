@@ -1,3 +1,6 @@
+import { claimSessionWork } from './session-work.service';
+import { createConversionStorage } from './conversion-storage.service';
+import { ConversionTransitionError } from './conversions.service';
 import { removeStoredUpload, saveUploadFile } from './storage.service';
 import { ApiUploadAccepted, ApiUploadRejected, OutputMimeType } from '@image-web-convert/schemas';
 import { SessionInfo, writeSessionInfo } from './sessions.service';
@@ -54,9 +57,18 @@ export async function processUploadBatch(
     sessionInfo: SessionInfo,
 ): Promise<UploadBatchResult> {
     if (claimedSessions.has(sid)) throw new UploadClaimConflictError();
+    let release: () => void;
+    try { release = claimSessionWork(sid); }
+    catch { throw new UploadClaimConflictError(); }
     claimedSessions.add(sid);
 
     try {
+        try {
+            await createConversionStorage().read(sid);
+            throw new UploadClaimConflictError();
+        } catch (error) {
+            if (!(error instanceof ConversionTransitionError && error.type === 'operation_not_found')) throw error;
+        }
         const result = await convertUploads(sid, outputMime, uploads);
         const acceptedBytes = result.accepted.reduce(
             (total, upload) => total + (upload.meta.original.sizeBytes ?? 0),
@@ -83,5 +95,6 @@ export async function processUploadBatch(
         return result;
     } finally {
         claimedSessions.delete(sid);
+        release();
     }
 }

@@ -26,9 +26,8 @@ export type ApiUploadsErrorSessionUsed = z.infer<
     typeof ApiUploadsErrorSessionUsedSchema
 >;
 
-export const ApiUploadsErrorInProgressSchema = apiErrorSchema(
-    'upload_in_progress',
-);
+export const ApiUploadsErrorInProgressSchema =
+    apiErrorSchema('upload_in_progress');
 export type ApiUploadsErrorInProgress = z.infer<
     typeof ApiUploadsErrorInProgressSchema
 >;
@@ -66,7 +65,29 @@ export type ApiErrorUploadLimitExceeded = z.infer<
     typeof ApiErrorUploadLimitExceededSchema
 >;
 
+export const ApiErrorOperationNotFoundSchema = apiErrorSchema(
+    'operation_not_found',
+);
+export const ApiErrorConversionConflictSchema = apiErrorSchema(
+    'conversion_conflict',
+);
+export const ApiErrorConversionCapacitySchema = apiErrorSchema(
+    'conversion_capacity_exceeded',
+);
+export const ApiErrorStaleFileUploadSchema =
+    apiErrorSchema('stale_file_upload');
+export const ApiErrorUploadSizeMismatchSchema = apiErrorSchema(
+    'upload_size_mismatch',
+);
+export const ApiErrorStorageSchema = apiErrorSchema('storage_error');
+
 export const ApiErrorSchema = z.discriminatedUnion('type', [
+    ApiErrorOperationNotFoundSchema,
+    ApiErrorConversionConflictSchema,
+    ApiErrorConversionCapacitySchema,
+    ApiErrorStaleFileUploadSchema,
+    ApiErrorUploadSizeMismatchSchema,
+    ApiErrorStorageSchema,
     ApiErrorTokenSchema,
     ApiErrorSessionNotFoundSchema,
     ApiErrorSessionExpiredSchema,

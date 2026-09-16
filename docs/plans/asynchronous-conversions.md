@@ -1,6 +1,6 @@
 # Backend-owned asynchronous conversions: implementation plan
 
-Status: approved direction; implementation not started.
+Status: phases 1–4 complete; phases 5–6 pending.
 
 This is the durable implementation plan for the six phases in section 11 of
 the design review. It is intended to be read and updated by Codex across runs.
@@ -198,6 +198,8 @@ Extend the existing session directory using `storage.paths.ts`:
 session.info.json
 conversion.info.json
 inputs/<file-id>
+.conversion-staging/<temporary-id>
+.conversion-commits/<file-id>.json
 <file-id>.<output-extension>
 <file-id>.json
 ```
@@ -208,6 +210,14 @@ different filesystems by copying into destination staging before rename when
 needed. Write snapshots/output/metadata via temporary files and rename. Define
 write ordering and reconciliation explicitly; several JSON/filesystem writes
 are not one transaction.
+
+The phase 2 implementation stores `{ operation, inputs }` in
+`conversion.info.json`. Input references contain a stable stored name, byte
+count, and SHA-256 digest. Per-file commit receipts contain operation/file
+association, final metadata, output fingerprint, and original completion time.
+Output and metadata are published before the receipt, and the receipt before
+the completed operation snapshot. Recovery requires both matching artifacts and
+the receipt; a metadata sidecar alone does not establish completion.
 
 Publish a complete output and metadata before recording file completion. Delete
 input after its outcome is persisted. Retain enough commit evidence to reconcile
@@ -281,8 +291,8 @@ machine or infer readiness/completion from upload promises.
 Poll active operations approximately every second with one request in flight,
 backoff, Retry-After support, and stale-revision protection. Stop on terminal
 state/access expiry. A polling failure is a connection problem, not an operation
-failure. Status reads need a dedicated rate budget (initially 180/minute for the
-local user), excluded from the current global 100/minute budget while retaining
+failure. Status reads need a dedicated rate budget (implemented as 240/minute/IP for the
+local application), excluded from the current global 100/minute budget while retaining
 authorization and appropriate abuse limits. Keep command limits separately.
 
 Render successful outputs from backend metadata, without requiring local files
@@ -302,12 +312,12 @@ backend-owned operation that settles or expires.
 
 ## Implementation phases and completion gates
 
-All phases are initially pending. Update the checkbox and execution log only
+Update each phase's checkbox and the execution log only
 after the completion gate passes. Record blockers and failing checks honestly.
 
 ### Phase 1 — Contracts and transitions
 
-- [ ] Complete
+- [x] Complete
 
 Add shared request/snapshot/error schemas and application-owned transition
 functions. Keep existing routes/UI working. Encode immutable membership,
@@ -322,7 +332,7 @@ unit tests and typechecking pass.
 
 ### Phase 2 — Durable storage and per-file commits
 
-- [ ] Complete
+- [x] Complete
 
 Implement operation persistence, stable file IDs, staging promotion, serialized
 updates, individual artifact publication, and reconciliation functions. Separate
@@ -336,7 +346,7 @@ reconciliation. No whole-operation rollback of committed successes.
 
 ### Phase 3 — Scheduler, limits, cancellation, and lifecycle
 
-- [ ] Complete
+- [x] Complete
 
 Add process-owned scheduling with injected converter/storage/clock boundaries,
 validated resource settings, startup recovery, shutdown, deadlines, and cleanup.
@@ -353,7 +363,7 @@ assumed. Document any unsupported hard-timeout or decoder-limit behavior.
 
 ### Phase 4 — HTTP endpoints and completed-file downloads
 
-- [ ] Complete
+- [x] Complete
 
 Wire creation/upload/status/cancel routes and services, authentication before
 multipart work, slot admission/limits/timeouts, typed errors, idempotency, and
@@ -387,6 +397,107 @@ being ignored. Verify ordinary rerenders/Strict Mode do not trigger cancellation
 Verify existing upload component contracts/tests remain intact, except for any
 documented small behavior-preserving edits. Review the diff against the new
 component boundary before marking this phase complete.
+
+#### Phase 5 fresh-session implementation handoff
+
+Phases 1–4 are complete. Implement phase 5 only when asked to continue; do not
+retire legacy APIs or start phase 6 automatically. The phase 4 execution log below
+is the authoritative description of the implemented HTTP behavior.
+
+Read these anchors before editing:
+
+- `apps/web/app/routes/conversion/index.tsx`: currently mounts `ConversionPage`.
+  Prefer changing this mount to the new panel/composition, preserving the old
+  `ConversionPage` and its tests. Retain the page layout/error boundary through
+  composition as appropriate. This narrow route cutover is explicitly authorized.
+- `apps/web/app/routes/conversion/components/ConversionPage.tsx` and its existing
+  tests: reference for current capabilities, not the place to build the new flow.
+- `libs/ui/src/lib/session/SessionContext.tsx`,
+  `libs/ui/src/lib/file-upload/hooks/useFileItems.ts`, shared UI public exports,
+  and presentational file primitives: inspect which interfaces can be reused.
+- `libs/ui/src/lib/api-url.ts` and
+  `libs/ui/src/lib/file-download/hooks/useFileDownloads.ts`: existing API base,
+  authorization, filename, blob download, and object-URL cleanup conventions.
+  `API_URL` already includes the `/api` base by default. Follow package export
+  boundaries; a small public export is permissible if needed.
+- `libs/schemas/src/lib/api/conversions.ts`,
+  `apps/api/src/controllers/conversions.controller.ts`, and
+  `apps/api/src/__tests__/conversions-api.spec.ts`: exact request/response contracts
+  and examples of races, retries, partial results, and cancellation.
+- `apps/web/vite.config.ts`, `apps/web/app/setupTests.tsx`, existing web/UI Vitest
+  tests, and `apps/web-e2e/src/upload.spec.ts`: validation conventions. The existing
+  Playwright upload scenario mocks the legacy API and will need a focused fixture
+  update if run against the cutover route; real API/browser lifecycle work belongs
+  to phase 6. Keep shared legacy component tests intact.
+
+Suggested new app-owned files are `components/ConversionOperationPanel.tsx`,
+`hooks/useConversionOperation.ts`, `hooks/useConversionUploads.ts`, and a small
+transport/API helper under the conversion route. Names may follow local patterns.
+Keep snapshot consumption, network transport, and presentation separable enough
+to test. Do not introduce a frontend domain state machine or new dependency.
+
+Transport contract and implementation details:
+
+1. Obtain a session with the existing session API/context. Freeze the selected
+   batch intent on submit, generate one creation `requestId`, and retain it for
+   retries. POST `{ requestId, options: { outputMime }, files: [{ clientId, name,
+   sizeBytes }] }`. Output MIME is the only public conversion option currently.
+   Parse the direct response with `ApiConversionOperationSchema`; there is no
+   outer `operation` property. Map local files to server slots by `clientId`, not
+   display name or request completion order.
+2. Upload at most two slots concurrently with XMLHttpRequest (or an already
+   available transport exposing actual byte events). PUT one multipart file per
+   slot, with no additional form fields; let the browser set its boundary. Every
+   conversion/status/cancel/download request needs the session bearer token.
+   Scheduling byte transfer is frontend transport work; readiness, conversion
+   order, completion, and aggregate outcomes remain backend-owned.
+3. Multipart progress includes framing bytes. Label it as transport progress,
+   handle unknown totals honestly, and keep it separate from backend acceptance
+   and processing counts. Reset per-attempt counters on retry so bytes are not
+   counted twice. A locally aborted request is not proof of backend cancellation.
+4. Start status polling after creation, including while uploads are in flight.
+   Use approximately 1000 ms, one outstanding request, capped retry backoff and
+   `Retry-After`. Merge snapshots from all request sources by operation ID and
+   revision; a late PUT/GET/cancel response must not overwrite a newer snapshot
+   or a new batch. Abort/ignore stale requests when identity changes.
+5. After a lost upload response, read authoritative state before retrying. An
+   accepted/processing/completed slot needs no replacement upload; an awaiting
+   slot may be retried using the same local file. Treat 409 in-progress/conflict
+   as a reason to reconcile state, not an automatic permanent file failure.
+   Server file errors are authoritative; network errors do not settle a batch.
+6. Explicit Cancel stops queued local transfers, aborts active transfers, sends
+   the cancel command, and keeps polling until terminal. If that command fails,
+   show an unknown/pending connection state and allow retry; never synthesize a
+   cancelled operation. Page-exit cancellation instead uses `pagehide` with
+   authenticated `fetch(..., { keepalive: true })`, ignores its response/errors,
+   and does not run on ordinary effect cleanup, rerender, or visibility changes.
+7. Render completed result rows from `file.output.meta` and server URLs, even
+   without local File objects. Downloads require authenticated fetch/blob
+   handling rather than unauthenticated links. ZIP requests use `{ ids,
+   archiveName? }` with completed IDs only. Respect session expiry and revoke
+   preview/download object URLs. Do not expose credentials in URLs or persist
+   them for reload recovery.
+8. A session can own only one operation. A deliberate new batch must use a fresh
+   session; `startSession()` currently reuses an unexpired cached session. Do not
+   clear it on retryable failures, and do not assume `clearSession()` followed by
+   `startSession()` in the same render closure returns a new session. Test the
+   new-batch transition explicitly and retain the prior session while its results
+   are still displayed.
+
+Build and test the new panel against controlled snapshots/transports first, then
+switch the route mount. Add accessible status/error text, labelled cancel/retry
+controls, separate upload and processing summaries, and successful result actions.
+Use the phase 5 gate above plus tests for duplicate creation retry, repeated local
+filenames, lost upload acknowledgement, new-batch session isolation, and stale
+responses across operation changes.
+
+Validation should include existing Nx `test`, `typecheck`, and `lint` targets for
+`@image-web-convert/web` and `@image-web-convert/ui`, plus the web build and the
+relevant mocked Playwright flow after cutover. Confirm available targets/config
+first; run lint separately from tests to avoid temporary-directory scan races.
+Use existing dependencies. Record exact commands, outcomes, any baseline failures,
+and the remaining phase 6 work in this plan. Mark phase 5 complete only after its
+component boundary, tests, and narrow route cutover have been reviewed.
 
 ### Phase 6 — End-to-end verification and retirement
 
@@ -451,3 +562,251 @@ Suggested continuation prompt:
   including early UI slices, narrow cutover wiring, and preservation of existing
   upload components. Updated phases 5 and 6 to respect that boundary. All phases
   remain pending; documentation only.
+- 2026-09-08: Completed phase 1 (contracts and transitions).
+  - Added `libs/schemas/src/lib/api/conversions.ts` and its public exports:
+    strict creation intent, server slot IDs, discriminated file states, operation
+    snapshots, per-file errors, stop reasons, and counts. Extended the existing
+    API error union without changing legacy contracts.
+  - Added `apps/api/src/services/conversions.service.ts`: pure creation,
+    upload acceptance/permanent rejection, file start/finish, stop requests,
+    derived counts, and explicit public snapshot projection. Inputs are not
+    mutated. Backend processing defaults and effective session limits are
+    copied into application state; snapshots omit these internal fields.
+  - Readiness resolves automatically in upload transitions. Cancellation keeps
+    active work nonterminal and preserves its eventual success. Timeout/expiry
+    rejects late uncommitted success only after invocation settlement. Accepted
+    upload acknowledgement is replayable even after ordinary batch completion;
+    stopped/expired operations still reject uploads. Processing status remains
+    stable between files once an operation has started.
+  - Added 47 tests (15 schema, 32 service) covering manifest limits/IDs, byte
+    validation, association, readiness, outcomes, immutable transitions,
+    cancellation, timeout/expiry, snapshots, and future multi-file processing
+    representation. Existing schema/API tests remain passing.
+  - Restored existing locked dependencies with
+    `npm ci --cache /workspaces/image-web-convert/.npm-cache --no-audit --no-fund`;
+    moved the temporary npm cache into ignored `node_modules/.npm-cache` after
+    installation. No dependency manifests or lockfiles changed.
+  - Initial validation:
+    `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false ./node_modules/.bin/nx run-many -t test typecheck -p @image-web-convert/schemas @image-web-convert/api`.
+    Tests passed; API typechecking exposed narrowing errors in the new throwing
+    helper. Fixed the helper declaration. Nx also emitted an unconnected-cloud
+    warning, so subsequent checks explicitly disabled cloud usage.
+  - Intermediate validation:
+    `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t typecheck lint -p @image-web-convert/schemas @image-web-convert/api`
+    passed after that fix.
+  - Final validation:
+    `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck lint -p @image-web-convert/schemas @image-web-convert/api`.
+    Passed: 25 schema tests, 120 API tests, both project typechecks/lints, and
+    dependent schema/library builds. Lint retained two existing
+    `no-explicit-any` warnings in `files.service.spec.ts` (lines 235 and 272).
+    Changed TypeScript files were formatted with the installed Prettier.
+    `git diff --check` passed; final review found no route, UI, dependency, or
+    unrelated runtime edits.
+  - No scope deviation: persistence, locking, ID generation, request idempotency
+    coordination, worker scheduling, timers, and routes remain future phases.
+    The transition functions accept caller-supplied IDs/time and do no I/O.
+  - Next action: phase 2, durable operation/input storage and per-file commit
+    reconciliation. Persist transition results before scheduling work or
+    acknowledging uploads; add internal input references in that phase.
+- 2026-09-09: Completed phase 2 (durable storage and per-file commits), after
+  committing phase 1 locally as `3a4e2d5` at the user's request.
+  - Added `conversion-storage.schema.ts` and `conversion-storage.service.ts`
+    under `apps/api/src/services/`, and operation-owned paths in
+    `storage.paths.ts`. The store exposes create/read/update, upload acceptance,
+    output/failure commits, verified completed-output lookup, and explicit
+    startup recovery. Records are validated on read/write; malformed records and
+    storage I/O failures are distinct from operation-not-found errors.
+  - Input staging copies into the destination filesystem, validates actual
+    bytes, records a fingerprint, and atomically publishes acceptance. Request
+    cleanup cannot delete accepted input. Per-session mutation locks are shared
+    across store instances in one process; per-file claims reject simultaneous
+    duplicate upload/output writes. Large input copies and output staging run
+    outside the mutation lock, with lifecycle rechecks before publication.
+  - Snapshots and JSON artifacts use temporary-write, file sync, rename, and
+    directory sync. Per-file commit receipts resolve the crash boundary between
+    output/metadata publication and operation-state persistence. A failed later
+    commit never rolls back earlier successes. Snapshot failures after receipt
+    publication block further mutations until recovery, avoiding accidental
+    rollback or contradictory cancellation of an already published result.
+  - Recovery verifies committed artifacts, restores complete pending commits at
+    their original completion time, marks interrupted conversions failed, keeps
+    valid uploaded siblings, handles missing/corrupt input, honors stop/expiry,
+    and removes abandoned staging/partial artifacts after durable settlement.
+    Added the application transition `failUploadedConversionFile` so missing
+    input can fail before conversion without inventing a processing timestamp.
+  - During resumed review, fixed a receipt/snapshot publication race: initial
+    reads used for mutations now share the publication lock before checking for
+    interrupted commits. An ordinary in-flight publication is not a crash.
+  - Added 36 real-filesystem integration tests, including a real Sharp
+    conversion, write failures at output/metadata/receipt/snapshot boundaries,
+    input cleanup failure, cross-filesystem staging strategy, concurrent final
+    uploads, upload replay during publication, cancellation/timeout races,
+    restart reconciliation, corrupted artifacts, and preservation of successes.
+    Tests use isolated temporary directories inside the repository.
+  - Validation passed:
+    `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck lint -p @image-web-convert/api @image-web-convert/schemas`.
+    156 API tests and 25 schema tests passed; typechecking/lint passed with only
+    the same two pre-existing `no-explicit-any` warnings in
+    `files.service.spec.ts`. The 35-test initial storage suite also passed before
+    the final race regression was added.
+  - A focused rerun initially used unsupported Vitest option `--testFile`
+    through Nx and failed at CLI parsing (no tests ran). Corrected command:
+    `./node_modules/.bin/vitest run --config apps/api/vite.config.ts conversion-storage.service.spec.ts`.
+    All 36 storage tests passed after the final test synchronization adjustment.
+  - Existing HTTP flow validation passed:
+    `TMPDIR=/workspaces/image-web-convert/apps/api/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`.
+    API production build and all 3 existing server E2E tests passed. TMPDIR kept
+    integration-test files within the workspace. Changed TypeScript files were
+    formatted; final diff/whitespace review passed.
+  - Scope/implementation detail: a small per-file receipt was added to make
+    multi-file publication recoverable without a database. Directory fsync is
+    exercised on the current Linux filesystem; this is not a guarantee for
+    every OS/filesystem. The original synchronous services/routes/UI and
+    dependency manifests remain unchanged.
+  - Next action: phase 3, scheduler/resource limits/lifecycle wiring. Call
+    `recoverAfterRestart` only before accepting requests or running converters;
+    recovery is not safe against live conversion work. The startup coordinator
+    must catch/report or quarantine invalid sessions independently, discover
+    pending operations, and schedule remaining uploaded files (including a
+    recovered `processing` operation with no active invocation). No scheduler,
+    automatic startup scan, periodic expiry sweeper, or new endpoints are wired
+    yet. Phase 4 must use the completed-output gate for new-operation downloads;
+    preserve legacy sealed-session download behavior until that cutover.
+
+
+### Phase 3 completion — 2026-09-09
+
+- Phase 2 was committed as `f51dd32` before this work.
+- Added `conversion-runtime.service.ts`: one process-owned sequential worker per
+  storage root, FIFO ready operations and manifest order, durable claims and
+  outcomes, periodic rediscovery (default 1 second), startup recovery before
+  readiness, and bounded shutdown. Repeated wakeups cannot duplicate work.
+  Invalid session records are reported and isolated; runtime mutation failures
+  stop scheduling and readiness rather than guessing durable state.
+- Added global operation/upload admission, independent idle/total upload timers,
+  session-use leases, cooperative conversion deadlines, and terminal expired
+  session cleanup. Timed-out uploads retain capacity until transport settlement;
+  timed-out conversions retain their slot/input until invocation settlement.
+  Cancellation preserves active-file success; timeout/expiry reject late results.
+- `main.ts` starts recovery before listening and drains HTTP plus runtime work on
+  shutdown. `createApp` constructs/injects the runtime without starting timers;
+  readiness requires the runtime to be ready. Tests that need scheduling must
+  explicitly start and stop their injected runtime.
+- Validated environment settings: `CONVERSION_MAX_OPERATIONS` (3),
+  `CONVERSION_MAX_UPLOADS` (2), `CONVERSION_UPLOAD_IDLE_MS` (60000),
+  `CONVERSION_UPLOAD_TOTAL_MS` (300000), `CONVERSION_FILE_TIMEOUT_MS` (120000),
+  `CONVERSION_SWEEP_INTERVAL_MS` (1000), `CONVERSION_SHUTDOWN_GRACE_MS` (10000),
+  `CONVERSION_MAX_INPUT_PIXELS` (200000000), `CONVERSION_MAX_DIMENSION` (8192).
+  Current worker ceilings also constrain recovered operations' stored options.
+- The installed Sharp supports `.timeout({ seconds })` (integer, at most 3600).
+  It measures libvips processing, excluding thread-pool waiting; the application
+  deadline additionally checks elapsed time after conversion settles. Neither
+  mechanism guarantees a hard wall-clock cutoff.
+- HEIC limitation confirmed in installed `heic-decode`/`heic-convert`: decoding
+  allocates width × height × 4 bytes before Sharp sees the image, and JPEG
+  preprocessing uses synchronous `jpeg-js.encode`. No caller-provided pixel
+  ceiling or abort signal protects that preceding decode. The configured Sharp
+  pixel limit therefore does not bound HEIC preprocessing memory or CPU. A hard
+  cutoff would require separately scoped process isolation.
+- Real scheduler smoke test uses a generated 1024×768 PNG, repository
+  `apps/api/test_data/photo.heic`, and a 256-pixel output ceiling. One container
+  run measured PNG→WebP 29 ms, HEIC→WebP 1311 ms, PNG→AVIF 59 ms. Maximum gaps
+  between nominal 10 ms timer samples were 10/1238/14 ms respectively. These are
+  observations, not performance guarantees; HEIC noticeably delays HTTP/timers.
+- Validation passed:
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test lint -p @image-web-convert/api`
+    — 191 tests, including 24 runtime tests and a real-encoder smoke test;
+    lint has only the two existing `files.service.spec.ts` warnings.
+  - `./node_modules/.bin/tsc --build apps/api/tsconfig.json --emitDeclarationOnly --force`
+    — production and test TypeScript checked without relying on Nx cache.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true TMPDIR=/workspaces/image-web-convert/tmp ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
+    — production API build and four HTTP tests, including readiness gating.
+- Next action: phase 4. Wire authenticated commands to runtime methods and shared
+  snapshots. `createOperation` currently returns a stored record; implement
+  HTTP creation idempotency before admission for retries. Acquire `beginUpload`
+  before multipart parsing; call `touch` on incoming bytes, abort transport in its
+  timeout callback, call `assertActive` before acceptance, and `release` only on
+  actual request settlement. Validate session/operation/slot association before
+  admission. Hold `acquireSessionUse` throughout each output/ZIP stream and
+  release on close/error. These interfaces do not replace authorization.
+  Existing legacy upload/download routes and UI remain unchanged: their old
+  concurrency is not governed by this scheduler during migration. No new HTTP
+  endpoints or frontend workflow were added in phase 3.
+
+
+### Phase 4 completion — 2026-09-09
+
+- Added authenticated Express conversion routes/controllers:
+  `POST /api/sessions/:sid/conversions`,
+  `GET /api/sessions/:sid/conversions/:operationId`,
+  `PUT /api/sessions/:sid/conversions/:operationId/files/:fileId`, and
+  `POST /api/sessions/:sid/conversions/:operationId/cancel`.
+  All successful responses contain the shared `ApiConversionOperation` snapshot
+  directly; creation (including an idempotent retry) returns 201, other commands
+  and status return 200. No separate start command exists.
+- Creation uses the shared manifest contract (`requestId`, `options.outputMime`,
+  ordered `files` with `clientId`, `name`, `sizeBytes`). Server-generated slot IDs
+  appear in the snapshot. A matching request ID plus normalized manifest/options
+  returns the existing operation before capacity checks; conflicting intent is
+  409. A simultaneous creation/legacy claim can return retryable 409
+  `upload_in_progress`. The common local session claim plus durable operation
+  detection prevents legacy processing from sharing an operation's session.
+- Upload accepts exactly one multipart file (any field name), with no additional
+  fields/files. Authenticate and check operation/slot association before parsing.
+  Already accepted slots return their existing snapshot without replacing bytes.
+  The server spools the raw request into an isolated temporary directory, with a
+  cap of declared file bytes plus 64 KiB of multipart framing, then uses Node 22's
+  multipart parser. This decoder buffers the bounded body; memory consumption is
+  proportional to the configured file size and upload concurrency, not constant.
+  No parser dependency was added and the legacy upload middleware stays in use
+  for legacy requests.
+- Incomplete/disconnected/timed-out or malformed multipart requests leave the
+  slot retryable. Transport that exceeds the framing cap may have its connection
+  closed before an error response can be delivered; it also stays retryable.
+  An otherwise complete single-file upload with a byte mismatch/oversized file
+  receives 400/413 and permanently fails its slot, allowing uploaded siblings to
+  proceed. Unsupported/malformed image decoding is represented as a per-file
+  `conversion_failed` outcome from the existing converter exception boundary;
+  status GET remains 200 with authoritative partial/failure results.
+- Upload admission lasts through pipeline settlement and temporary cleanup.
+  Idle and total deadlines explicitly close the captured request socket (stream
+  teardown may detach it from `IncomingMessage`). Storage rechecks request
+  validity inside the publication lock after copying staged bytes. Startup
+  removes abandoned `conversion-XXXXXX` request directories before listening;
+  legacy temporary files and authoritative operation records are untouched.
+- Status polling has a separate 240 requests/minute/IP budget and `no-store`
+  responses. Matching GETs do not consume the existing command rate limit, so
+  500–1000 ms polling leaves capacity for uploads and cancellation. Commands
+  retain the existing application limiter.
+- Added an operation-aware download router before the legacy file router.
+  Existing individual file, metadata, and ZIP URLs now verify committed per-file
+  results for operation sessions, regardless of operation sealing/completion.
+  ZIPs include requested completed outputs and report missing/pending IDs through
+  the existing `X-Missing-Ids` header. Session-use leases cover response finish or
+  close so expiry cleanup cannot remove files during downloads. Sessions without
+  an operation continue through the legacy sealed-session controllers.
+- Validation passed:
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx test @image-web-convert/api`
+    — 213 tests, including 22 new real-HTTP tests with injected converters for
+    deterministic races, retries, limits, cancellation, partial downloads/ZIPs,
+    polling budget, failed storage, abort cleanup, failed ZIP stream closure, and
+    startup request cleanup.
+  - `./node_modules/.bin/tsc --build apps/api/tsconfig.json --emitDeclarationOnly --force`
+    — production and test TypeScript, without relying on Nx cache.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx lint @image-web-convert/api`
+    — no errors; two existing warnings in `files.service.spec.ts`. Run lint after
+    tests: running both simultaneously can race ESLint's scan of temporary test
+    directories (observed ENOENT; sequential validation passes).
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true TMPDIR=/workspaces/image-web-convert/tmp ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
+    — production API build and all four existing HTTP lifecycle tests pass.
+- Next action: phase 5, the new operation UI and dedicated transport/polling hooks.
+  Reuse the contracts/URLs above, send at most two uploads, render backend
+  snapshots and real network byte progress, and preserve the existing UI
+  components as stipulated. No frontend files or dependencies changed in phase 4.
+
+
+- 2026-09-09 handoff review: Expanded phase 5 with exact API/transport contracts,
+  source anchors, session/retry/revision rules, cutover boundaries, and validation
+  expectations for a fresh session. Corrected the earlier polling-budget example
+  to the implemented 240 requests/minute/IP. Documentation only in this handoff;
+  no UI implementation or additional test execution.

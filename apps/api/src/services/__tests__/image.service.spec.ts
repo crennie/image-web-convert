@@ -60,6 +60,7 @@ function makeSharpChain() {
     const chain: any = {};
     chain.rotate = vi.fn(() => chain);
     chain.toColourspace = vi.fn(() => chain);
+    chain.timeout = vi.fn(() => chain);
     chain.resize = vi.fn(() => chain);
     chain.webp = vi.fn(() => chain);
     chain.metadata = vi.fn();
@@ -275,6 +276,7 @@ describe("processImageToMimeType (unit)", () => {
         await processImageToMimeType({
             outputMime: 'image/webp',
             inputPath: "/tmp/p.png",
+            timeoutSeconds: 2,
             options: { maxDimension: 1024, quality: 95, effort: 6, normalizeColorSpace: "srgb" },
         });
 
@@ -283,5 +285,6 @@ describe("processImageToMimeType (unit)", () => {
             expect.objectContaining({ width: 1024, height: 1024 })
         );
         expect(pipeChain.webp).toHaveBeenCalledWith({ quality: 95, effort: 6 });
+        expect(pipeChain.timeout).toHaveBeenCalledWith({ seconds: 2 });
     });
 });

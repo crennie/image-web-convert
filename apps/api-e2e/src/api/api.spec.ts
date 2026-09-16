@@ -15,6 +15,7 @@ let baseUrl: string;
 let storageRoot: string;
 let tempRoot: string;
 let png: Buffer;
+let conversions: { start(): Promise<void>; stop(): Promise<{ drained: boolean }> };
 
 async function createSession() {
     const response = await fetch(`${baseUrl}/api/sessions`, { method: 'POST' });
@@ -67,6 +68,8 @@ beforeAll(async () => {
     // eslint-disable-next-line @nx/enforce-module-boundaries
     const { createApp } = await import('@image-web-convert/api-app');
     const app = await createApp();
+    conversions = app.locals.conversions;
+    app.locals.setReady(true);
     await new Promise<void>((resolve) => {
         server = app.listen(0, '127.0.0.1', resolve);
     });
@@ -84,6 +87,14 @@ afterAll(async () => {
 });
 
 describe('API lifecycle', () => {
+    it('gates readiness on runtime recovery and shutdown', async () => {
+        expect((await fetch(`${baseUrl}/readyz`)).status).toBe(503);
+        await conversions.start();
+        expect((await fetch(`${baseUrl}/readyz`)).status).toBe(200);
+        expect(await conversions.stop()).toEqual({ drained: true });
+        expect((await fetch(`${baseUrl}/readyz`)).status).toBe(503);
+    });
+
     it('creates, validates, converts, seals, reads metadata, and downloads', async () => {
         const session = await createSession();
         expect(session.imageConfig).toMatchObject({

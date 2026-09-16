@@ -11,6 +11,45 @@ const EnvSchema = z.object({
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
 
+    CONVERSION_MAX_OPERATIONS: z.coerce.number().int().positive().default(3),
+    CONVERSION_MAX_UPLOADS: z.coerce.number().int().positive().default(2),
+    CONVERSION_UPLOAD_IDLE_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .max(2_147_483_647)
+        .default(60_000),
+    CONVERSION_UPLOAD_TOTAL_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .max(2_147_483_647)
+        .default(300_000),
+    CONVERSION_FILE_TIMEOUT_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .max(3_600_000)
+        .default(120_000),
+    CONVERSION_SWEEP_INTERVAL_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .max(2_147_483_647)
+        .default(1_000),
+    CONVERSION_SHUTDOWN_GRACE_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .max(2_147_483_647)
+        .default(10_000),
+    CONVERSION_MAX_INPUT_PIXELS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(200_000_000),
+    CONVERSION_MAX_DIMENSION: z.coerce.number().int().positive().default(8192),
+
     SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(15),
     SESSION_MAX_FILES: z.coerce.number().int().positive().default(20),
     SESSION_PER_FILE_BYTES: z.coerce
@@ -61,3 +100,23 @@ export function getSessionImageConfig(
         maxTotalBytes: env.SESSION_MAX_TOTAL_BYTES,
     };
 }
+
+export function getConversionRuntimeConfig(
+    src: NodeJS.ProcessEnv = process.env,
+) {
+    const env = loadEnv(src);
+    return {
+        maxOperations: env.CONVERSION_MAX_OPERATIONS,
+        maxUploads: env.CONVERSION_MAX_UPLOADS,
+        uploadIdleMs: env.CONVERSION_UPLOAD_IDLE_MS,
+        uploadTotalMs: env.CONVERSION_UPLOAD_TOTAL_MS,
+        fileTimeoutMs: env.CONVERSION_FILE_TIMEOUT_MS,
+        sweepIntervalMs: env.CONVERSION_SWEEP_INTERVAL_MS,
+        shutdownGraceMs: env.CONVERSION_SHUTDOWN_GRACE_MS,
+        maxInputPixels: env.CONVERSION_MAX_INPUT_PIXELS,
+        maxDimension: env.CONVERSION_MAX_DIMENSION,
+    };
+}
+export type ConversionRuntimeConfig = ReturnType<
+    typeof getConversionRuntimeConfig
+>;
