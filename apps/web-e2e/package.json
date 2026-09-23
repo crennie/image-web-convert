@@ -4,7 +4,34 @@
     "private": true,
     "nx": {
         "implicitDependencies": [
-            "@image-web-convert/web"
-        ]
+            "@image-web-convert/web",
+            "@image-web-convert/api"
+        ],
+        "targets": {
+            "e2e": {
+                "executor": "nx:run-commands",
+                "cache": false,
+                "dependsOn": [
+                    "@image-web-convert/web:build",
+                    "@image-web-convert/api:build",
+                    "@image-web-convert/api-e2e:build-fixture"
+                ],
+                "options": {
+                    "cwd": "apps/web-e2e",
+                    "command": "playwright test --config playwright.config.ts"
+                }
+            },
+            "browser-integration": {
+                "executor": "nx:run-commands",
+                "cache": false,
+                "dependsOn": [
+                    "@image-web-convert/web:build"
+                ],
+                "options": {
+                    "cwd": "apps/web-e2e",
+                    "command": "playwright test --config browser-integration.config.ts"
+                }
+            }
+        }
     }
 }

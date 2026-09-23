@@ -8,13 +8,25 @@
         ],
         "targets": {
             "e2e": {
+                "executor": "nx:noop",
+                "dependsOn": [
+                    "test"
+                ]
+            },
+            "build-fixture": {
                 "executor": "nx:run-commands",
-                "options": {
-                    "cwd": "apps/api-e2e",
-                    "command": "vitest run"
-                },
                 "dependsOn": [
                     "@image-web-convert/api:build"
+                ],
+                "options": {
+                    "cwd": "apps/api-e2e",
+                    "command": "vite build --config fixture.config.ts"
+                }
+            },
+            "test": {
+                "cache": false,
+                "dependsOn": [
+                    "build-fixture"
                 ]
             }
         }

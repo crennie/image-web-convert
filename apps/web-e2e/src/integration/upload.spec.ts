@@ -1,5 +1,6 @@
-import { expect, test, type Page } from '@playwright/test';
-import { firstImage, secondImage, type ImageFixture } from './fixtures/images';
+import type { Page } from '@playwright/test';
+import { expect, test } from '../support/application';
+import { firstImage, secondImage, type ImageFixture } from '../fixtures/images';
 import type {
     ApiConversionOperation,
     ApiCreateConversionRequest,

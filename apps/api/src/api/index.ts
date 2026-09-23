@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import sessionsRouter from '../routes/sessions.routes';
-import uploadsRouter from '../routes/uploads.routes';
 import filesRouter from '../routes/files.routes';
 
 import createConversionsRouter from '../routes/conversions.routes';
@@ -10,7 +9,8 @@ export default function createApiRouter(): Router {
     const apiRouter: Router = Router();
 
     apiRouter.use('/sessions', sessionsRouter);
-    apiRouter.use('/sessions/:sid/uploads', uploadsRouter);
+    // Synchronous /uploads is retired. Unmatched requests return 404 without
+    // loading its multipart parser or starting the legacy converter.
     apiRouter.use('/sessions/:sid/conversions', createConversionsRouter());
     apiRouter.use('/sessions/:sid/files', conversionFilesRouter);
     apiRouter.use('/sessions/:sid/files', filesRouter);

@@ -14,7 +14,7 @@
         "lint:fix": "nx run-many -t lint -- --fix",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
-        "ci:hook": "nx run-many -t lint test build typecheck e2e --cloud=false --no-cloud"
+        "ci:hook": "nx run-many -t lint test build typecheck e2e browser-integration --cloud=false --no-cloud"
     },
     "private": true,
     "dependencies": {

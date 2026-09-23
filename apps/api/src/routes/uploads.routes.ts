@@ -1,3 +1,5 @@
+// Retired: this router is intentionally not mounted by createApiRouter.
+// Retained with legacy implementation tests; new callers use /conversions.
 import fs from 'node:fs';
 import { Router } from 'express';
 import fileUpload from 'express-fileupload';
