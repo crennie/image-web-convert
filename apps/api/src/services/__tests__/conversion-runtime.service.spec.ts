@@ -632,6 +632,68 @@ describe('admission and runtime lifecycle', () => {
         expect(record.operation.expiresAt).toBe(expiresAt);
     });
 
+    it('serializes concurrent identical and conflicting creation without duplicating the operation', async () => {
+        await seedSession('concurrent-session');
+        const rt = runtime();
+        await rt.start();
+        const create = store.create.bind(store);
+        let entered!: () => void;
+        let release!: () => void;
+        const started = new Promise<void>((resolve) => {
+            entered = resolve;
+        });
+        const held = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const persist = vi
+            .spyOn(store, 'create')
+            .mockImplementationOnce(async (operation) => {
+                entered();
+                await held;
+                return create(operation);
+            });
+        const first = rt.createOperation('concurrent-session', manifest);
+        await started;
+        const same = rt.createOperation('concurrent-session', manifest);
+        const different = rt.createOperation('concurrent-session', {
+            ...manifest,
+            requestId: 'different',
+        });
+        const outcomes = Promise.allSettled([first, same, different]);
+        release();
+        const [created, retried, rejected] = await outcomes;
+        expect(created.status).toBe('fulfilled');
+        expect(retried).toEqual(created);
+        expect(rejected).toMatchObject({
+            status: 'rejected',
+            reason: { type: 'conversion_conflict' },
+        });
+        expect(persist).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps slot ownership independent across sessions and ignores stale release', async () => {
+        const rt = runtime();
+        await rt.start();
+        const first = rt.beginUpload('session-a', 'file-0', expiresAt, vi.fn());
+        const other = rt.beginUpload('session-b', 'file-0', expiresAt, vi.fn());
+        first.release();
+        const replacement = rt.beginUpload(
+            'session-a',
+            'file-0',
+            expiresAt,
+            vi.fn(),
+        );
+        first.release();
+        expect(() =>
+            rt.beginUpload('session-a', 'file-0', expiresAt, vi.fn()),
+        ).toThrow('already has');
+        expect(() =>
+            rt.beginUpload('session-b', 'file-0', expiresAt, vi.fn()),
+        ).toThrow('already has');
+        replacement.release();
+        other.release();
+    });
+
     it('counts recovered operations and serializes creation at the configured limit', async () => {
         await seed('existing-session', 1, 0);
         const rt = runtime({ config: { ...config, maxOperations: 2 } });

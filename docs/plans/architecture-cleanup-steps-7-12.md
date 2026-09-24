@@ -1,12 +1,12 @@
 # Architecture cleanup: steps 7–12
 
-Status: steps 7–8 complete; steps 9–12 remain pending.
+Status: steps 7–9 complete; steps 10–12 remain pending.
 Reviewed against the repository on 2026-09-24, after commit `4f01c51`.
 
 This document preserves the intent of the supplied architecture-cleanup steps
 7–12 while reconciling them with the completed
 [asynchronous conversion plan](asynchronous-conversions.md). These are cleanup
-step numbers, not additional phases of that six-phase migration. The initial request authorized saving this plan only. Steps 7–8 were subsequently
+step numbers, not additional phases of that six-phase migration. The initial request authorized saving this plan only. Steps 7–9 were subsequently
 authorized and completed; implement later steps only when requested and record
 their evidence here.
 
@@ -111,7 +111,7 @@ proves a boundary not established by deterministic stream tests.
 
 ## Step 9 — Verify active concurrency ownership
 
-- [ ] Audit and complete
+- [x] Audit and complete (2026-09-24)
 
 Inspect `session-work.service.ts`, runtime `createOperation`/`beginUpload`, durable
 storage mutation coordination, and the legacy batch tests. Reuse existing claims;
@@ -351,3 +351,45 @@ limits. Do not claim historical counts or unobserved CI runs as fresh results.
 - Reviewed the diff and whitespace. No production dependency or lockfile changes,
   no remote writes, and no commit. Previous step 7 work remains intact.
   Next requested step: 9, active concurrency audit.
+
+### Step 9 completion — 2026-09-24
+
+- At the user's request, committed steps 7–8 as `53c629d` (`Centralize conversion
+  ownership and harden ZIP downloads`) and confirmed a clean tree before step 9.
+  No push. Step 9 changes remain uncommitted.
+- Audited application creation admission, runtime per-slot transport claims,
+  storage acceptance claims, and controller cleanup. The existing design already
+  permits sibling slots and independent sessions within the upload capacity limit.
+  Kept these mechanisms and existing shared errors; no additional lock or queue.
+- Found and reproduced a stale-release bug in `claimSessionWork`: releasing an
+  old owner twice could delete a replacement owner's claim. The new focused test
+  failed against the original helper, then passed after making release idempotent.
+  Documented the helper's process-local/application scope and runtime slot ownership.
+- Added deterministic runtime coverage for concurrent identical/conflicting
+  operation intents: persistence is held at an explicit barrier, only one operation
+  is written, matching requests share the result, and changed intent conflicts.
+  Added independent-session slot ownership and stale-release coverage. Existing
+  runtime release is already idempotent and needed no behavioral change.
+- Added a real API process concurrency case. Simultaneous identical creation
+  returns the same operation; another intent returns schema-validated 409
+  `conversion_conflict`. A genuinely open multipart request holds a slot while a
+  duplicate receives schema-validated 409 `upload_in_progress` without another
+  staging directory or accepted input. Sibling upload and conversion in another
+  session proceed while that transport remains open. Disconnect clears staging;
+  retry completes normally; accepted-slot replay preserves state and output bytes.
+- Existing tests retain failure-boundary coverage: legacy partial/all-rejected
+  batches and persistence rollback, operation creation read/write failure release,
+  failed input copy and retry, cancellation during copy/transport, malformed upload
+  and storage-error retry, idle/total/expiry deadlines, and timed-out transport
+  retaining capacity until release. Native conversion still retains capacity until
+  it settles; cancellation does not manufacture an early release.
+- Validation: 232 API tests across 18 files pass with coverage; all ten real API
+  process E2E cases pass. API/fixture builds and API/API-E2E lint/typechecks pass.
+  `session-work.service.ts` has 100% statements, branches, and functions; runtime
+  has 95.41% statements, 85.78% branches, and 97.14% functions. Inspected changed
+  coverage; all newly changed claim behavior is covered.
+- Used the same Nx flags, `NX_NO_CLOUD=true`, and repository-local TMPDIR as steps
+  7–8. Only existing Node color-environment warnings appeared in relevant checks.
+  No browser/UI change: browser suites and hosted CI were not rerun for step 9.
+  No dependency or lockfile changes. Final diff and whitespace reviewed.
+- Next requested step: 10, presentation-only legacy progress audit.

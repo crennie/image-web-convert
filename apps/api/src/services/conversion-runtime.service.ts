@@ -582,9 +582,11 @@ export function createConversionRuntime(
         }
     }
 
-    /** Future upload middleware acquires this before parsing bytes, calls touch
-     * on data, asserts validity before acceptance, and releases on request end.
-     * Timeout callback must abort transport; ownership lasts until release. */
+    /** Process-local per-slot admission, acquired by the HTTP adapter before
+     * parsing bytes. Different slots/sessions may proceed within maxUploads.
+     * The adapter touches on data and checks validity before durable acceptance.
+     * Timeout/cancellation does not release capacity: transport and temporary
+     * cleanup must settle before the owner calls release (which is idempotent). */
     function beginUpload(
         sid: string,
         fileId: string,
