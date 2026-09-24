@@ -1,12 +1,12 @@
 # Architecture cleanup: steps 7–12
 
-Status: steps 7–10 complete; steps 11–12 remain pending.
+Status: steps 7–11 complete; step 12 remains pending.
 Reviewed against the repository on 2026-09-24, after commit `4f01c51`.
 
 This document preserves the intent of the supplied architecture-cleanup steps
 7–12 while reconciling them with the completed
 [asynchronous conversion plan](asynchronous-conversions.md). These are cleanup
-step numbers, not additional phases of that six-phase migration. The initial request authorized saving this plan only. Steps 7–10 were subsequently
+step numbers, not additional phases of that six-phase migration. The initial request authorized saving this plan only. Steps 7–11 were subsequently
 authorized and completed; implement later steps only when requested and record
 their evidence here.
 
@@ -161,7 +161,7 @@ E2E as well as relevant mocked browser integration tests.
 
 ## Step 11 — Update documentation proportionately
 
-- [ ] Audit and complete
+- [x] Audit and complete (2026-09-24)
 
 Update README only where the final code differs. Verify Node/npm setup,
 installation, development/validation commands, monorepo layout, backend-authoritative
@@ -420,3 +420,30 @@ limits. Do not claim historical counts or unobserved CI runs as fresh results.
 - Reviewed final diff and whitespace. No dependency or lockfile change. User
   requested a local commit after implementation; no push is authorized.
 - Next requested step: 11, targeted README review.
+
+### Step 11 completion — 2026-09-24
+
+- Reviewed README against root scripts, project targets, CI, API environment
+  defaults, storage paths/commit cleanup, upload ownership, ZIP handlers, legacy
+  cosmetic components, and actual E2E scenarios. Preserved the asynchronous
+  lifecycle and its existing recovery, HEIC, timeout, expiry, and page-exit limits.
+- Documented Node 22/npm 10, development ports, and CI-matching installation with
+  `npm ci --legacy-peer-deps`. Both plain and CI-style `npm ci` resolve successfully
+  in non-mutating dry runs on this environment with scripts/audit disabled. The
+  flag is documented for CI parity, not asserted to be required everywhere.
+- Added the browser-test project to the layout; clarified per-slot/process-local
+  claims, cleanup timing, idempotent creation, 409 conflicts, and 413 limits.
+  Documented ZIP ordering, collision-safe names, missing-ID reporting, and failures
+  before/after headers. Clarified centralized storage paths, process-relative
+  defaults, partial-output cleanup, and durable receipt recovery.
+- Distinguished legacy cosmetic activity from the mounted route's actual upload
+  bytes and authoritative backend states. Updated explicit Nx target commands and
+  concurrency/ZIP E2E coverage; explained that npm test includes real API tests
+  while browser E2E runs through its own targets or ci:hook. CI coverage remains
+  required; no claim of a newly observed hosted CI or complete browser matrix.
+- Documentation-only validation: reviewed commands/configuration and local links,
+  checked README formatting and git whitespace, and inspected the final diff.
+  No application tests rerun or dependency/lockfile changes. Existing application
+  validation evidence remains in the preceding step logs.
+- User requested a local commit after completion; no push. Next requested step:
+  12, extend representative real lifecycle/failure coverage and full validation.
