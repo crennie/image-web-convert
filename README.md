@@ -6,13 +6,17 @@ Router frontend provides the browser workflow.
 
 ## Setup and development
 
-Use Node.js 22 and npm 10 or newer. Install the locked dependencies and start
-the frontend and API with:
+Use Node.js 22 with npm 10 (the validated local version). Install the locked
+dependencies and start the frontend and API with:
 
 ```sh
-npm ci
+npm ci --legacy-peer-deps
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run dev
 ```
+
+The install flag matches CI's peer-dependency resolution. The frontend runs at
+`http://localhost:4200`; the API defaults to port 4201. Run commands from the
+repository root.
 
 The usual validation commands are:
 
@@ -21,7 +25,7 @@ NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run lint
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run typecheck
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm test
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run build
-NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx e2e @image-web-convert/api-e2e
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx run @image-web-convert/api-e2e:e2e
 ```
 
 Nx Cloud may warn that this local workspace is unconnected; that does not
@@ -44,7 +48,10 @@ also configure the API's `CORS_ORIGIN` appropriately.
 - `apps/web` contains the React Router frontend.
 - `apps/api` contains Express routes/controllers, application services, image
   processing, and filesystem storage.
-- `apps/api-e2e` exercises the running Express middleware and routing stack.
+- `apps/api-e2e` starts isolated API processes and exercises real routing,
+  conversion, storage, downloads, and recovery.
+- `apps/web-e2e` contains real browser/API E2E tests and separate mocked browser
+  integration tests.
 - `libs/schemas` contains shared Zod request, response, error, and limit
   contracts used at application boundaries.
 - `libs/ui`, `libs/node-shared`, and `libs/observability` contain reusable UI,
@@ -78,6 +85,23 @@ migration is recorded in [the implementation plan](docs/plans/asynchronous-conve
    snapshots report `partially_completed` or `failed` rather than returning a
    synchronous batch result. Successful status requests return HTTP 200.
 
+Operation creation owns a process-local session claim, reads current persisted
+session state, and serializes admission. Matching intent retries reuse the existing
+operation; a different intent returns HTTP 409 `conversion_conflict`. Upload claims
+are per file slot: a second active upload to that slot returns HTTP 409
+`upload_in_progress` before multipart staging. Sibling slots and other sessions
+remain independent within the configured capacity limits. Upload claims release after
+transport settlement and temporary-file cleanup; a timeout alone does not free
+capacity. These guarantees apply to one API process, not distributed workers.
+
+ZIPs preserve requested file order and use unique entry names, including when
+original names already contain suffixes such as `(2)`. If some requested IDs have
+no completed output, the response lists them in `X-Missing-Ids` and includes the
+available files; if none are available it returns 404. A source failing after
+resolution fails the archive rather than silently dropping that entry. Archive
+errors before streaming are returned as HTTP errors; after headers are sent the
+response is closed. Client aborts stop pending archive work.
+
 The conversion endpoints are:
 
 | Method | Path                                                        | Purpose                                                                   |
@@ -107,12 +131,17 @@ until their original expiry. The old shared UI components, cosmetic progress,
 contracts, and backend upload modules remain for compatibility tests and separate
 cleanup. The preserved `useFileUploads` hook calls the retired endpoint and is
 not a supported end-to-end workflow; the mounted route uses the operation API.
+The legacy waiting indicator is explicitly cosmetic and displays no measured
+percentage or conversion stage. API completion/error controls that legacy page's
+workflow. The active route reports actual network upload bytes and backend file
+states; it does not report a measured encoding percentage.
 
 ## Limits, deadlines, and storage
 
 Backend settings are authoritative. The session response exposes its effective
 file/byte limits. The session lifetime is fixed from creation and includes upload
-and queue time; polling, cancellation, and downloads do not extend it.
+and queue time; polling, cancellation, and downloads do not extend it. Exceeding
+file/count/aggregate-byte limits returns HTTP 413 `upload_limit_exceeded`.
 
 | Environment variable                      | Default     | Meaning                                         |
 | ----------------------------------------- | ----------- | ----------------------------------------------- |
@@ -146,14 +175,18 @@ Sharp's pixel ceiling and timeout do not bound that earlier memory/CPU use. Hard
 wall-clock termination would require separate process isolation, which this app
 does not implement.
 
-`UPLOAD_DIR` defaults to `data/uploads`. Each session directory contains
-`session.info.json`, the durable `conversion.info.json` operation, accepted inputs
+Storage paths are centralized in `apps/api/src/services/storage.paths.ts`; session
+persistence and conversion storage share those helpers. `UPLOAD_DIR` defaults to
+`data/uploads` relative to the API process working directory. Each operation
+session directory contains `session.info.json`, the durable `conversion.info.json` operation, accepted inputs
 under `inputs/`, and committed images with `<file-id>.json` metadata sidecars.
-Internal staging and commit receipts support per-file crash consistency.
-`UPLOAD_TMP_DIR` defaults to `data/tmp` and holds incomplete request bodies.
+Internal `.conversion-staging/` and `.conversion-commits/` directories support
+per-file crash consistency. `UPLOAD_TMP_DIR` defaults to `data/tmp` relative to the
+process working directory and holds incomplete request bodies.
 Rejected/disconnected request staging is removed, leaving interrupted slots
 retryable. Committed outputs from other files are never rolled back because a
-sibling fails.
+sibling fails. Uncommitted output staging is removed after an attempt; interrupted
+publication is reconciled from durable receipts on restart before serving results.
 
 On startup, the API cleans abandoned conversion request staging and recovers
 operations before listening and reporting ready. Valid committed output survives;
@@ -175,8 +208,9 @@ a test-only same-origin reverse proxy for `/api`. It never reuses a running dev
 server. Each test owns temporary storage under `tmp/browser-tests`, dynamically
 allocated ports, readiness checks, and process/data cleanup.
 
-Install the locked dependencies with `npm ci`. On a supported local machine or CI
-runner, install the matching browser binaries and system prerequisites once:
+Install the locked dependencies with `npm ci --legacy-peer-deps`, matching CI.
+On a supported local machine or CI runner, install the matching browser binaries
+and system prerequisites once:
 
 ```sh
 npx playwright install --with-deps
@@ -194,7 +228,7 @@ npx playwright install chromium firefox webkit
 Run the same targets locally and in CI:
 
 ```sh
-NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx e2e @image-web-convert/web-e2e
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx run @image-web-convert/web-e2e:e2e
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx run @image-web-convert/web-e2e:browser-integration
 ```
 
@@ -208,14 +242,20 @@ For deterministic cancellation/crash timing, a test-only API executable uses the
 production app/runtime and real encoder with an IPC-controlled pause before an
 encoder invocation. No control routes or fake encoder results are added to the
 production API. Ordinary conversion/failure/retry browser scenarios use the normal
-built API entrypoint. The API process suite (`nx e2e @image-web-convert/api-e2e`)
+built API entrypoint. The API process suite (`nx run @image-web-convert/api-e2e:e2e`)
 checks abrupt and graceful restarts, committed-output retention, interrupted-file
 recovery, processing without status GETs or exit cancellation, upload disconnects,
-endpoint retirement, and sealed legacy downloads. Restart recovery always uses
-the normal production entrypoint. Nx builds the test executable as a prerequisite.
-API tests use their own storage under `tmp/api-lifecycle`. Test APIs retain normal
-resource limits, use a 100 ms sweep and a 1000/minute general request budget; the
-production defaults above are unchanged.
+concurrent operation creation, per-slot contention with independent-session progress,
+ZIP name/order collisions, malformed requests, authorization/expiry, effective
+limits, decode failures with partial downloads, endpoint retirement, and sealed
+legacy downloads.
+Restart recovery always uses the normal production entrypoint. Nx builds the test executable as a prerequisite.
+The API `e2e` target delegates to its uncached `test` target, which also runs via
+`npm test`; browser E2E must be invoked separately or through `npm run ci:hook`.
+API tests use their own storage under `tmp/api-lifecycle`. Test APIs default to
+normal resource limits, with a 100 ms sweep and a 1000/minute general request
+budget. The aggregate-limit test lowers only its own byte budget via the existing
+environment setting; production defaults above are unchanged.
 
 Both browser targets run Chromium, Firefox, and WebKit with one worker and no
 retries. To verify only Chromium in a constrained environment, append
@@ -225,8 +265,8 @@ rather than using an Nx test-result cache. Use the default same-origin build
 configuration (`VITE_API_URL` unset); do not build these tests against an external
 API URL.
 
-GitHub Actions and `npm run ci:hook` include both browser targets. On CI failure,
-the `browser-test-diagnostics` artifact retains HTML reports, failure screenshots,
+GitHub Actions and `npm run ci:hook` require real API E2E and both browser targets.
+On CI failure, the `browser-test-diagnostics` artifact retains HTML reports, failure screenshots,
 and server stdout/stderr logs for seven days. Local diagnostics are under
 `apps/web-e2e/test-output/{e2e,integration}` and
 `apps/api-e2e/test-output/lifecycle`. Network traces and videos are disabled

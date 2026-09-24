@@ -48,11 +48,12 @@ function upload(
     op: ApiConversionOperation,
     index = 0,
     token = s.token,
+    content = png,
 ) {
     const form = new FormData();
     form.append(
         'file',
-        new Blob([new Uint8Array(png)], { type: 'image/png' }),
+        new Blob([new Uint8Array(content)], { type: 'image/png' }),
         `${index}.png`,
     );
     return fetch(
@@ -83,6 +84,7 @@ async function output(s: Session, op: ApiConversionOperation, index = 0) {
         headers: headers(s),
     });
     expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('image/webp');
     const bytes = Buffer.from(await response.arrayBuffer());
     expect(await sharp(bytes).metadata()).toMatchObject({
         format: 'webp',
@@ -91,6 +93,26 @@ async function output(s: Session, op: ApiConversionOperation, index = 0) {
     });
     return bytes;
 }
+async function expectApiError(response: Response, code: number, type: string) {
+    expect(response.status).toBe(code);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(ApiErrorSchema.parse(await response.json()).type).toBe(type);
+}
+
+async function productionApi(maxTotalBytes?: number) {
+    await api.stop();
+    api = await startApi(
+        directory,
+        path.resolve(
+            __dirname,
+            '../../test-output/lifecycle',
+            path.basename(directory),
+        ),
+        false,
+        { maxTotalBytes },
+    );
+}
+
 beforeAll(async () => {
     png = await sharp({
         create: { width: 32, height: 24, channels: 3, background: '#1450a0' },
@@ -124,9 +146,13 @@ it('creates, validates authorization, converts without polling, reads metadata a
     expect((await fetch(`${api.url}/readyz`)).status).toBe(200);
     const s = await session();
     const op = await create(s);
-    expect((await upload(s, op, 0, 'wrong')).status).toBe(401);
+    await expectApiError(await upload(s, op, 0, 'wrong'), 401, 'invalid_token');
     const other = await session();
-    expect((await upload(s, op, 0, other.token)).status).toBe(401);
+    await expectApiError(
+        await upload(s, op, 0, other.token),
+        401,
+        'invalid_token',
+    );
     expect((await upload(s, op)).status).toBe(200);
     expect((await api.readOperation(s.sid)).status).toBe('awaiting_uploads');
     expect((await upload(s, op, 1)).status).toBe(200);
@@ -202,8 +228,210 @@ it('rejects manifests above the effective size limit before staging bytes', asyn
             ],
         }),
     });
-    expect(response.status).toBe(413);
+    await expectApiError(response, 413, 'upload_limit_exceeded');
     expect(await fs.readdir(api.incoming)).toEqual([]);
+});
+
+it('rejects malformed manifests, unsupported MIME and excess counts without consuming the session', async () => {
+    await productionApi();
+    const s = await session();
+    const valid = {
+        requestId: 'validation',
+        options: { outputMime: 'image/webp' },
+        files: [{ clientId: 'one', name: 'one.png', sizeBytes: png.length }],
+    };
+    for (const [body, code, type] of [
+        [{ ...valid, files: [] }, 400, 'invalid_request'],
+        [
+            { ...valid, options: { outputMime: 'text/plain' } },
+            400,
+            'invalid_request',
+        ],
+        [
+            {
+                ...valid,
+                files: Array.from(
+                    { length: s.imageConfig.maxFiles + 1 },
+                    (_, i) => ({
+                        clientId: `file-${i}`,
+                        name: 'one.png',
+                        sizeBytes: png.length,
+                    }),
+                ),
+            },
+            413,
+            'upload_limit_exceeded',
+        ],
+    ] as const) {
+        await expectApiError(
+            await fetch(`${base(s)}/conversions`, {
+                method: 'POST',
+                headers: { ...headers(s), 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            }),
+            code,
+            type,
+        );
+        expect(await fs.readdir(path.join(api.storage, s.sid))).toEqual([
+            'session.info.json',
+        ]);
+        expect(await fs.readdir(api.incoming)).toEqual([]);
+    }
+    const op = await create(s, 1);
+    expect((await upload(s, op)).status).toBe(200);
+    await diskStatus(s, 'completed');
+    await output(s, op);
+});
+
+it('enforces the backend aggregate-byte limit independently of the per-file ceiling', async () => {
+    await productionApi(png.length);
+    const s = await session();
+    expect(s.imageConfig.maxTotalBytes).toBe(png.length);
+    expect(s.imageConfig.maxBytesPerFile).toBeGreaterThan(png.length);
+    const response = await fetch(`${base(s)}/conversions`, {
+        method: 'POST',
+        headers: { ...headers(s), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            requestId: 'aggregate',
+            options: { outputMime: 'image/webp' },
+            files: [
+                { clientId: 'a', name: 'a.png', sizeBytes: png.length },
+                { clientId: 'b', name: 'b.png', sizeBytes: png.length },
+            ],
+        }),
+    });
+    await expectApiError(response, 413, 'upload_limit_exceeded');
+    expect(await fs.readdir(api.incoming)).toEqual([]);
+    const op = await create(s, 1);
+    expect((await upload(s, op)).status).toBe(200);
+    await diskStatus(s, 'completed');
+    await output(s, op);
+});
+
+it('cleans missing and malformed multipart uploads and permits the same slot to retry', async () => {
+    await productionApi();
+    const s = await session();
+    const op = await create(s, 1);
+    const missingFile = new FormData();
+    missingFile.append('name', 'no file attached');
+    const endpoint = `${base(s)}/conversions/${op.id}/files/${op.files[0].id}`;
+    for (const options of [
+        { headers: headers(s), body: missingFile },
+        {
+            headers: {
+                ...headers(s),
+                'Content-Type': 'multipart/form-data; boundary=broken',
+            },
+            body: '--broken\r\n',
+        },
+    ]) {
+        await expectApiError(
+            await fetch(endpoint, { method: 'PUT', ...options }),
+            400,
+            'invalid_request',
+        );
+        await vi.waitFor(async () =>
+            expect(await fs.readdir(api.incoming)).toEqual([]),
+        );
+        expect((await status(s, op)).files[0].status).toBe('awaiting_upload');
+        expect(
+            await fs.readdir(path.join(api.storage, s.sid, 'inputs')),
+        ).toEqual([]);
+    }
+    expect((await upload(s, op)).status).toBe(200);
+    await diskStatus(s, 'completed');
+    await output(s, op);
+});
+
+it('rejects an expired test session through real authentication without creating operation data', async () => {
+    await productionApi();
+    const s = await session();
+    // Only this test's disposable session is aged; no sleeping or fake server clock.
+    const infoPath = path.join(api.storage, s.sid, 'session.info.json');
+    const info = JSON.parse(await fs.readFile(infoPath, 'utf8'));
+    await fs.writeFile(
+        infoPath,
+        JSON.stringify({
+            ...info,
+            expiresAt: new Date(Date.now() - 1000).toISOString(),
+        }),
+    );
+    await expectApiError(
+        await fetch(`${base(s)}/conversions`, {
+            method: 'POST',
+            headers: { ...headers(s), 'Content-Type': 'application/json' },
+            body: '{}',
+        }),
+        403,
+        'session_expired',
+    );
+    expect(await fs.readdir(path.join(api.storage, s.sid))).toEqual([
+        'session.info.json',
+    ]);
+    expect(await fs.readdir(api.incoming)).toEqual([]);
+});
+
+it('preserves real successful conversions beside decode failures and gates downloads by committed file', async () => {
+    await productionApi();
+    const s = await session();
+    const op = await create(s);
+    await expectApiError(
+        await fetch(`${base(s)}/files/${op.files[0].id}`, {
+            headers: headers(s),
+        }),
+        404,
+        'file_not_found',
+    );
+    await expectApiError(
+        await fetch(`${base(s)}/files/missing-file/meta`, {
+            headers: headers(s),
+        }),
+        404,
+        'file_not_found',
+    );
+    expect((await upload(s, op)).status).toBe(200);
+    // Accepted bytes are deliberately invalid image data with the declared size.
+    expect(
+        (await upload(s, op, 1, s.token, Buffer.alloc(png.length))).status,
+    ).toBe(200);
+    await diskStatus(s, 'partially_completed');
+    const result = await status(s, op);
+    expect(result.files.map((file) => file.status)).toEqual([
+        'completed',
+        'failed',
+    ]);
+    const bytes = await output(s, op);
+    await expectApiError(
+        await fetch(`${base(s)}/files/${op.files[1].id}`, {
+            headers: headers(s),
+        }),
+        404,
+        'file_not_found',
+    );
+    const zip = await fetch(`${base(s)}/files/download`, {
+        method: 'POST',
+        headers: { ...headers(s), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: op.files.map((file) => file.id) }),
+    });
+    expect(zip.status).toBe(200);
+    expect(zip.headers.get('x-missing-ids')).toBe(op.files[1].id);
+    const entries = zipEntries(Buffer.from(await zip.arrayBuffer()));
+    expect([...entries.keys()]).toEqual(['0.webp']);
+    expect(entries.get('0.webp')).toEqual(bytes);
+    await vi.waitFor(async () => {
+        expect(await fs.readdir(api.incoming)).toEqual([]);
+        expect(
+            await fs.readdir(path.join(api.storage, s.sid, 'inputs')),
+        ).toEqual([]);
+        expect(
+            await fs.readdir(
+                path.join(api.storage, s.sid, '.conversion-staging'),
+            ),
+        ).toEqual([]);
+    });
+    const files = await fs.readdir(path.join(api.storage, s.sid));
+    expect(files).not.toContain(`${op.files[1].id}.webp`);
+    expect(files).not.toContain(`${op.files[1].id}.json`);
 });
 
 it('cleans a genuinely disconnected multipart stream and accepts a retry on the same slot', async () => {

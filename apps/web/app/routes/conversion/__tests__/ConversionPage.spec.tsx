@@ -187,7 +187,7 @@ describe('ConversionPage', () => {
         // Trigger uploads via the stubbed button
         await user.click(screen.getByTestId('start-upload'));
 
-        // After promises resolve, the page should transition to 'upload_complete'
+        // API completion controls the download transition.
         await waitFor(() =>
             expect(screen.getByTestId('instructions')).toHaveTextContent(
                 'state:download',
@@ -208,7 +208,7 @@ describe('ConversionPage', () => {
         uploadFilesFormMock.mockImplementationOnce(
             () => new Promise<void>((resolve) => (finishUpload = resolve)),
         );
-        render(<ConversionPage />);
+        const { rerender } = render(<ConversionPage />);
 
         // Trigger uploads via the stubbed button
         await user.click(screen.getByTestId('start-upload'));
@@ -216,6 +216,12 @@ describe('ConversionPage', () => {
         // We enter progress view
         expect(screen.getByTestId('file-progress')).toBeInTheDocument();
 
+        progressState.cosmeticPercent = 100;
+        rerender(<ConversionPage />);
+        expect(screen.getByTestId('file-progress')).toHaveTextContent(
+            '"cosmeticPercent":100',
+        );
+        expect(completeCosmeticProgressMock).not.toHaveBeenCalled();
         expect(screen.queryByTestId('file-download')).not.toBeInTheDocument();
         finishUpload();
         await waitFor(() =>

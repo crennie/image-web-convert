@@ -20,7 +20,7 @@ export function PageInstructions({ pageState }: { pageState: ConversionState }) 
     </>
 
     if (pageState === 'upload' || pageState === 'upload_complete') return <>
-        Converting your files... Please keep this page open. Be sure to download your images once the conversion is complete.
+        Your request is in progress. Please keep this page open. Be sure to download your images once the conversion is complete.
     </>
 
     // TODO: Add dynamic expiry time, or make expiry time configurable?  Should it countdown?

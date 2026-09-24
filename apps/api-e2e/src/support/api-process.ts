@@ -4,7 +4,10 @@ import { createWriteStream } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { ApiConversionOperation } from '@image-web-convert/schemas';
+import type {
+    ApiConversionOperation,
+    SessionImageConfig,
+} from '@image-web-convert/schemas';
 
 const root = path.resolve(__dirname, '../../../..');
 export async function startNodeServer(options: {
@@ -143,6 +146,7 @@ export async function startApi(
     directory: string,
     logs: string,
     controlled = false,
+    limits: Partial<Pick<SessionImageConfig, 'maxTotalBytes'>> = {},
 ) {
     const storage = path.join(directory, 'uploads');
     const incoming = path.join(directory, 'incoming');
@@ -154,7 +158,7 @@ export async function startApi(
         SESSION_TTL_MINUTES: '15',
         SESSION_MAX_FILES: '20',
         SESSION_PER_FILE_BYTES: '20000000',
-        SESSION_MAX_TOTAL_BYTES: '500000000',
+        SESSION_MAX_TOTAL_BYTES: String(limits.maxTotalBytes ?? 500_000_000),
         RATE_LIMIT_MAX: '1000',
         RATE_LIMIT_WINDOW_MS: '60000',
         CONVERSION_MAX_OPERATIONS: '3',
