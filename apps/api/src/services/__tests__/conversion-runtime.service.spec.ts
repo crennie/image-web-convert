@@ -13,7 +13,8 @@ import {
     requestConversionStop,
     startConversionFile,
 } from '../conversions.service';
-import { conversionStoragePaths } from '../storage.paths';
+import { claimSessionWork } from '../session-work.service';
+import { conversionStoragePaths, sessionInfoPath } from '../storage.paths';
 import type { ProcessInput, ProcessOutput } from '../image.service';
 
 let directory: string;
@@ -102,6 +103,22 @@ function runtime(
     });
     runtimes.push(instance);
     return instance;
+}
+
+async function seedSession(sid: string, overrides: object = {}) {
+    await fs.mkdir(path.join(root, sid), { recursive: true });
+    await fs.writeFile(
+        sessionInfoPath(sid, root),
+        JSON.stringify({
+            id: sid,
+            expiresAt,
+            createdAt: initial.toISOString(),
+            tokenHash: 'test',
+            sealedAt: null,
+            counts: { files: 0, totalBytes: 0 },
+            ...overrides,
+        }),
+    );
 }
 
 async function seed(sid = 'session-a', count = 2, uploaded = count) {
@@ -303,9 +320,9 @@ describe('backend conversion scheduling', () => {
         await expect(
             fs.stat(conversionStoragePaths('session-a', root).input('file-0')),
         ).resolves.toBeDefined();
-        await expect(
-            rt.createOperation({ id: 'new-session', expiresAt }, {}),
-        ).rejects.toThrow('requires recovery');
+        await expect(rt.createOperation('new-session', {})).rejects.toThrow(
+            'requires recovery',
+        );
     });
 
     it('enforces current pixel/dimension ceilings for recovered operations', async () => {
@@ -523,6 +540,98 @@ describe('cancellation, deadlines, and cleanup ownership', () => {
 });
 
 describe('admission and runtime lifecycle', () => {
+    const manifest = {
+        requestId: 'ownership-request',
+        options: { outputMime: 'image/webp' },
+        files: [{ clientId: 'client', name: 'a.png', sizeBytes: 4 }],
+    };
+
+    it.each([
+        { sealedAt: initial.toISOString() },
+        { counts: { files: 1, totalBytes: 4 } },
+    ])('rejects persisted legacy use for direct callers: %j', async (state) => {
+        await seedSession('used-session', state);
+        const create = vi.spyOn(store, 'create');
+        const rt = runtime();
+        await rt.start();
+        await expect(
+            rt.createOperation('used-session', manifest),
+        ).rejects.toMatchObject({
+            type: 'conversion_conflict',
+        });
+        expect(create).not.toHaveBeenCalled();
+        // Failure releases the claim; corrected durable state can be retried.
+        await seedSession('used-session');
+        await expect(
+            rt.createOperation('used-session', manifest),
+        ).resolves.toBeDefined();
+    });
+
+    it('honors existing session ownership without releasing another caller claim', async () => {
+        await seedSession('claimed-session');
+        const rt = runtime();
+        await rt.start();
+        const release = claimSessionWork('claimed-session');
+        try {
+            await expect(
+                rt.createOperation('claimed-session', manifest),
+            ).rejects.toMatchObject({
+                type: 'upload_in_progress',
+            });
+            expect(() => claimSessionWork('claimed-session')).toThrow();
+        } finally {
+            release();
+        }
+        const first = await rt.createOperation('claimed-session', manifest);
+        const retried = await rt.createOperation('claimed-session', manifest);
+        expect(retried.operation.id).toBe(first.operation.id);
+        const releaseAfterSuccess = claimSessionWork('claimed-session');
+        releaseAfterSuccess();
+    });
+
+    it('releases validation failures and preserves the original intent on conflicting retries', async () => {
+        await seedSession('intent-session');
+        const rt = runtime();
+        await rt.start();
+        await expect(
+            rt.createOperation('intent-session', {}),
+        ).rejects.toMatchObject({
+            type: 'invalid_request',
+        });
+        const original = await rt.createOperation('intent-session', manifest);
+        await expect(
+            rt.createOperation('intent-session', {
+                ...manifest,
+                options: { outputMime: 'image/png' },
+            }),
+        ).rejects.toMatchObject({ type: 'conversion_conflict' });
+        await expect(
+            rt.createOperation('intent-session', {
+                ...manifest,
+                files: [{ ...manifest.files[0], name: 'different.png' }],
+            }),
+        ).rejects.toMatchObject({ type: 'conversion_conflict' });
+        const retried = await rt.createOperation('intent-session', manifest);
+        expect(retried.operation).toEqual(original.operation);
+    });
+
+    it('releases ownership on session read and operation persistence failures', async () => {
+        const rt = runtime();
+        await rt.start();
+        await expect(
+            rt.createOperation('retry-session', manifest),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
+        await seedSession('retry-session');
+        vi.spyOn(store, 'create').mockRejectedValueOnce(
+            new Error('write failed'),
+        );
+        await expect(
+            rt.createOperation('retry-session', manifest),
+        ).rejects.toThrow('write failed');
+        const record = await rt.createOperation('retry-session', manifest);
+        expect(record.operation.expiresAt).toBe(expiresAt);
+    });
+
     it('counts recovered operations and serializes creation at the configured limit', async () => {
         await seed('existing-session', 1, 0);
         const rt = runtime({ config: { ...config, maxOperations: 2 } });
@@ -532,9 +641,11 @@ describe('admission and runtime lifecycle', () => {
             options: { outputMime: 'image/webp' },
             files: [{ clientId: 'client', name: 'a.png', sizeBytes: 4 }],
         };
+        await seedSession('new-a');
+        await seedSession('new-b');
         const outcomes = await Promise.allSettled([
-            rt.createOperation({ id: 'new-a', expiresAt }, manifest),
-            rt.createOperation({ id: 'new-b', expiresAt }, manifest),
+            rt.createOperation('new-a', manifest),
+            rt.createOperation('new-b', manifest),
         ]);
         expect(
             outcomes.filter((outcome) => outcome.status === 'fulfilled'),

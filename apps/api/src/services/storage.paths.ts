@@ -16,12 +16,12 @@ export const UPLOAD_TMP_DIR = normalizeAbsolutePath(
     process.env.UPLOAD_TMP_DIR ?? path.resolve(process.cwd(), 'data', 'tmp'),
 );
 
-export function sessionDir(sid: string): string {
-    return path.join(UPLOAD_DIR, sid);
+export function sessionDir(sid: string, root = UPLOAD_DIR): string {
+    return path.join(root, sid);
 }
 
-export function sessionInfoPath(sid: string): string {
-    return path.join(sessionDir(sid), 'session.info.json');
+export function sessionInfoPath(sid: string, root = UPLOAD_DIR): string {
+    return path.join(sessionDir(sid, root), 'session.info.json');
 }
 
 export function sessionMetaPath(sid: string, fileId: string): string {

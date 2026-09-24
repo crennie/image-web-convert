@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import { ArchiveClientAbortError } from '../../services/files.service';
 import { show, meta, downloadMany } from '../files.controller';
 
 // ---- Mocks ----
@@ -68,6 +69,8 @@ function makeRes(): Response & {
             return res;
         }),
         on: vi.fn(),
+        removeHeader: vi.fn(),
+        destroy: vi.fn(),
         get _headers() {
             return store._headers;
         },
@@ -319,10 +322,7 @@ describe('files.controller.downloadMany', () => {
 
         expect(res.setHeader).toHaveBeenCalledWith('X-Missing-Ids', 'c');
         // default fallback when no archiveName provided in body
-        expect(writeZipMock).toHaveBeenCalledWith(
-            res,
-            expect.any(Array),
-        );
+        expect(writeZipMock).toHaveBeenCalledWith(res, expect.any(Array));
     });
 
     it('uses provided archiveName when present', async () => {
@@ -341,13 +341,10 @@ describe('files.controller.downloadMany', () => {
 
         await downloadMany(req, res, vi.fn());
 
-        expect(writeZipMock).toHaveBeenCalledWith(
-            res,
-            expect.any(Array),
-        );
+        expect(writeZipMock).toHaveBeenCalledWith(res, expect.any(Array));
     });
 
-    it('forwards errors from streamZip to next(err)', async () => {
+    it('forwards errors from writeZip to next(err)', async () => {
         validateMock.mockResolvedValueOnce(okValidated());
         resolveMock.mockResolvedValueOnce({
             found: [resolved('a')],
@@ -364,4 +361,35 @@ describe('files.controller.downloadMany', () => {
 
         expect(next).toHaveBeenCalledWith(err);
     });
+    it.each(['abort', 'sent', 'resolution'])(
+        'handles %s failure without a second response',
+        async (kind) => {
+            validateMock.mockResolvedValueOnce(okValidated());
+            const error = new Error('failed');
+            if (kind === 'resolution') resolveMock.mockRejectedValueOnce(error);
+            else {
+                resolveMock.mockResolvedValueOnce({
+                    found: [resolved('a')],
+                    missing: [],
+                });
+                writeZipMock.mockRejectedValueOnce(
+                    kind === 'abort' ? new ArchiveClientAbortError() : error,
+                );
+            }
+            const res = makeRes();
+            if (kind === 'sent')
+                Object.defineProperty(res, 'headersSent', { value: true });
+            const next = vi.fn();
+            await downloadMany(
+                makeReq({ params: { sid: 'S' }, body: { ids: ['a'] } }),
+                res,
+                next,
+            );
+            expect(res.json).not.toHaveBeenCalled();
+            if (kind === 'resolution') expect(next).toHaveBeenCalledWith(error);
+            else expect(next).not.toHaveBeenCalled();
+            if (kind === 'sent') expect(res.destroy).toHaveBeenCalledOnce();
+            else expect(res.destroy).not.toHaveBeenCalled();
+        },
+    );
 });

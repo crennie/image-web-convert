@@ -1,4 +1,6 @@
 import path from 'node:path';
+import { claimSessionWork } from './session-work.service';
+import { readSessionInfo } from './sessions.service';
 import { isDeepStrictEqual } from 'node:util';
 import { secureId } from '@image-web-convert/node-shared';
 import {
@@ -437,11 +439,9 @@ export function createConversionRuntime(
         return initialization;
     }
 
-    async function createOperation(
-        session: { id: string; expiresAt: string },
-        request: unknown,
-    ) {
-        const release = acquireSessionUse(session.id);
+    async function createOperation(sid: string, request: unknown) {
+        const release = acquireSessionUse(sid);
+        let releaseClaim: (() => void) | undefined;
         const previous = admissionTail;
         let unlock!: () => void;
         admissionTail = new Promise<void>((resolve) => {
@@ -450,6 +450,14 @@ export function createConversionRuntime(
         await previous;
         try {
             assertAccepting();
+            // Application ownership also protects callers outside the HTTP adapter.
+            releaseClaim = claimSessionWork(sid);
+            const session = await readSessionInfo(sid, root);
+            if (session.sealedAt || session.counts.files)
+                throw new ConversionTransitionError(
+                    'conversion_conflict',
+                    'Session already used by legacy upload',
+                );
             const parsed = ApiCreateConversionRequestSchema.safeParse(request);
             if (!parsed.success)
                 throw new ConversionTransitionError(
@@ -518,6 +526,7 @@ export function createConversionRuntime(
             });
             return await store.create(operation);
         } finally {
+            releaseClaim?.();
             unlock();
             release();
             wake();

@@ -4,8 +4,9 @@ import path from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { Request } from 'express';
-import { ConversionTransitionError } from './conversions.service';
+import { ConversionTransitionError } from '../services/conversions.service';
 
+// HTTP transport adapter: Express request ownership stops here.
 // Node's multipart decoder buffers the bounded body. Spool first so malformed,
 // disconnected and over-limit transport never publishes a partially parsed slot.
 // The 64 KiB framing allowance is independent of declared file bytes.

@@ -613,7 +613,7 @@ it('bounds multipart framing before parsing and leaves oversized transport retry
 
 it('removes only abandoned conversion request directories during startup cleanup', async () => {
     const { recoverConversionRequestStaging } = await import(
-        '../services/conversion-upload.service'
+        '../controllers/conversion-upload.http'
     );
     const staging = await fs.mkdtemp(path.join(temp, 'conversion-'));
     await fs.writeFile(path.join(staging, 'request.multipart'), 'incomplete');
@@ -645,5 +645,39 @@ it('closes a failed ZIP stream and releases its session lease', async () => {
         },
     );
     await expect(response.arrayBuffer()).rejects.toThrow();
+    expect(await runtime.stop()).toEqual({ drained: true });
+});
+
+it('forwards a real archiver missing-source warning without returning a successful ZIP', async () => {
+    const session = await createSession();
+    const op = await operation(session, 1);
+    expect((await upload(session, op)).status).toBe(200);
+    await runtime.whenIdle();
+    const files = await import('../services/files.service');
+    const resolve = files.resolveFilesByIds;
+    vi.spyOn(files, 'resolveFilesByIds').mockImplementationOnce(
+        async (...args) => {
+            const result = await resolve(...args);
+            // Deterministically reproduce a source vanishing between resolution and
+            // archiver opening it. Routing, archive construction and streams are real.
+            result.found[0].absPath = path.join(root, 'vanished.webp');
+            return result;
+        },
+    );
+    const response = await fetch(
+        `${url}/api/sessions/${session.sid}/files/download`,
+        {
+            method: 'POST',
+            headers: {
+                ...headers(session),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ids: [op.files[0].id] }),
+        },
+    );
+    expect(response.status).toBe(500);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(response.headers.get('content-disposition')).toBeNull();
+    expect(await response.json()).toMatchObject({ type: 'storage_error' });
     expect(await runtime.stop()).toEqual({ drained: true });
 });

@@ -25,7 +25,7 @@ async function session() {
     expect(response.status).toBe(201);
     return ApiCreateSessionResponseSchema.parse(await response.json());
 }
-async function create(s: Session, count = 2) {
+async function create(s: Session, count = 2, names?: string[]) {
     const response = await fetch(`${base(s)}/conversions`, {
         method: 'POST',
         headers: { ...headers(s), 'Content-Type': 'application/json' },
@@ -34,7 +34,7 @@ async function create(s: Session, count = 2) {
             options: { outputMime: 'image/webp' },
             files: Array.from({ length: count }, (_, i) => ({
                 clientId: `client-${i}`,
-                name: `${i}.png`,
+                name: names?.[i] ?? `${i}.png`,
                 sizeBytes: png.length,
             })),
         }),
@@ -155,6 +155,33 @@ it('creates, validates authorization, converts without polling, reads metadata a
     // The same slot acknowledgement is idempotent and cannot overwrite output.
     expect((await upload(s, op)).status).toBe(200);
     expect(await output(s, op)).toEqual(first);
+});
+
+it('downloads all colliding filenames once, in requested order, with missing IDs reported', async () => {
+    const s = await session();
+    const op = await create(s, 3, ['a.png', 'a.png', 'a (2).png']);
+    for (let i = 0; i < 3; i++)
+        expect((await upload(s, op, i)).status).toBe(200);
+    await diskStatus(s, 'completed');
+    const zip = await fetch(`${base(s)}/files/download`, {
+        method: 'POST',
+        headers: { ...headers(s), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            ids: [...op.files.map((file) => file.id), 'missing-file'],
+            archiveName: 'photos é',
+        }),
+    });
+    expect(zip.status).toBe(200);
+    expect(zip.headers.get('content-type')).toContain('application/zip');
+    expect(zip.headers.get('content-disposition')).toContain(
+        "filename*=UTF-8''photos%20%C3%A9.zip",
+    );
+    expect(zip.headers.get('x-missing-ids')).toBe('missing-file');
+    const entries = zipEntries(Buffer.from(await zip.arrayBuffer()));
+    const names = ['a.webp', 'a (3).webp', 'a (2).webp'];
+    expect([...entries.keys()]).toEqual(names);
+    for (let i = 0; i < names.length; i++)
+        expect(entries.get(names[i])).toEqual(await output(s, op, i));
 });
 
 it('rejects manifests above the effective size limit before staging bytes', async () => {

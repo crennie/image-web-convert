@@ -6,31 +6,18 @@ import {
     acceptConversionUpload,
     ConversionTransitionError,
 } from '../services/conversions.service';
-import { claimSessionWork } from '../services/session-work.service';
-import { readSessionInfo } from '../services/sessions.service';
-import { receiveConversionUpload } from '../services/conversion-upload.service';
+import { receiveConversionUpload } from './conversion-upload.http';
 import { authorizeConversion, conversionRuntime } from './conversions.http';
 import { UPLOAD_TMP_DIR } from '../services/storage.paths';
 
 export async function create(req: Request, res: Response) {
     const session = await authorizeConversion(req, res);
     if (!session) return;
-    const release = claimSessionWork(session.id);
-    try {
-        const current = await readSessionInfo(session.id);
-        if (current.sealedAt || current.counts.files)
-            throw new ConversionTransitionError(
-                'conversion_conflict',
-                'Session already used by legacy upload',
-            );
-        const record = await conversionRuntime(req).createOperation(
-            current,
-            req.body,
-        );
-        res.status(201).json(conversionSnapshot(record.operation));
-    } finally {
-        release();
-    }
+    const record = await conversionRuntime(req).createOperation(
+        session.id,
+        req.body,
+    );
+    res.status(201).json(conversionSnapshot(record.operation));
 }
 export async function show(req: Request, res: Response) {
     if (!(await authorizeConversion(req, res))) return;

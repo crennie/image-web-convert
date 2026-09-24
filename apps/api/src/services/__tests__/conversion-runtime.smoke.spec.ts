@@ -3,7 +3,7 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import sharp from 'sharp';
 import { getConversionRuntimeConfig } from '../../env';
-import { conversionStoragePaths } from '../storage.paths';
+import { conversionStoragePaths, sessionInfoPath } from '../storage.paths';
 import { createConversionRuntime } from '../conversion-runtime.service';
 import { createConversionStorage } from '../conversion-storage.service';
 import { processImageToMimeType } from '../image.service';
@@ -64,23 +64,27 @@ it('automatically converts real PNG, HEIC and AVIF outputs with bounded dimensio
         ] as const;
         for (const item of cases) {
             const sid = `smoke-${item.name}`;
-            const { operation } = await runtime.createOperation(
-                {
+            await fs.mkdir(path.join(root, sid), { recursive: true });
+            await fs.writeFile(
+                sessionInfoPath(sid, root),
+                JSON.stringify({
                     id: sid,
                     expiresAt: new Date(Date.now() + 900000).toISOString(),
-                },
-                {
-                    requestId: sid,
-                    options: { outputMime: item.outputMime },
-                    files: [
-                        {
-                            clientId: item.name,
-                            name: `${item.name}.image`,
-                            sizeBytes: item.bytes.length,
-                        },
-                    ],
-                },
+                    sealedAt: null,
+                    counts: { files: 0, totalBytes: 0 },
+                }),
             );
+            const { operation } = await runtime.createOperation(sid, {
+                requestId: sid,
+                options: { outputMime: item.outputMime },
+                files: [
+                    {
+                        clientId: item.name,
+                        name: `${item.name}.image`,
+                        sizeBytes: item.bytes.length,
+                    },
+                ],
+            });
             const source = path.join(root, `${item.name}.source`);
             await fs.writeFile(source, item.bytes);
             await runtime.acceptUpload(

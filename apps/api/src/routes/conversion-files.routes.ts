@@ -142,7 +142,13 @@ operationRouter.post(
         try {
             await writeZip(res, found);
         } catch (error) {
-            if (!(error instanceof ArchiveClientAbortError)) throw error;
+            if (!(error instanceof ArchiveClientAbortError)) {
+                if (!res.headersSent) {
+                    res.removeHeader('Content-Disposition');
+                    res.removeHeader('Content-Type');
+                }
+                throw error;
+            }
         }
     }),
 );

@@ -88,33 +88,69 @@ export async function writeZip(
     output: Writable,
     entries: ResolvedDownload[],
 ): Promise<void> {
-    const archive = archiver('zip', { zlib: { level: 9 } });
-    const completed = new Promise<void>((resolve, reject) => {
-        let finished = false;
-        output.once('finish', () => {
-            finished = true;
+    // Parallel stat callbacks can otherwise enqueue entries out of input order.
+    const archive = archiver('zip', { statConcurrency: 1, zlib: { level: 9 } });
+    await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        let outputFinished = false;
+        let finalized = false;
+        const cleanup = () => {
+            output.off('finish', onFinish);
+            output.off('close', onClose);
+            output.off('error', fail);
+            archive.off('error', fail);
+            archive.off('warning', fail);
+        };
+        const complete = () => {
+            if (settled || !outputFinished || !finalized) return;
+            settled = true;
+            cleanup();
             resolve();
-        });
-        output.once('close', () => {
-            if (!finished) {
-                archive.destroy();
-                reject(new ArchiveClientAbortError());
+        };
+        const fail = (error: unknown) => {
+            if (settled) return;
+            settled = true;
+            archive.unpipe(output);
+            archive.abort();
+            archive.destroy();
+            cleanup();
+            // The HTTP caller owns the response: it can still send an error
+            // before headers, or destroy a partially sent response afterward.
+            reject(error);
+        };
+        const onFinish = () => {
+            outputFinished = true;
+            complete();
+        };
+        const onClose = () => {
+            if (!outputFinished) fail(new ArchiveClientAbortError());
+        };
+        output.once('finish', onFinish);
+        output.once('close', onClose);
+        output.once('error', fail);
+        archive.once('error', fail);
+        // A file disappearing after resolution must not silently yield a
+        // successful ZIP with missing entries.
+        archive.once('warning', fail);
+        if (output.destroyed) {
+            fail(new ArchiveClientAbortError());
+            return;
+        }
+        try {
+            archive.pipe(output);
+            for (const entry of entries) {
+                archive.file(entry.absPath, { name: entry.archiveName });
             }
-        });
-        output.once('error', reject);
-        archive.once('error', reject);
+            // Observe finalization immediately, but do not wait for it before
+            // handling output errors/aborts (it may never settle after abort).
+            void archive.finalize().then(() => {
+                finalized = true;
+                complete();
+            }, fail);
+        } catch (error) {
+            fail(error);
+        }
     });
-
-    archive.pipe(output);
-
-    // Add files in the same order as the incoming ids
-    for (const e of entries) {
-        archive.file(e.absPath, { name: e.archiveName });
-        // Intentionally NOT adding per-file JSON or a manifest (per requirements)
-    }
-
-    await archive.finalize();
-    await completed;
 }
 
 /* ----------------------------- helpers ----------------------------- */
@@ -131,16 +167,24 @@ function buildContentDisposition(filename: string): string {
 }
 
 function uniquifyArchiveNames(entries: { archiveName: string }[]) {
-    const seen = new Map<string, number>();
-    for (const e of entries) {
-        const name = e.archiveName;
-        const n = (seen.get(name) ?? 0) + 1;
-        seen.set(name, n);
-        if (n > 1) {
+    const used = new Set<string>();
+    // Reserve original names so generated suffixes cannot steal a later name.
+    const reserved = new Set(entries.map((entry) => entry.archiveName));
+    const suffixes = new Map<string, number>();
+    for (const entry of entries) {
+        const name = entry.archiveName;
+        if (used.has(name)) {
             const ext = path.extname(name);
-            const base = name.slice(0, -ext.length);
-            e.archiveName = `${base} (${n})${ext}`;
+            const base = name.slice(0, name.length - ext.length);
+            let suffix = suffixes.get(name) ?? 2;
+            let candidate: string;
+            do {
+                candidate = `${base} (${suffix++})${ext}`;
+            } while (used.has(candidate) || reserved.has(candidate));
+            suffixes.set(name, suffix);
+            entry.archiveName = candidate;
         }
+        used.add(entry.archiveName);
     }
 }
 

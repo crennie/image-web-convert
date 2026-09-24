@@ -86,56 +86,64 @@ export async function downloadMany(
     res: Response,
     next: NextFunction,
 ) {
-    const { sid } = req.params;
-    const validateResponse = await validateRequestWithToken(req, res);
-    if (validateResponse.valid === false) {
-        return res
-            .status(validateResponse.status)
-            .json(validateResponse.apiError);
-    } else {
-        // Extra 409 sealed check for downloads
-        if (!validateResponse.info.sealedAt) {
-            // TODO: Update error message?
-            const response: ApiErrorSessionNotReady = {
-                type: 'session_not_ready',
-                message: '',
-            };
-            return res.status(409).json(response);
-        }
-    }
-
-    const downloadRequest = ApiDownloadFilesRequestSchema.safeParse(req.body);
-    if (!downloadRequest.success) {
-        const response: ApiErrorInvalidRequest = {
-            type: 'invalid_request',
-            message: 'Body must include { ids: string[] }',
-        };
-        res.status(400).json(response);
-        return;
-    }
-    const { ids, archiveName } = downloadRequest.data;
-
-    const { found, missing } = await resolveFilesByIds(sid, ids);
-    if (found.length === 0) {
-        const response: ApiErrorFileNotFound = {
-            type: 'file_not_found',
-            message: 'None of the requested files were found',
-        };
-        res.status(404).json(response);
-        return;
-    }
-
-    if (missing.length) {
-        res.setHeader('X-Missing-Ids', missing.join(','));
-    }
-
     try {
+        const { sid } = req.params;
+        const validateResponse = await validateRequestWithToken(req, res);
+        if (validateResponse.valid === false) {
+            return res
+                .status(validateResponse.status)
+                .json(validateResponse.apiError);
+        } else {
+            // Extra 409 sealed check for downloads
+            if (!validateResponse.info.sealedAt) {
+                // TODO: Update error message?
+                const response: ApiErrorSessionNotReady = {
+                    type: 'session_not_ready',
+                    message: '',
+                };
+                return res.status(409).json(response);
+            }
+        }
+
+        const downloadRequest = ApiDownloadFilesRequestSchema.safeParse(
+            req.body,
+        );
+        if (!downloadRequest.success) {
+            const response: ApiErrorInvalidRequest = {
+                type: 'invalid_request',
+                message: 'Body must include { ids: string[] }',
+            };
+            res.status(400).json(response);
+            return;
+        }
+        const { ids, archiveName } = downloadRequest.data;
+
+        const { found, missing } = await resolveFilesByIds(sid, ids);
+        if (found.length === 0) {
+            const response: ApiErrorFileNotFound = {
+                type: 'file_not_found',
+                message: 'None of the requested files were found',
+            };
+            res.status(404).json(response);
+            return;
+        }
+
+        if (missing.length) {
+            res.setHeader('X-Missing-Ids', missing.join(','));
+        }
+
         const headers = archiveDownloadHeaders(archiveName || 'images.zip');
         res.setHeader('Content-Type', headers.contentType);
         res.setHeader('Content-Disposition', headers.contentDisposition);
         await writeZip(res, found);
     } catch (err) {
-        if (!(err instanceof ArchiveClientAbortError)) next(err);
+        if (err instanceof ArchiveClientAbortError || res.destroyed) return;
+        if (res.headersSent) res.destroy();
+        else {
+            res.removeHeader('Content-Disposition');
+            res.removeHeader('Content-Type');
+            next(err);
+        }
     }
-    return Promise<void>;
+    return;
 }
