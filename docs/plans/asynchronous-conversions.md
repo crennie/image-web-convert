@@ -1,6 +1,8 @@
 # Backend-owned asynchronous conversions: implementation plan
 
-Status: phases 1–5 complete; phase 6 pending.
+Status: phases 1–6, including phase 5.5, complete.
+Local browser verification passed in Chromium; Firefox/WebKit cannot launch in
+this container, and hosted CI execution remains unverified (see execution log).
 
 This is the durable implementation plan for the six phases in section 11 of
 the design review. It is intended to be read and updated by Codex across runs.
@@ -46,24 +48,25 @@ Recheck these files before implementing their corresponding phase:
 
 | Concern | Files |
 | --- | --- |
-| Workflow UI | `apps/web/app/routes/conversion/components/ConversionPage.tsx` |
-| Upload form and transport | `libs/ui/src/lib/file-upload/FileUpload.tsx`, `libs/ui/src/lib/file-upload/hooks/useFileUploads.ts` |
-| Cosmetic progress | `libs/ui/src/lib/file-progress/hooks/useFileProgress.ts` |
+| Workflow UI | `apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx` |
+| Upload selection and transport | `apps/web/app/routes/conversion/components/ConversionSelection.tsx`, `apps/web/app/routes/conversion/api/conversionUploadTransport.ts` |
+| Authoritative progress | `apps/web/app/routes/conversion/components/ConversionOperationStatus.tsx`, `apps/web/app/routes/conversion/conversionViewModel.ts` |
 | Session and downloads | `libs/ui/src/lib/session/SessionContext.tsx`, `libs/ui/src/lib/file-download/` |
 | API routing | `apps/api/src/api/index.ts`, `apps/api/src/routes/`, `apps/api/src/controllers/` |
-| Current orchestration | `apps/api/src/services/uploads.service.ts` |
+| Current orchestration | `apps/api/src/services/conversion-runtime.service.ts` |
 | Conversion | `apps/api/src/services/image.service.ts`, `apps/api/src/services/image.config.ts` |
 | Persistence | `apps/api/src/services/storage.service.ts`, `storage.paths.ts`, `sessions.service.ts` |
 | Lifecycle and limits | `apps/api/src/main.ts`, `app.ts`, `env.ts` |
 | Contracts | `libs/schemas/src/lib/api/api.ts`, `apiError.ts` |
 | Server integration | `apps/api-e2e/src/api/api.spec.ts` |
-| Browser tests | `apps/web-e2e/src/upload.spec.ts`, `apps/web-e2e/playwright.config.ts` |
+| Browser tests | `apps/web-e2e/src/e2e/`, `apps/web-e2e/src/integration/`, `apps/web-e2e/playwright.config.ts` |
 
-The old upload service starts all files with `Promise.allSettled`, waits for all
-results, writes session counts/sealing, and rolls back accepted outputs if that
-final write fails. Downloads require a sealed session. Input cleanup currently
-occurs inside `saveUploadFile` regardless of success. All three behaviors need
-deliberate replacement for operation-owned incremental commits.
+The retired upload service used `Promise.allSettled`, sealed the entire session,
+and rolled back accepted outputs if the final session write failed. The completed
+operation-owned workflow replaces those behaviors with durable slot acceptance,
+sequential scheduling, and independent output commits/downloads. Legacy upload
+modules remain for existing tests and separate cleanup, but their router is no
+longer imported or mounted. The preserved legacy shared UI is not the active route.
 
 ## Target contracts and invariants
 
@@ -499,29 +502,112 @@ Use existing dependencies. Record exact commands, outcomes, any baseline failure
 and the remaining phase 6 work in this plan. Mark phase 5 complete only after its
 component boundary, tests, and narrow route cutover have been reviewed.
 
-### Phase 6 — End-to-end verification and retirement
+### Phase 5.5 — Real browser/API testing in local development and CI
 
-- [ ] Complete
+- [x] Complete
 
-Add real-browser/API scenarios; the current Playwright suite starts only the web
-app and mocks API requests, so give real conversion tests a controlled API
-lifecycle and isolated storage. Retire the superseded backend synchronous upload
-path after checking remaining consumers. Leave existing shared upload/download
-components and cosmetic progress implementations intact in this migration;
-their deletion or broad cleanup is a separately scoped task. Update
-README with the actual lifecycle, settings, timeout limitations, local single
-process assumption, storage recovery, and page-exit semantics.
+Planning addition requested 2026-09-22; phase 5.5 implementation subsequently
+authorized on the same date. Phase 6 was subsequently authorized separately.
 
-Gate: real E2E tests cover full batch/download, partial conversion failure,
-cancellation preserving results, abort/retry of an upload, and best-effort exit
-cancellation. Server integration covers restart and non-delivery of exit cancel.
-Run full relevant validation below; review final diff for unrelated changes.
+Make the existing browser `e2e` target exercise the real frontend, Express API,
+encoder, and filesystem storage. Do not introduce an `e2e-real` distinction.
+Preserve useful mocked browser checks as explicitly named browser integration
+coverage, runnable separately and retained in CI; mocked responses do not satisfy
+the E2E gate. Keep the existing API integration coverage as well.
+
+Use built application artifacts and the normal API startup/recovery path where
+practical, with browser requests routed through the same-origin API boundary.
+Document any test-serving variation from normal local use. No new testing
+framework, production dependency, container platform, or deployed environment is
+planned. Local and CI execution must use the same test command and harness.
+
+The harness owns its processes, readiness checks, ports, and unique temporary
+storage beneath the repository. Do not reuse an arbitrary running development
+server or real session data. Shut down owned processes and clean owned test data
+after success or failure, retaining useful failure diagnostics without credentials.
+Keep tests isolated across runs and serialize scenarios sharing a runtime.
+
+Use the existing Chromium, Firefox, and WebKit projects as the intended CI browser
+matrix. Chromium is the minimum local verification in a constrained sandbox;
+report missing browser binaries or native libraries explicitly, and never infer
+cross-browser success from Chromium alone. Preserve cross-browser coverage rather
+than silently narrowing CI to accommodate local environment limitations.
+
+Add one real happy-path smoke scenario: select images in the mounted asynchronous
+UI, create an operation, upload and convert, observe completion, and download and
+validate an actual converted image. Do not mock successful API responses or the
+encoder for this scenario. Document one command for running the suite locally,
+including any build prerequisites handled by the target.
+
+Run genuine E2E coverage in CI and `ci:hook` through the standard `e2e` target.
+The existing GitHub workflow already installs Playwright browsers/system
+prerequisites and invokes `e2e`; extend that setup rather than defer enablement.
+Ensure Nx dependencies build the required applications before tests and that
+mocked browser checks remain included under an accurate target name.
+
+Establish a dependable CI gate: isolated resources, bounded readiness/test/shutdown
+waits, explicit failures instead of silent skips, and failure reports plus useful
+traces/logs uploaded even when tests fail. Keep credentials out of retained
+artifacts. Use condition-based assertions, not arbitrary sleeps; retries must not
+conceal flaky tests. Record retry-dependent passes and investigate their causes.
+Review runtime against the existing 15-minute CI job budget; adjust execution
+structure or justified limits based on evidence rather than add speculative
+infrastructure. CI/browser caching optimization can follow later.
+
+Gate: the standard E2E command passes against actual frontend/API processes and
+image conversion, succeeds on a repeat local run without stale process/storage
+conflicts, and reports startup/browser failures clearly. Existing mocked checks
+remain independently runnable. CI is configured to run the real suite and retain
+failure diagnostics. Record local checks separately from hosted CI results; a
+hosted run remains unverified until observed and does not authorize pushing or
+creating remote resources.
+
+### Phase 6 — Lifecycle verification and legacy retirement
+
+- [x] Complete
+
+Depends on phase 5.5's working local/CI harness. Extend that same real suite; do not
+build another environment. Cover full batch completion and individual/ZIP
+contents, partial conversion failure with successful downloads, cancellation
+preserving completed results, interrupted upload/retry, and best-effort page-exit
+cancellation. Use deterministic test synchronization for timing-sensitive races
+rather than arbitrary sleeps or expensive images. Keep any test controls confined
+to the test harness and distinguish controlled timing from real encoder coverage.
+
+Extend server integration to cover restart recovery, committed-output retention,
+and backend progress when page-exit cancellation is never delivered, without
+browser polling driving processing. Verify actual lifecycle boundaries rather
+than relying only on existing runtime unit tests. Cancellation remains cooperative:
+an active file may complete, and completed results remain available until expiry.
+
+After the new workflow passes, retire the superseded backend synchronous upload
+path after checking remaining consumers. Migrate legacy API E2E scenarios to the
+operation API and verify the retired endpoint cannot start conversion work.
+Preserve legacy sealed-session downloads. Leave existing shared upload/download
+components, hooks, contracts needed by them, and cosmetic progress implementations
+intact; their deletion or broad cleanup is separately scoped. Document that the
+preserved legacy upload hook targets the retired endpoint and is no longer a
+supported end-to-end workflow. Avoid unrelated dependency cleanup.
+
+Update README with the actual asynchronous lifecycle, settings, cooperative
+timeout and HEIC limitations, local single-process assumption, storage recovery,
+fixed expiry, and best-effort page-exit semantics. No refresh-resume feature,
+process isolation, or distributed scheduling is included.
+
+Gate: phase 5.5's smoke test and all added real browser/API lifecycle scenarios
+pass locally; server integration covers restart and non-delivery of exit cancel.
+Run full relevant validation below; the standard E2E suite includes these scenarios
+and runs in CI. Review the final diff and record exact outcomes, environment
+limitations, and whether hosted CI execution was actually observed.
 
 ## Validation and handoff protocol
 
 Use the existing npm lockfile and Nx targets. Inspect target names/configuration
 before running commands; do not install dependencies solely for this plan.
-For phases 1–5, select relevant projects/tests. For final integration use:
+For phases 1–5, select relevant projects/tests. Phase 5.5 makes the standard browser
+`e2e` target real end-to-end coverage and gives mocked browser integration checks
+the separate `browser-integration` target. Both run in CI.
+For final integration use:
 
 ```sh
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run lint
@@ -530,6 +616,7 @@ NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm test
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run build
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx e2e @image-web-convert/api-e2e
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx e2e @image-web-convert/web-e2e
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx run @image-web-convert/web-e2e:browser-integration
 ```
 
 Do not change unrelated code to fix baseline failures. Use existing deterministic
@@ -930,3 +1017,195 @@ Suggested continuation prompt:
     — passed with the two existing `files.service.spec.ts` warnings.
   - Prettier and `git diff --check` passed. The CI runner itself has not been
     rerun locally; the next verification is the normal GitHub Actions run.
+
+### Phase 5.5 / 6 planning review — 2026-09-22
+
+- Added phase 5.5 for a local real-browser/API harness and real conversion smoke
+  test; phase 6 consumes it for lifecycle verification before legacy retirement.
+- The existing CI workflow and `ci:hook` both invoke `e2e`. Planned a separate
+  opt-in `e2e-real` target so current checks remain enabled, with an explicit
+  follow-up for later CI enablement.
+- Documentation only. Neither phase was implemented; no tests were executed.
+  Next action: user review and approval of the combined scope before implementation.
+
+### Phase 5.5 / 6 CI scope revision — 2026-09-22
+
+- User superseded the initial opt-in/CI-exclusion proposal: standard `e2e` must
+  exercise the real application and run in CI. No `e2e-real` target is planned.
+- Confirmed the workflow already installs Playwright with system dependencies
+  and invokes E2E targets. Updated phase 5.5 to reuse that setup, preserve the
+  browser matrix, distinguish mocked integration checks, and retain failure
+  diagnostics. Phase 6 extends the same CI suite.
+- Documentation only; no application, test, or workflow implementation performed.
+  Implementation remains pending approval of the revised combined plan.
+
+### Phase 5.5 completion — 2026-09-22
+
+- Implemented the standard `@image-web-convert/web-e2e:e2e` target against built
+  frontend/API artifacts. The target depends on both application builds and does
+  not cache test results. A worker-owned harness starts the normal API entrypoint
+  (including recovery/readiness/shutdown), the React Router production server,
+  and a small streaming same-origin reverse proxy. The proxy is test-only serving
+  infrastructure; it does not mock conversion responses or the encoder.
+- Added a two-image browser smoke test using actual PNG uploads and WebP encoding.
+  It waits for authoritative completion, downloads through the mounted UI, and
+  checks decoded dimensions and pixels. Moved the five existing mocked browser
+  checks to `src/integration/` and the separate `browser-integration` target;
+  their coverage remains intact and both targets run in CI and `ci:hook`.
+- Each worker uses unique repository-local temporary storage and dynamically
+  allocated ports. Startup, actions, assertions, suite execution, and shutdown
+  have deadlines. The harness checks child exit status, stops owned processes,
+  and removes session data after both success and failure. A deliberate missing
+  built API entrypoint failed in 1.2 seconds with a useful diagnostic and no
+  leftover storage; the generated artifact was restored immediately afterward.
+- Shared browser configuration retains Chromium, Firefox, and WebKit, one worker,
+  and zero retries. CI retains failure HTML reports, screenshots, and process
+  stdout/stderr logs for seven days. Network traces/video are disabled because
+  network captures include session credentials; API request telemetry is disabled
+  in the harness. Test storage is not uploaded. README documents setup, commands,
+  diagnostics, and the distinction between E2E and mocked integration coverage.
+- Evidence-based build fix: serving the production frontend initially returned
+  HTTP 500 because the built UI library bundled a separate React Router context.
+  Externalized the already-installed `react-router` alongside React in
+  `libs/ui/vite.config.ts`. This small configuration change is necessary for the
+  real built-app test and changes no shared component/hook contract. Tests also
+  exposed an initial harness working-directory mistake that caused asset 404s;
+  the web process now runs from `apps/web`, as its production server expects.
+- Restored dependencies using the existing lockfile with
+  `npm ci --cache /workspaces/image-web-convert/tmp/npm-cache --no-audit --no-fund`.
+  Installed browser binaries only within the repository using
+  `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright ./node_modules/.bin/playwright install chromium firefox webkit`.
+  No production dependencies, lockfile, or OS packages changed.
+- Validation passed:
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t build -p @image-web-convert/web @image-web-convert/api`
+    and subsequent web rebuilds — both applications and prerequisite libraries
+    build. The existing landing sourcemap/UI directive diagnostics remain.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck -p @image-web-convert/web @image-web-convert/ui @image-web-convert/web-e2e`
+    — 55 web and 49 UI tests, plus selected/dependent typechecks.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test -p @image-web-convert/api @image-web-convert/schemas @image-web-convert/node-shared @image-web-convert/observability`
+    — 213 API, 25 schemas, 9 node-shared, and 1 observability tests. Together with
+    web/UI this is 352 passing unit/integration tests.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t lint typecheck`
+    — all eight projects pass; only existing warnings in API files-service tests,
+    legacy FileDownload, and web root remain. No new lint warnings.
+  - `TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
+    — all four existing API E2E tests pass.
+  - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/web-e2e -- --project=chromium`
+    — real browser/API smoke passes (7.9 seconds including harness).
+  - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t e2e browser-integration -p @image-web-convert/web-e2e -- --project=chromium`
+    — repeated real smoke and all five mocked browser tests pass; no stale storage
+    remains. The Nx `--` separator is required to forward Playwright's `--project`.
+  - Changed code/configuration and README pass Prettier checks; final diff review
+    and `git diff --check` pass.
+- Explicit execution limitations:
+  - `CI=true PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/web-e2e`
+    — final full-matrix attempt: Chromium passes, Firefox and WebKit fail at
+    browser launch because required native libraries are absent. The command
+    correctly exits nonzero; no silent skips or reduced CI matrix. This is local
+    execution with CI settings, not a hosted GitHub Actions run.
+  - Hosted CI has not been run or observed. The existing workflow already installs
+    browser system dependencies; its next normal run must confirm the complete
+    matrix and artifact upload. No remote writes were performed.
+- Phase 5.5 is complete under its local Chromium/configured-CI gate. Phase 6 has
+  not started: no legacy upload retirement, new lifecycle scenarios, or broad
+  lifecycle README rewrite. Wait for explicit user approval before phase 6.
+
+### Phase 6 completion — 2026-09-23
+
+- Implemented the authorized lifecycle/retirement phase, continuing the existing
+  uncommitted phase 5.5 work. No phase 5.5 changes were discarded and no remote
+  writes or local commits were made.
+- Expanded real browser coverage to six scenarios: full batch plus individually
+  decoded images and ZIP contents, genuine image decoding failure with retained
+  successful downloads, upload interruption/reconciliation/retry, cancellation
+  preserving previously completed and active-file results, actual navigation
+  delivering best-effort cancellation, and processing when the attempted exit
+  cancellation is dropped. The successful responses and image encodings are real.
+- For upload interruption, the test proxy forwards partial multipart bytes and
+  waits for actual API request staging before disconnecting. It leaves the fault
+  armed until browser transport reports failure, accounting for browsers that
+  automatically resend idempotent PUTs after a reset. The test then disables the
+  fault, waits for staging cleanup, and uses the real UI retry on the same slot.
+- Added a test-only API executable under `apps/api-e2e/src/support/controlled-api.ts`.
+  It uses the production app/runtime/storage/encoder with an IPC-controlled pause
+  before a selected encoder invocation. No fake success buffers, sleeps to delay
+  conversion, production environment switches, or HTTP control routes were added.
+  Normal full/partial/upload-retry browser tests use the production API entrypoint;
+  deterministic cancellation/exit cases use the controlled executable.
+- Moved shared process startup, bounded readiness/shutdown, expected crash handling,
+  IPC control, and disk-only operation observation into API E2E support. Browser
+  application lifetime is now per test, preventing session rate-limit or gate state
+  from leaking between tests. Every API test also owns fresh processes/storage.
+- Replaced the old synchronous API E2E scenarios with eight process/HTTP tests.
+  These verify real conversion and ZIP payloads, authorization, size admission,
+  actual multipart disconnect cleanup/retry, a SIGKILL after one committed output
+  while the next file is processing, unfinished-manifest recovery, and progress
+  without GETs or cancellation delivery. Crash recovery always restarts the normal
+  built production entrypoint: committed bytes survive, the interrupted file becomes
+  `processing_interrupted` without replay, and remaining uploaded files finish.
+  A later graceful restart preserves those outputs and the terminal revision.
+- Retired the synchronous upload endpoint by removing its router import and mount.
+  Production startup no longer loads that multipart parser/converter path; requests
+  receive 404. Consumer inspection found the preserved, unmounted shared legacy
+  hook and legacy tests, with the active app already using conversions. Updated
+  the HTTP regression and added a real-server check proving the retired request
+  stages no bytes, produces no output, and does not consume the session. A separate
+  compatibility test seeds an isolated sealed legacy session and verifies identical
+  individual/ZIP bytes through the existing download routes.
+- Legacy shared components/hooks/contracts, backend helper modules/tests, and sealed
+  download routes remain intact. Retirement is at the HTTP routing boundary;
+  deleting old modules or removing their dependencies is separate cleanup. No new
+  production dependencies or lockfile edits were made.
+- Nx builds the test executable before either browser E2E or API process tests.
+  The API project's existing inferred `test` target now depends on that build and
+  does not cache execution; `e2e` delegates to it so CI's `test e2e` graph runs the
+  process suite once. Updated the necessary TypeScript project references and
+  reverted unrelated path-ordering changes from `nx sync`. CI failure artifacts
+  now include API lifecycle process logs as well as browser diagnostics.
+- Rewrote README's obsolete synchronous lifecycle section: operation endpoints,
+  real transport/backend progress, fixed lifetime, cancellation/page-exit behavior,
+  recovery and incremental commits, all conversion resource settings, cooperative
+  deadline/HEIC limitations, single-process assumption, retired upload compatibility,
+  and the exact test harness variations are documented.
+- Development failures addressed without hiding them: the initial test executable
+  build tried to bundle a linked CommonJS workspace library as ESM; externalizing
+  the already-built workspace packages in its test-only Vite configuration fixed
+  resolution. TypeScript references were synchronized and new lint warnings were
+  removed. A repeat browser run revealed Chromium's automatic PUT resend behavior;
+  the deterministic persistent transport fault above fixed the test assumption.
+- Validation passed:
+  - `TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true npm test`
+    — 360 tests: API 213, web 55, UI 49, schemas 25, node-shared 9, observability 1,
+    API process integration 8. Existing real PNG/HEIC/AVIF runtime smoke coverage
+    remains included. No legacy shared component tests were removed.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t lint typecheck`
+    — all eight projects pass, no new warnings. Existing warnings remain in
+    files-service tests, legacy FileDownload, and web root.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true npm run build`
+    — all six build targets pass; Nx reused validated build artifacts. Earlier
+    dependency builds also executed successfully; existing sourcemap/directive
+    and tool-environment diagnostics remain.
+  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
+    — eight process tests pass, including the updated target's prerequisite build.
+  - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/web-e2e -- --project=chromium`
+    — all six real browser scenarios pass with the final interruption handling.
+  - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t e2e browser-integration -p @image-web-convert/web-e2e -- --project=chromium`
+    — all five mocked browser-integration checks passed; this earlier combined
+    run exposed the interruption-test assumption, corrected and rerun as above.
+  - Changed code/configuration and README pass Prettier; CI YAML parses, failure
+    artifact paths include both suites, and final diff/whitespace checks pass.
+  - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp ./node_modules/.bin/playwright test --config apps/web-e2e/playwright.config.ts --project chromium --grep 'interrupted upload' --repeat-each=3 --output apps/web-e2e/test-output/interruption-repeat --reporter line`
+    — three additional interruption/retry executions pass in 22 seconds, without
+    Playwright retries. Both `tmp/browser-tests` and `tmp/api-lifecycle` are empty
+    after final success/failure runs, confirming owned-storage cleanup.
+- Full-matrix limitation, explicitly not a passing full-browser run:
+  `CI=true PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t e2e -p @image-web-convert/api-e2e @image-web-convert/web-e2e`
+  passes all eight API tests and all six Chromium cases. All twelve Firefox/WebKit
+  cases fail at browser launch due to missing native libraries, so the command
+  correctly exits nonzero. The browser run took about 2.2 minutes. The complete
+  three-browser CI matrix remains enabled with browser/system installation; no
+  hosted GitHub Actions run was made or observed from this workspace.
+- Remaining verification is environmental: the next normal hosted CI run must
+  confirm Firefox/WebKit and artifact upload. The migration implementation is
+  complete; legacy module deletion, dependency cleanup, process isolation, and
+  browser refresh recovery were not added to scope.

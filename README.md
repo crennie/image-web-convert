@@ -50,51 +50,190 @@ also configure the API's `CORS_ORIGIN` appropriately.
 - `libs/ui`, `libs/node-shared`, and `libs/observability` contain reusable UI,
   Node, and telemetry code.
 
-## Request lifecycle and storage
+## Conversion lifecycle
 
-The planned migration to backend-owned asynchronous operations is documented in
-[the implementation plan](docs/plans/asynchronous-conversions.md). The flow below
-describes the current implementation.
+The API owns each conversion operation and runs as one persistent Node process
+for local, single-user use. It uses filesystem persistence and an in-process
+scheduler; multiple API processes must not share the storage root. The completed
+migration is recorded in [the implementation plan](docs/plans/asynchronous-conversions.md).
 
-The browser creates a short-lived session, uploads one multipart batch, and
-validates responses with the shared schemas. The API validates the token,
-manifest, output MIME, and effective limits; converts each image; stores the
-successful output and metadata sidecar; updates counts; and seals the session.
-Once sealed, metadata and converted files can be downloaded individually or as
-an ordered ZIP.
+1. The browser creates a short-lived session and a fixed manifest: filenames,
+   declared byte sizes, client IDs, and output MIME. Each session owns one operation;
+   choosing a new batch creates a new session.
+2. The API assigns file slots. The browser uploads at most two files concurrently,
+   one multipart PUT per slot. Authentication and slot/admission checks happen
+   before multipart parsing. An acknowledgement means bytes were durably accepted,
+   not that conversion finished. Accepted slots cannot be overwritten.
+3. Once all slots have uploads or permanent failures, processing starts automatically.
+   Ready operations run FIFO, with one active conversion across the process and
+   manifest order within each operation. No start command or status polling is
+   needed to advance backend work.
+4. The browser polls authoritative snapshots, normally once per second, with
+   backoff on connection errors. Network byte progress is distinct from server
+   acceptance and completed/failed/processing counts. A network error does not
+   declare a conversion failed; retries reconcile with server state first.
+5. Completed images and metadata are available immediately, including while
+   siblings are processing or after cancellation. Individual downloads and ZIPs
+   require the session bearer token. A file failure preserves successful siblings;
+   snapshots report `partially_completed` or `failed` rather than returning a
+   synchronous batch result. Successful status requests return HTTP 200.
 
-Backend environment settings are authoritative. Defaults are 20 files,
-20,000,000 bytes per file, 500,000,000 bytes for the session, and a 15-minute
-session lifetime (`SESSION_MAX_FILES`, `SESSION_PER_FILE_BYTES`,
-`SESSION_MAX_TOTAL_BYTES`, and `SESSION_TTL_MINUTES`). The create-session
-response exposes these effective limits so the frontend can apply the same
-boundary rules.
+The conversion endpoints are:
 
-`apps/api/src/services/storage.paths.ts` owns path construction. By default,
-session data is under `data/uploads/<session-id>/`: `session.info.json` stores
-session state, each accepted image has a `<file-id>.json` metadata sidecar, and
-the converted asset uses its generated stored name. `UPLOAD_DIR` can isolate or
-relocate this root. Multipart temporary files use `UPLOAD_TMP_DIR` (default
-`data/tmp`).
+| Method | Path                                                        | Purpose                                                                   |
+| ------ | ----------------------------------------------------------- | ------------------------------------------------------------------------- |
+| POST   | `/api/sessions`                                             | Create a session and receive its token and limits                         |
+| POST   | `/api/sessions/:sid/conversions`                            | Create an immutable operation; matching request-ID retries are idempotent |
+| PUT    | `/api/sessions/:sid/conversions/:operationId/files/:fileId` | Upload one slot; reconcile/retry an interrupted transfer                  |
+| GET    | `/api/sessions/:sid/conversions/:operationId`               | Read the authoritative snapshot                                           |
+| POST   | `/api/sessions/:sid/conversions/:operationId/cancel`        | Request cooperative cancellation                                          |
+| GET    | `/api/sessions/:sid/files/:fileId`                          | Download a completed image                                                |
+| GET    | `/api/sessions/:sid/files/:fileId/meta`                     | Read completed-image metadata                                             |
+| POST   | `/api/sessions/:sid/files/download`                         | Download a ZIP with `{ ids, archiveName? }`                               |
 
-Temporary files are removed after conversion and on request rejection. Failed
-conversions remove partial output and metadata; if session-state persistence
-fails after conversions, accepted artifacts from that batch are rolled back.
-One file may fail without discarding successful files: the API returns HTTP 207
-with accepted and rejected entries, then seals the session. An all-rejected
-batch also seals the session with unchanged counts. Each session therefore
-accepts exactly one completed upload batch.
+Explicit cancellation stops queued local uploads and requests backend cancellation.
+An active encoder may finish successfully; later files are skipped and existing
+outputs remain downloadable. The UI waits for server confirmation and permits
+retry if cancellation is uncertain. On `pagehide`, including navigation or reload,
+the browser sends a best-effort authenticated keepalive cancellation request.
+Delivery is not guaranteed: if it never arrives, the backend continues processing
+or expires the operation independently. Credentials are not persisted for browser
+recovery, and refreshing/reopening a tab is not a resume feature.
 
-The upload application service holds a minimal per-session in-memory claim so
-two concurrent requests cannot both convert against the same unsealed session.
-Claims for different sessions are independent and claims are released on both
-success and failure. This guarantee is intentionally single-process; running
-multiple API processes would require coordination outside this application.
+The synchronous `POST /api/sessions/:sid/uploads` endpoint is retired and returns
+404 without loading its multipart middleware or starting conversion. Existing
+sealed legacy sessions still support authenticated metadata, file, and ZIP reads
+until their original expiry. The old shared UI components, cosmetic progress,
+contracts, and backend upload modules remain for compatibility tests and separate
+cleanup. The preserved `useFileUploads` hook calls the retired endpoint and is
+not a supported end-to-end workflow; the mounted route uses the operation API.
 
-The progress shown while a request is active is cosmetic and simulated. It does
-not report uploaded bytes or backend conversion stages, and it cannot complete
-the workflow independently of the API response. Real transport and conversion
-progress is a future capability.
+## Limits, deadlines, and storage
+
+Backend settings are authoritative. The session response exposes its effective
+file/byte limits. The session lifetime is fixed from creation and includes upload
+and queue time; polling, cancellation, and downloads do not extend it.
+
+| Environment variable                      | Default     | Meaning                                         |
+| ----------------------------------------- | ----------- | ----------------------------------------------- |
+| `SESSION_TTL_MINUTES`                     | 15          | Fixed session lifetime                          |
+| `SESSION_MAX_FILES`                       | 20          | Files per manifest                              |
+| `SESSION_PER_FILE_BYTES`                  | 20000000    | Bytes per file                                  |
+| `SESSION_MAX_TOTAL_BYTES`                 | 500000000   | Total declared bytes per manifest               |
+| `CONVERSION_MAX_OPERATIONS`               | 3           | Concurrent nonterminal operations admitted      |
+| `CONVERSION_MAX_UPLOADS`                  | 2           | Concurrent upload transports across the process |
+| `CONVERSION_UPLOAD_IDLE_MS`               | 60000       | Upload inactivity deadline                      |
+| `CONVERSION_UPLOAD_TOTAL_MS`              | 300000      | Total upload deadline                           |
+| `CONVERSION_FILE_TIMEOUT_MS`              | 120000      | Cooperative per-file conversion deadline        |
+| `CONVERSION_SWEEP_INTERVAL_MS`            | 1000        | Background discovery/expiry sweep interval      |
+| `CONVERSION_SHUTDOWN_GRACE_MS`            | 10000       | Process shutdown grace period                   |
+| `CONVERSION_MAX_INPUT_PIXELS`             | 200000000   | Sharp input pixel ceiling                       |
+| `CONVERSION_MAX_DIMENSION`                | 8192        | Maximum output dimension                        |
+| `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` | 100 / 60000 | General request budget per IP                   |
+
+Session creation has a separate three-per-minute/IP limit. Operation status
+polling has a separate 240-per-minute/IP budget and does not consume the general
+command budget. Multipart staging limits the body to declared file bytes plus
+64 KiB of framing. The bounded multipart decoder buffers the body, so memory use
+scales with file size and upload concurrency.
+
+Deadlines do not guarantee interruption of native code. Sharp's timeout covers
+libvips processing, excluding thread-pool waiting; the runtime also checks elapsed
+time when work settles. Timed-out conversions retain the worker slot and input
+until their invocation settles, and late results are discarded. HEIC preprocessing
+can allocate decoded pixels and synchronously encode before Sharp sees the image;
+Sharp's pixel ceiling and timeout do not bound that earlier memory/CPU use. Hard
+wall-clock termination would require separate process isolation, which this app
+does not implement.
+
+`UPLOAD_DIR` defaults to `data/uploads`. Each session directory contains
+`session.info.json`, the durable `conversion.info.json` operation, accepted inputs
+under `inputs/`, and committed images with `<file-id>.json` metadata sidecars.
+Internal staging and commit receipts support per-file crash consistency.
+`UPLOAD_TMP_DIR` defaults to `data/tmp` and holds incomplete request bodies.
+Rejected/disconnected request staging is removed, leaving interrupted slots
+retryable. Committed outputs from other files are never rolled back because a
+sibling fails.
+
+On startup, the API cleans abandoned conversion request staging and recovers
+operations before listening and reporting ready. Valid committed output survives;
+a file interrupted without a valid commit becomes `processing_interrupted`, and
+valid remaining uploads can continue without browser polling. Invalid session
+records are isolated/reported; storage mutation failures stop scheduling/readiness.
+A background sweep expires operation sessions, but cleanup waits for active
+conversions and download leases before removing their files. Legacy-only session
+directories are not removed by the operation sweep; their access still expires.
+Shutdown stops accepting work and starting new files, drains active work within
+the grace period, and relies on restart recovery if the process must exit early.
+
+## Browser testing
+
+The standard browser `e2e` target runs against built frontend and API artifacts,
+real image encoding, and isolated filesystem storage. It builds its prerequisites,
+starts the normal API entrypoint and React Router production server, and supplies
+a test-only same-origin reverse proxy for `/api`. It never reuses a running dev
+server. Each test owns temporary storage under `tmp/browser-tests`, dynamically
+allocated ports, readiness checks, and process/data cleanup.
+
+Install the locked dependencies with `npm ci`. On a supported local machine or CI
+runner, install the matching browser binaries and system prerequisites once:
+
+```sh
+npx playwright install --with-deps
+```
+
+In a workspace-restricted container, install browser binaries inside the repository
+and use the same path when running tests. Native OS libraries must already be
+available; missing libraries are an execution failure, not a skipped success.
+
+```sh
+export PLAYWRIGHT_BROWSERS_PATH="$PWD/node_modules/.cache/ms-playwright"
+npx playwright install chromium firefox webkit
+```
+
+Run the same targets locally and in CI:
+
+```sh
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx e2e @image-web-convert/web-e2e
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx run @image-web-convert/web-e2e:browser-integration
+```
+
+`e2e` covers complete and partial batches, decoded individual/ZIP contents,
+cancellation preserving completed results, a stream interrupted after API staging,
+retry of the same slot, and actual navigation with delivered or dropped page-exit
+cancellation. `browser-integration` retains focused UI checks with mocked API
+responses; it is not end-to-end coverage.
+
+For deterministic cancellation/crash timing, a test-only API executable uses the
+production app/runtime and real encoder with an IPC-controlled pause before an
+encoder invocation. No control routes or fake encoder results are added to the
+production API. Ordinary conversion/failure/retry browser scenarios use the normal
+built API entrypoint. The API process suite (`nx e2e @image-web-convert/api-e2e`)
+checks abrupt and graceful restarts, committed-output retention, interrupted-file
+recovery, processing without status GETs or exit cancellation, upload disconnects,
+endpoint retirement, and sealed legacy downloads. Restart recovery always uses
+the normal production entrypoint. Nx builds the test executable as a prerequisite.
+API tests use their own storage under `tmp/api-lifecycle`. Test APIs retain normal
+resource limits, use a 100 ms sweep and a 1000/minute general request budget; the
+production defaults above are unchanged.
+
+Both browser targets run Chromium, Firefox, and WebKit with one worker and no
+retries. To verify only Chromium in a constrained environment, append
+`-- --project=chromium` (the separator passes the option to Playwright). This
+does not verify the other browsers. Tests always execute
+rather than using an Nx test-result cache. Use the default same-origin build
+configuration (`VITE_API_URL` unset); do not build these tests against an external
+API URL.
+
+GitHub Actions and `npm run ci:hook` include both browser targets. On CI failure,
+the `browser-test-diagnostics` artifact retains HTML reports, failure screenshots,
+and server stdout/stderr logs for seven days. Local diagnostics are under
+`apps/web-e2e/test-output/{e2e,integration}` and
+`apps/api-e2e/test-output/lifecycle`. Network traces and videos are disabled
+to keep session bearer tokens and response bodies out of retained artifacts.
+The harness disables API request telemetry and deletes session storage after each
+test. Browser launch or application readiness failures fail the command and
+include diagnostics; there is no fallback to mocks or an existing server.
 
 ## License
 

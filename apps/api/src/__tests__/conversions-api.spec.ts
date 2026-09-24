@@ -547,7 +547,7 @@ it('applies the total upload deadline even while bytes keep arriving', async () 
     }
 });
 
-it('prevents legacy conversion and operation creation from owning the same session', async () => {
+it('retires legacy uploads while preserving sealed-session and creation claim guards', async () => {
     const session = await createSession();
     await operation(session, 1);
     const form = new FormData();
@@ -558,7 +558,8 @@ it('prevents legacy conversion and operation creation from owning the same sessi
         headers: headers(session),
         body: form,
     });
-    expect(legacy.status).toBe(409);
+    expect(legacy.status).toBe(404);
+    expect(convert).not.toHaveBeenCalled();
     const other = await createSession();
     const { readSessionInfo, writeSessionInfo } = await import(
         '../services/sessions.service'

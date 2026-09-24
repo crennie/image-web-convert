@@ -24,6 +24,9 @@
     ],
     "references": [
         {
+            "path": "../api-e2e"
+        },
+        {
             "path": "../../libs/schemas"
         }
     ]
