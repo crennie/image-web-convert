@@ -1,12 +1,12 @@
 # Architecture cleanup: steps 7–12
 
-Status: steps 7–9 complete; steps 10–12 remain pending.
+Status: steps 7–10 complete; steps 11–12 remain pending.
 Reviewed against the repository on 2026-09-24, after commit `4f01c51`.
 
 This document preserves the intent of the supplied architecture-cleanup steps
 7–12 while reconciling them with the completed
 [asynchronous conversion plan](asynchronous-conversions.md). These are cleanup
-step numbers, not additional phases of that six-phase migration. The initial request authorized saving this plan only. Steps 7–9 were subsequently
+step numbers, not additional phases of that six-phase migration. The initial request authorized saving this plan only. Steps 7–10 were subsequently
 authorized and completed; implement later steps only when requested and record
 their evidence here.
 
@@ -140,7 +140,7 @@ ownership edits with step 7 rather than refactoring the same boundary twice.
 
 ## Step 10 — Verify presentation-only legacy progress
 
-- [ ] Audit and complete
+- [x] Audit and complete (2026-09-24)
 
 Review legacy `ConversionPage.tsx`, `useFileProgress.ts`, `FileProgress.tsx`, exports,
 and tests. Public symbols already use cosmetic terminology even though filenames
@@ -393,3 +393,30 @@ limits. Do not claim historical counts or unobserved CI runs as fresh results.
   No browser/UI change: browser suites and hosted CI were not rerun for step 9.
   No dependency or lockfile changes. Final diff and whitespace reviewed.
 - Next requested step: 10, presentation-only legacy progress audit.
+
+### Step 10 completion — 2026-09-24
+
+- Audited the retained legacy conversion page, cosmetic component/hook, exports,
+  instructions, and tests. Existing cosmetic naming and API-owned completion/error
+  handling already satisfy the ownership requirements; no timer/workflow rewrite.
+- Replaced the screen-reader percentage and preparation-stage heading with generic
+  waiting language and a visible disclosure that the activity indicator does not
+  measure upload or conversion progress. Updated the legacy DOM ID and request
+  instructions to avoid implying a measured conversion stage. Kept public props,
+  exports, and filenames compatible; the cosmetic percentage prop remains accepted.
+- Added three hook tests with fake timers for the 90% cap, explicit completion,
+  cancel/reset, restart without accumulating timers, and unmount cleanup. Strengthened
+  the page test by setting cosmetic progress to 100% while its API promise remains
+  pending; only resolving that promise transitions to downloads. Existing tests
+  retain specific API error display, cancellation, and reset coverage.
+- Validation: 52 UI tests and 55 web tests pass; UI/web lint, typechecks, and builds
+  pass. UI coverage shows 100% statements/branches/functions for both the cosmetic
+  component and hook. Relevant commands used the existing Nx flags, NX_NO_CLOUD,
+  and repository-local TMPDIR. Existing lint, color, source-map, bundle-directive,
+  and Nx process-listener warnings were reported without unrelated fixes.
+- No active operation panel, upload transport, polling, shared contract, or API
+  behavior changed. Browser/API E2E and API coverage were not rerun for this
+  legacy-only presentation change. No new progress protocol or step 13 work.
+- Reviewed final diff and whitespace. No dependency or lockfile change. User
+  requested a local commit after implementation; no push is authorized.
+- Next requested step: 11, targeted README review.

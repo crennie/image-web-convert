@@ -31,12 +31,12 @@ describe("PageInstructions", () => {
     it("renders upload message for 'upload' and 'upload_complete' (case when file progress not complete)", () => {
         const { rerender } = render(<PageInstructions pageState="upload" />);
         expect(
-            screen.getByText(/Converting your files/i)
+            screen.getByText(/Your request is in progress/i)
         ).toBeInTheDocument();
 
         rerender(<PageInstructions pageState="upload_complete" />);
         expect(
-            screen.getByText(/Converting your files/i)
+            screen.getByText(/Your request is in progress/i)
         ).toBeInTheDocument();
     });
 
