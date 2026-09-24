@@ -246,13 +246,16 @@ built API entrypoint. The API process suite (`nx run @image-web-convert/api-e2e:
 checks abrupt and graceful restarts, committed-output retention, interrupted-file
 recovery, processing without status GETs or exit cancellation, upload disconnects,
 concurrent operation creation, per-slot contention with independent-session progress,
-ZIP name/order collisions, endpoint retirement, and sealed legacy downloads.
+ZIP name/order collisions, malformed requests, authorization/expiry, effective
+limits, decode failures with partial downloads, endpoint retirement, and sealed
+legacy downloads.
 Restart recovery always uses the normal production entrypoint. Nx builds the test executable as a prerequisite.
 The API `e2e` target delegates to its uncached `test` target, which also runs via
 `npm test`; browser E2E must be invoked separately or through `npm run ci:hook`.
-API tests use their own storage under `tmp/api-lifecycle`. Test APIs retain normal
-resource limits, use a 100 ms sweep and a 1000/minute general request budget; the
-production defaults above are unchanged.
+API tests use their own storage under `tmp/api-lifecycle`. Test APIs default to
+normal resource limits, with a 100 ms sweep and a 1000/minute general request
+budget. The aggregate-limit test lowers only its own byte budget via the existing
+environment setting; production defaults above are unchanged.
 
 Both browser targets run Chromium, Firefox, and WebKit with one worker and no
 retries. To verify only Chromium in a constrained environment, append

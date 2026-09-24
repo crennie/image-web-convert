@@ -1,12 +1,14 @@
 # Architecture cleanup: steps 7–12
 
-Status: steps 7–11 complete; step 12 remains pending.
+Status: steps 7–12 implemented. Local API/Chromium validation passes; full
+Firefox/WebKit verification remains blocked by missing native host libraries.
+Hosted CI execution has not been observed.
 Reviewed against the repository on 2026-09-24, after commit `4f01c51`.
 
 This document preserves the intent of the supplied architecture-cleanup steps
 7–12 while reconciling them with the completed
 [asynchronous conversion plan](asynchronous-conversions.md). These are cleanup
-step numbers, not additional phases of that six-phase migration. The initial request authorized saving this plan only. Steps 7–11 were subsequently
+step numbers, not additional phases of that six-phase migration. The initial request authorized saving this plan only. Steps 7–12 were subsequently
 authorized and completed; implement later steps only when requested and record
 their evidence here.
 
@@ -181,7 +183,7 @@ that all browser projects or hosted CI have been verified.
 
 ## Step 12 — Extend required real lifecycle coverage
 
-- [ ] Audit and complete
+- [x] Implementation complete (2026-09-24); full browser validation limitation below.
 
 Reuse `apps/api-e2e/src/support/api-process.ts`, the controlled API fixture, and
 the existing browser harness. The API app is already testable; do not introduce
@@ -447,3 +449,58 @@ limits. Do not claim historical counts or unobserved CI runs as fresh results.
   validation evidence remains in the preceding step logs.
 - User requested a local commit after completion; no push. Next requested step:
   12, extend representative real lifecycle/failure coverage and full validation.
+
+### Step 12 completion — 2026-09-24
+
+- Reviewed the ten existing real API E2E scenarios against the step-12 requirements.
+  Retained lifecycle/metadata/image/ZIP, crash/restart, concurrent intent/slot claims,
+  disconnect/retry, endpoint retirement, and legacy download coverage. No dummy
+  target replacement or new application factory was needed.
+- Added five real API process cases for malformed/empty manifests, unsupported
+  output MIME, file-count limits, independent aggregate-byte limits, missing-file
+  and malformed multipart cleanup/retry, expired-session authorization, and real
+  image decode failure alongside successful downloadable results. Scenarios group
+  related failures and prove the same session/slot remains usable where appropriate.
+- New scenarios start the normal production executable. The test-only harness now
+  permits a narrowly scoped aggregate-limit override via the existing environment
+  variable; defaults are unchanged. The expiry test ages only its own disposable
+  session record, avoiding a 15-minute sleep or production clock injection.
+- Error assertions parse shared Zod schemas and check HTTP status/content type.
+  Successful image assertions check MIME and decode dimensions/format with Sharp.
+  The partial-failure test checks decoded ZIP bytes, missing-ID reporting, download
+  rejection before commit/after failure, absent failed artifacts, and empty input,
+  request, and conversion staging after settlement. Invalid-token assertions in
+  the existing lifecycle case now also use shared error schemas.
+- Direct `api-e2e:e2e` passes all 15 cases. Full root `npm run lint`, `npm run
+  typecheck`, `npm test`, and `npm run build` pass. Root tests total 389: API 232,
+  web 55, UI 52, schemas 25, node-shared 9, observability 1, API E2E 15. Nx reused
+  valid local cache results for unchanged tasks; API E2E remains uncached.
+- API coverage command succeeds (unchanged API source, cached instrumented result):
+  overall 93.85% statements, 89.68% branches, 98.15% functions. Previously changed
+  ownership/ZIP modules retain: session claims 100%/100%, runtime 95.41%/85.78%,
+  file service 100%/95.12%, file controller 100%/97.06% (statements/branches).
+  The changes in this step are test/harness/documentation only; no production
+  response, scheduling, dependency, or lockfile change.
+- Validation uses `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true`,
+  repository-local TMPDIR, and the repository-local Playwright browser cache.
+  Existing lint/color/source-map/bundle warnings were not suppressed or fixed
+  outside scope. Firefox/WebKit binaries installed into the workspace; Playwright
+  reported missing native host libraries. Browser matrix outcome is recorded below.
+
+- Full browser attempt:
+  `nx run-many -t e2e browser-integration -p @image-web-convert/web-e2e` with the
+  same environment flags and local browser path. Chromium: all six real E2E and
+  five mocked integration cases pass. Firefox/WebKit: all 22 cases fail during
+  browser launch due to missing native libraries; no application assertions run
+  for those projects. Overall command exits 1. E2E took about 2.2 minutes and
+  browser integration 1.7 minutes. This is not a passing full-matrix run.
+- Required three-browser CI coverage and `playwright install --with-deps` remain
+  enabled. No system package installation outside the workspace, disabled tests,
+  retries, mock fallback, or remote CI action. A supported host/normal CI run must
+  still verify Firefox/WebKit and hosted artifact collection.
+- Test storage roots were empty after the runs. Final diff, code formatting,
+  documentation links, and git whitespace checks pass. Updated README with the
+  new failure coverage and isolated aggregate-limit override.
+- Implementation steps 7–12 are finished, with the browser environment limitation
+  above still open. No step 13 or new progress protocol. User requested a local
+  commit after completion; no push.
