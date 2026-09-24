@@ -4,6 +4,7 @@ import http from 'node:http';
 import sharp from 'sharp';
 import {
     ApiCreateSessionResponseSchema,
+    ApiErrorSchema,
     ApiConversionOperationSchema,
     type ApiConversionOperation,
     UploadMetaSchema,
@@ -25,7 +26,7 @@ async function session() {
     expect(response.status).toBe(201);
     return ApiCreateSessionResponseSchema.parse(await response.json());
 }
-async function create(s: Session, count = 2) {
+async function create(s: Session, count = 2, names?: string[]) {
     const response = await fetch(`${base(s)}/conversions`, {
         method: 'POST',
         headers: { ...headers(s), 'Content-Type': 'application/json' },
@@ -34,7 +35,7 @@ async function create(s: Session, count = 2) {
             options: { outputMime: 'image/webp' },
             files: Array.from({ length: count }, (_, i) => ({
                 clientId: `client-${i}`,
-                name: `${i}.png`,
+                name: names?.[i] ?? `${i}.png`,
                 sizeBytes: png.length,
             })),
         }),
@@ -157,6 +158,33 @@ it('creates, validates authorization, converts without polling, reads metadata a
     expect(await output(s, op)).toEqual(first);
 });
 
+it('downloads all colliding filenames once, in requested order, with missing IDs reported', async () => {
+    const s = await session();
+    const op = await create(s, 3, ['a.png', 'a.png', 'a (2).png']);
+    for (let i = 0; i < 3; i++)
+        expect((await upload(s, op, i)).status).toBe(200);
+    await diskStatus(s, 'completed');
+    const zip = await fetch(`${base(s)}/files/download`, {
+        method: 'POST',
+        headers: { ...headers(s), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            ids: [...op.files.map((file) => file.id), 'missing-file'],
+            archiveName: 'photos é',
+        }),
+    });
+    expect(zip.status).toBe(200);
+    expect(zip.headers.get('content-type')).toContain('application/zip');
+    expect(zip.headers.get('content-disposition')).toContain(
+        "filename*=UTF-8''photos%20%C3%A9.zip",
+    );
+    expect(zip.headers.get('x-missing-ids')).toBe('missing-file');
+    const entries = zipEntries(Buffer.from(await zip.arrayBuffer()));
+    const names = ['a.webp', 'a (3).webp', 'a (2).webp'];
+    expect([...entries.keys()]).toEqual(names);
+    for (let i = 0; i < names.length; i++)
+        expect(entries.get(names[i])).toEqual(await output(s, op, i));
+});
+
 it('rejects manifests above the effective size limit before staging bytes', async () => {
     const s = await session();
     const response = await fetch(`${base(s)}/conversions`, {
@@ -209,6 +237,94 @@ it('cleans a genuinely disconnected multipart stream and accepts a retry on the 
     expect((await upload(s, op)).status).toBe(200);
     await diskStatus(s, 'completed');
     await output(s, op);
+});
+
+it('serializes concurrent operation intents and isolates active slot claims across sessions', async () => {
+    const s = await session();
+    const [op, same] = await Promise.all([create(s), create(s)]);
+    expect(same.id).toBe(op.id);
+    expect(same.files).toEqual(op.files);
+    const conflict = await fetch(`${base(s)}/conversions`, {
+        method: 'POST',
+        headers: { ...headers(s), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            requestId: 'different-intent',
+            options: { outputMime: 'image/webp' },
+            files: [
+                {
+                    clientId: 'different',
+                    name: 'different.png',
+                    sizeBytes: png.length,
+                },
+            ],
+        }),
+    });
+    expect(conflict.status).toBe(409);
+    expect(ApiErrorSchema.parse(await conflict.json()).type).toBe(
+        'conversion_conflict',
+    );
+    const other = await session();
+    const independent = await create(other, 1);
+    const request = http.request(
+        `${base(s)}/conversions/${op.id}/files/${op.files[0].id}`,
+        {
+            method: 'PUT',
+            headers: {
+                ...headers(s),
+                'Content-Type': 'multipart/form-data; boundary=held',
+            },
+        },
+    );
+    request.on('error', () => undefined);
+    request.write(
+        '--held\r\nContent-Disposition: form-data; name="file"; filename="0.png"\r\n\r\n',
+    );
+    try {
+        // Actual staging is the synchronization barrier: the first transport
+        // owns the slot before its duplicate or independent uploads arrive.
+        await vi.waitFor(async () =>
+            expect(await fs.readdir(api.incoming)).toHaveLength(1),
+        );
+        const staging = await fs.readdir(api.incoming);
+        const duplicate = await upload(s, op);
+        expect(duplicate.status).toBe(409);
+        expect(ApiErrorSchema.parse(await duplicate.json()).type).toBe(
+            'upload_in_progress',
+        );
+        expect(await fs.readdir(api.incoming)).toEqual(staging);
+        expect(
+            (await api.readOperation(s.sid)).files.map((file) => file.status),
+        ).toEqual(['awaiting_upload', 'awaiting_upload']);
+
+        // A sibling and then another session make real progress while slot 0
+        // still holds its admission. No global/session-wide lock is permitted.
+        expect((await upload(s, op, 1)).status).toBe(200);
+        await vi.waitFor(async () =>
+            expect(await fs.readdir(api.incoming)).toEqual(staging),
+        );
+        expect((await upload(other, independent)).status).toBe(200);
+        await diskStatus(other, 'completed');
+        await output(other, independent);
+        const waiting = await api.readOperation(s.sid);
+        expect(waiting.status).toBe('awaiting_uploads');
+        expect(waiting.files.map((file) => file.status)).toEqual([
+            'awaiting_upload',
+            'uploaded',
+        ]);
+    } finally {
+        request.destroy();
+    }
+    await vi.waitFor(async () =>
+        expect(await fs.readdir(api.incoming)).toEqual([]),
+    );
+    expect((await upload(s, op)).status).toBe(200);
+    await diskStatus(s, 'completed');
+    const before = await status(s, op);
+    const first = await output(s, op);
+    expect((await upload(s, op)).status).toBe(200);
+    expect(await status(s, op)).toEqual(before);
+    expect(await output(s, op)).toEqual(first);
+    expect(await fs.readdir(api.incoming)).toEqual([]);
 });
 
 it('recovers across a process crash, retains committed output and does not replay the interrupted file', async () => {

@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
+import { Writable } from 'node:stream';
+import type { ResolvedDownload } from '../files.service';
 import {
     archiveDownloadHeaders,
     ArchiveClientAbortError,
@@ -33,32 +35,17 @@ vi.mock('../storage.paths', () => ({
 }));
 
 // 3) Mock archiver (default export is a function that returns an archive instance)
-const archiveApi = {
-    on: vi.fn(),
-    once: vi.fn(),
+const archiveApi = Object.assign(new EventEmitter(), {
     pipe: vi.fn(),
+    unpipe: vi.fn(),
+    abort: vi.fn(),
     file: vi.fn(),
-    finalize: vi.fn().mockResolvedValue(undefined),
+    finalize: vi.fn<() => Promise<void>>(),
     destroy: vi.fn(),
-};
+});
 vi.mock('archiver', () => ({
     default: vi.fn(() => archiveApi),
 }));
-
-// Simple Response stub with header tracking and abort events
-class ResStub extends EventEmitter {
-    headers: Record<string, string> = {};
-    setHeader(name: string, val: string) {
-        this.headers[name] = val;
-    }
-    // Writable-ish surface not really used due to archiver mock
-    write() {
-        /* noop */
-    }
-    end() {
-        /* noop */
-    }
-}
 
 const makeMeta = (
     id: string,
@@ -153,130 +140,179 @@ describe('resolveFilesByIds', () => {
             'image (3).webp', // 3rd
         ]);
     });
+    it('reserves existing suffix names while preserving input order', async () => {
+        const names = ['a.jpg', 'a.jpg', 'a (2).jpg', 'a.jpg', 'a (2).jpg'];
+        readMetaMock.mockImplementation(async (_sid: string, id: string) =>
+            makeMeta(id, names[Number(id)]),
+        );
+        pathForStoredMock.mockImplementation(
+            (_sid: string, stored: string) => `/abs/${stored}`,
+        );
+        const { found } = await resolveFilesByIds('SID', [
+            '0',
+            '1',
+            '2',
+            '3',
+            '4',
+        ]);
+        expect(found.map((file) => file.archiveName)).toEqual([
+            'a.webp',
+            'a (3).webp',
+            'a (2).webp',
+            'a (4).webp',
+            'a (2) (2).webp',
+        ]);
+        expect(found.map((file) => file.id)).toEqual(['0', '1', '2', '3', '4']);
+    });
 });
 
 describe('writeZip', () => {
+    const entry = (): ResolvedDownload => ({
+        id: 'a',
+        absPath: '/abs/a.webp',
+        downloadName: 'a.webp',
+        archiveName: 'image.webp',
+        contentType: 'image/webp',
+        contentDisposition: '',
+        meta: makeMeta('a', 'a.jpg') as ResolvedDownload['meta'],
+    });
+    const output = () =>
+        new Writable({
+            write(_chunk, _encoding, done) {
+                done();
+            },
+        });
+    const deferred = () => {
+        let resolve!: () => void;
+        let reject!: (error: Error) => void;
+        const promise = new Promise<void>((yes, no) => {
+            resolve = yes;
+            reject = no;
+        });
+        return { promise, resolve, reject };
+    };
+    const clean = (stream: Writable) => {
+        for (const event of ['finish', 'close', 'error'])
+            expect(stream.listenerCount(event)).toBe(0);
+        for (const event of ['error', 'warning'])
+            expect(archiveApi.listenerCount(event)).toBe(0);
+    };
     beforeEach(() => {
         vi.resetAllMocks();
-        // Recreate archive API per test (so call counts reset)
-        vi.mocked(archiveApi.on).mockImplementation(() => {
-            //
-        });
-        vi.mocked(archiveApi.once).mockImplementation(() => archiveApi);
-        vi.mocked(archiveApi.pipe).mockImplementation(() => {
-            //
-        });
-        vi.mocked(archiveApi.file).mockImplementation(() => {
-            //
-        });
-        vi.mocked(archiveApi.finalize).mockResolvedValue(undefined);
-        vi.mocked(archiveApi.destroy).mockImplementation(() => {
-            //
-        });
+        archiveApi.removeAllListeners();
+        archiveApi.finalize.mockResolvedValue(undefined);
     });
 
-    it('pipes output, adds files in order, and resolves after output finishes', async () => {
-        const output = new ResStub();
+    it.each(['output', 'finalize'])(
+        'waits for both success boundaries when %s completes first',
+        async (first) => {
+            const stream = output();
+            const finalization = deferred();
+            archiveApi.finalize.mockReturnValue(finalization.promise);
+            const entries = [
+                entry(),
+                {
+                    ...entry(),
+                    absPath: '/abs/b.webp',
+                    archiveName: 'image (2).webp',
+                },
+            ];
+            const done = vi.fn();
+            const pending = writeZip(stream, entries).then(done);
+            if (first === 'output') {
+                stream.emit('finish');
+                stream.emit('close');
+            } else finalization.resolve();
+            await Promise.resolve();
+            expect(done).not.toHaveBeenCalled();
+            if (first === 'output') finalization.resolve();
+            else stream.emit('finish');
+            await pending;
+            expect(archiveApi.pipe).toHaveBeenCalledWith(stream);
+            expect(archiveApi.file.mock.calls).toEqual([
+                ['/abs/a.webp', { name: 'image.webp' }],
+                ['/abs/b.webp', { name: 'image (2).webp' }],
+            ]);
+            expect(archiveApi.destroy).not.toHaveBeenCalled();
+            clean(stream);
+        },
+    );
 
-        const entries = [
-            {
-                id: 'a',
-                absPath: '/abs/a.webp',
-                downloadName: 'a.webp',
-                archiveName: 'image.webp',
-                contentType: 'image/webp',
-                contentDisposition: 'attachment; filename="a.webp"',
-                meta: makeMeta('a', 'a.jpg'),
-            },
-            {
-                id: 'b',
-                absPath: '/abs/b.webp',
-                downloadName: 'b.webp',
-                archiveName: 'image (2).webp',
-                contentType: 'image/webp',
-                contentDisposition: 'attachment; filename="b.webp"',
-                meta: makeMeta('b', 'b.jpg'),
-            },
-        ];
+    it.each(['archive', 'warning', 'output', 'abort'])(
+        'rejects promptly on %s while finalization is pending',
+        async (source) => {
+            const stream = output();
+            const finalization = deferred();
+            archiveApi.finalize.mockReturnValue(finalization.promise);
+            const pending = writeZip(stream, [entry()]);
+            const error = new Error('stream failed');
+            const assertion =
+                source === 'abort'
+                    ? expect(pending).rejects.toBeInstanceOf(
+                          ArchiveClientAbortError,
+                      )
+                    : expect(pending).rejects.toBe(error);
+            // Emit asynchronously: no throwing event callback can satisfy this test.
+            await Promise.resolve();
+            if (source === 'abort') stream.emit('close');
+            else if (source === 'output') stream.emit('error', error);
+            else
+                archiveApi.emit(
+                    source === 'archive' ? 'error' : 'warning',
+                    error,
+                );
+            await assertion;
+            expect(archiveApi.unpipe).toHaveBeenCalledWith(stream);
+            expect(archiveApi.abort).toHaveBeenCalledTimes(1);
+            expect(archiveApi.destroy).toHaveBeenCalledTimes(1);
+            expect(stream.destroyed).toBe(false); // HTTP caller still owns its response.
+            clean(stream);
+            finalization.reject(new Error('late finalize rejection'));
+            await Promise.resolve();
+        },
+    );
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const pending = writeZip(output as any, entries as any);
-        output.emit('finish');
-        await pending;
-
-        // archive API usage
-        expect(archiveApi.pipe).toHaveBeenCalledWith(output);
-        expect(archiveApi.file).toHaveBeenCalledTimes(2);
-        expect(archiveApi.file).toHaveBeenNthCalledWith(1, '/abs/a.webp', {
-            name: 'image.webp',
-        });
-        expect(archiveApi.file).toHaveBeenNthCalledWith(2, '/abs/b.webp', {
-            name: 'image (2).webp',
-        });
-        expect(archiveApi.finalize).toHaveBeenCalledTimes(1);
-    });
-
-    it('destroys archive and rejects if the client closes early', async () => {
-        const output = new ResStub();
-
-        const entries = [
-            {
-                id: 'a',
-                absPath: '/abs/a.webp',
-                downloadName: 'a.webp',
-                archiveName: 'a.webp',
-                contentType: 'image/webp',
-                contentDisposition: '',
-                meta: makeMeta('a', 'a.jpg'),
-            },
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ] as any;
-
-        const p = writeZip(output as any, entries);
-        output.emit('close');
-        await expect(p).rejects.toBeInstanceOf(ArchiveClientAbortError);
+    it('rejects finalization failure and cleans listeners without finishing output', async () => {
+        const stream = output();
+        archiveApi.finalize.mockRejectedValue(new Error('finalize failed'));
+        await expect(writeZip(stream, [entry()])).rejects.toThrow(
+            'finalize failed',
+        );
         expect(archiveApi.destroy).toHaveBeenCalledTimes(1);
+        clean(stream);
     });
 
-    it('bubbles archiver errors', async () => {
-        const output = new ResStub();
-
-        // Wire error listener to immediately throw
-        vi.mocked(archiveApi.once).mockImplementation(
-            (ev: string, cb: (err: Error) => void) => {
-                if (ev === 'error') {
-                    // Immediately invoke with a fake error once finalize is awaited
-                    vi.mocked(archiveApi.finalize).mockImplementation(
-                        async () => {
-                            cb(new Error('zip-failed'));
-                            return undefined;
-                        },
-                    );
-                }
-            },
+    it('cleans up when adding an entry throws', async () => {
+        const stream = output();
+        archiveApi.file.mockImplementation(() => {
+            throw new Error('entry failed');
+        });
+        await expect(writeZip(stream, [entry()])).rejects.toThrow(
+            'entry failed',
         );
-
-        const entries = [
-            {
-                id: 'a',
-                absPath: '/abs/a.webp',
-                downloadName: 'a.webp',
-                archiveName: 'a.webp',
-                contentType: 'image/webp',
-                contentDisposition: '',
-                meta: makeMeta('a', 'a.jpg'),
-            },
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ] as any;
-
-        await expect(writeZip(output as any, entries)).rejects.toThrow(
-            /zip-failed/,
-        );
+        expect(archiveApi.finalize).not.toHaveBeenCalled();
+        clean(stream);
     });
 
-    it('builds sanitized HTTP headers separately', () => {
-        const headers = archiveDownloadHeaders('My*Bundle');
+    it('does not start archiving for an already destroyed output', async () => {
+        const stream = output();
+        stream.destroy();
+        await expect(writeZip(stream, [entry()])).rejects.toBeInstanceOf(
+            ArchiveClientAbortError,
+        );
+        expect(archiveApi.pipe).not.toHaveBeenCalled();
+        expect(archiveApi.finalize).not.toHaveBeenCalled();
+        clean(stream);
+    });
+
+    it('builds sanitized Unicode HTTP headers separately', () => {
+        const headers = archiveDownloadHeaders('My*Bundle é');
         expect(headers.contentType).toBe('application/zip');
-        expect(headers.contentDisposition).toContain('filename="My_Bundle.zip"');
+        expect(headers.contentDisposition).toContain(
+            'filename="My_Bundle é.zip"',
+        );
+        expect(headers.contentDisposition).toContain(
+            "filename*=UTF-8''My_Bundle%20%C3%A9.zip",
+        );
     });
 });

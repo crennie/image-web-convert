@@ -7,7 +7,7 @@ import { createConversionRuntime } from '../../../api/src/services/conversion-ru
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { processImageToMimeType } from '../../../api/src/services/image.service';
 // eslint-disable-next-line @nx/enforce-module-boundaries
-import { recoverConversionRequestStaging } from '../../../api/src/services/conversion-upload.service';
+import { recoverConversionRequestStaging } from '../../../api/src/controllers/conversion-upload.http';
 
 let calls = 0;
 let gate: { at: number; release(): void; wait: Promise<void> } | undefined;

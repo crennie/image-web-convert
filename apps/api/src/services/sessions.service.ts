@@ -53,8 +53,11 @@ export async function create(): Promise<CreateSessionResponse> {
 
 /* ---------------------------- External Helpers -------------------------------- */
 
-export async function readSessionInfo(sid: string): Promise<SessionInfo> {
-    const raw = await fs.readFile(sessionInfoPath(sid), 'utf8');
+export async function readSessionInfo(
+    sid: string,
+    root?: string,
+): Promise<SessionInfo> {
+    const raw = await fs.readFile(sessionInfoPath(sid, root), 'utf8');
     const info = JSON.parse(raw) as SessionInfo;
     return info;
 }
