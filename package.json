@@ -14,6 +14,7 @@
         "lint:fix": "nx run-many -t lint -- --fix",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
+        "check:use-cases": "node tools/check-use-case-inventory.mjs",
         "ci:hook": "nx run-many -t lint test build typecheck e2e browser-integration --cloud=false --no-cloud"
     },
     "private": true,

@@ -542,6 +542,8 @@ it('applies the total upload deadline even while bytes keep arriving', async () 
         expect((await status(session, op)).files[0].status).toBe(
             'awaiting_upload',
         );
+        runtimeConfig.uploadTotalMs = 30_000;
+        expect((await upload(session, op)).status).toBe(200);
     } finally {
         clearInterval(interval);
     }

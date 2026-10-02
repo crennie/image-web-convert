@@ -1,4 +1,5 @@
 import { readdir } from 'node:fs/promises';
+import sharp from 'sharp';
 import { test, expect } from '../support/application';
 import {
     image,
@@ -47,6 +48,31 @@ test('converts the complete batch and downloads decoded images and ZIP contents'
         ),
         ['first.webp', 'second.webp'],
     );
+});
+
+test('uses the selected JPEG format for the manifest and downloaded image', async ({
+    page,
+}, info) => {
+    const operation = await submit(
+        page,
+        [await image('selected-format.png')],
+        'image/jpeg',
+    );
+    expect(operation.options.outputMime).toBe('image/jpeg');
+    await expect(page.getByRole('status')).toContainText(
+        'Operation: completed',
+    );
+    const bytes = await download(
+        page,
+        imageButton(page, 'selected-format.png'),
+        info,
+        'selected-format.jpg',
+    );
+    expect(await sharp(bytes).metadata()).toMatchObject({
+        format: 'jpeg',
+        width: 32,
+        height: 24,
+    });
 });
 
 test('keeps successful downloads when an actual image fails to decode', async ({

@@ -145,6 +145,12 @@ afterEach(async () => {
 it('creates, validates authorization, converts without polling, reads metadata and ZIP contents', async () => {
     expect((await fetch(`${api.url}/readyz`)).status).toBe(200);
     const s = await session();
+    expect(s.imageConfig).toMatchObject({
+        ttlMinutes: 15,
+        maxFiles: 20,
+        maxBytesPerFile: 20_000_000,
+        maxTotalBytes: 500_000_000,
+    });
     const op = await create(s);
     await expectApiError(await upload(s, op, 0, 'wrong'), 401, 'invalid_token');
     const other = await session();
@@ -182,6 +188,28 @@ it('creates, validates authorization, converts without polling, reads metadata a
     // The same slot acknowledgement is idempotent and cannot overwrite output.
     expect((await upload(s, op)).status).toBe(200);
     expect(await output(s, op)).toEqual(first);
+});
+
+it('limits session creation to three requests per minute without invalidating existing sessions', async () => {
+    const first = await session();
+    await session();
+    await session();
+    const limited = await fetch(`${api.url}/api/sessions`, { method: 'POST' });
+    expect(limited.status).toBe(429);
+    const operation = await create(first, 1);
+    expect(operation.sessionId).toBe(first.sid);
+});
+
+it('returns file_not_found when every requested ZIP member lacks a committed output', async () => {
+    const s = await session();
+    const op = await create(s, 1);
+    const response = await fetch(`${base(s)}/files/download`, {
+        method: 'POST',
+        headers: { ...headers(s), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [op.files[0].id, 'missing-file'] }),
+    });
+    await expectApiError(response, 404, 'file_not_found');
+    expect(response.headers.get('content-disposition')).toBeNull();
 });
 
 it('downloads all colliding filenames once, in requested order, with missing IDs reported', async () => {
@@ -602,6 +630,19 @@ it('resumes an unfinished upload manifest after restart without replacing accept
     await output(s, op);
 });
 
+it('removes abandoned request staging before the production API becomes ready', async () => {
+    const abandoned = await fs.mkdtemp(path.join(api.incoming, 'conversion-'));
+    await fs.writeFile(path.join(abandoned, 'request.multipart'), 'incomplete');
+    await fs.writeFile(path.join(api.incoming, 'legacy-upload'), 'keep');
+    expect(await fs.readdir(api.incoming)).toHaveLength(2);
+
+    await api.restart();
+    expect(await fs.readdir(api.incoming)).toEqual(['legacy-upload']);
+    expect((await fetch(`${api.url}/readyz`)).status).toBe(200);
+    const fresh = await session();
+    expect((await create(fresh, 1)).sessionId).toBe(fresh.sid);
+});
+
 it('finishes without polling when the client disappears without delivering exit cancellation', async () => {
     const s = await session();
     const op = await create(s);
@@ -657,14 +698,12 @@ it('still downloads existing sealed legacy sessions individually and as ZIPs', a
         path.join(directory, `${meta.id}.json`),
         JSON.stringify(meta),
     );
-    await fs.writeFile(
-        infoPath,
-        JSON.stringify({
-            ...info,
-            sealedAt: new Date().toISOString(),
-            counts: { files: 1, totalBytes: png.length },
-        }),
-    );
+    const sealed = {
+        ...info,
+        sealedAt: new Date().toISOString(),
+        counts: { files: 1, totalBytes: png.length },
+    };
+    await fs.writeFile(infoPath, JSON.stringify(sealed));
     expect(await output(legacy, operation)).toEqual(bytes);
     const zip = await fetch(`${base(legacy)}/files/download`, {
         method: 'POST',
@@ -675,4 +714,27 @@ it('still downloads existing sealed legacy sessions individually and as ZIPs', a
     const entries = zipEntries(Buffer.from(await zip.arrayBuffer()));
     expect([...entries.keys()]).toEqual(['0.webp']);
     expect(entries.get('0.webp')).toEqual(bytes);
+    await fs.writeFile(
+        infoPath,
+        JSON.stringify({
+            ...sealed,
+            expiresAt: new Date(Date.now() - 1000).toISOString(),
+        }),
+    );
+    await expectApiError(
+        await fetch(`${base(legacy)}/files/${meta.id}`, {
+            headers: headers(legacy),
+        }),
+        403,
+        'session_expired',
+    );
+    await expectApiError(
+        await fetch(`${base(legacy)}/files/download`, {
+            method: 'POST',
+            headers: { ...headers(legacy), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: [meta.id] }),
+        }),
+        403,
+        'session_expired',
+    );
 });

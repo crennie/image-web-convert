@@ -1,0 +1,8 @@
+# Architecture Constraints
+
+- **Single storage owner:** one persistent API process owns each `UPLOAD_DIR`. Process-local scheduling, upload claims, and leases do not coordinate across API replicas. Source: [runtime](../../../apps/api/src/services/conversion-runtime.service.ts) and [ADR-001](../decisions/ADR-001-use-process-owned-filesystem-runtime.md).
+- **Local persistence:** operation state, accepted inputs, outputs, and commit evidence use a writable filesystem. `UPLOAD_DIR` and `UPLOAD_TMP_DIR` default to process-relative paths. Source: [storage paths](../../../apps/api/src/services/storage.paths.ts).
+- **Session lifetime:** the expiry is fixed when the session is created; polling and downloads do not extend it. Source: [session service](../../../apps/api/src/services/sessions.service.ts) and [runtime](../../../apps/api/src/services/conversion-runtime.service.ts).
+- **Backend limits are authoritative:** the API enforces manifest file and byte limits, operation and upload capacity, image limits, and deadlines. The session response exposes effective upload limits. Source: [environment configuration](../../../apps/api/src/env.ts).
+- **Browser contract:** the default browser-facing API path is `/api`. A cross-origin deployment needs an explicit frontend API URL and matching API CORS origin. Source: [project README](../../../README.md) and [Vite configuration](../../../apps/web/vite.config.ts).
+- **Retired endpoint:** synchronous `POST /api/sessions/:sid/uploads` is not mounted. Existing sealed legacy sessions retain authenticated download access until expiry. Source: [API routing](../../../apps/api/src/api/index.ts).
