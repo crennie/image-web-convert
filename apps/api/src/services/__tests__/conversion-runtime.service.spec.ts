@@ -362,6 +362,11 @@ describe('cancellation, deadlines, and cleanup ownership', () => {
         expect((await store.read('session-a')).operation.status).toBe(
             'cancelled',
         );
+        expect(
+            (await store.read('session-a')).operation.files.map(
+                (file) => file.status,
+            ),
+        ).toEqual(['cancelled', 'cancelled']);
     });
 
     it('lets the active file finish on cancellation, retains prior results, and skips the rest', async () => {
@@ -862,7 +867,13 @@ describe('admission and runtime lifecycle', () => {
         await rt.start();
         await rt.whenIdle();
         const release = rt.acquireSessionUse('session-a');
-        const stopping = rt.stop();
+        let stopped = false;
+        const stopping = rt.stop().then((result) => {
+            stopped = true;
+            return result;
+        });
+        await vi.advanceTimersByTimeAsync(config.shutdownGraceMs - 1);
+        expect(stopped).toBe(false);
         release();
         expect(await stopping).toEqual({ drained: true });
         expect(vi.getTimerCount()).toBe(0);

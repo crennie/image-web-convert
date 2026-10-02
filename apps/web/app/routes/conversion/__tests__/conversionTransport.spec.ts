@@ -60,6 +60,7 @@ describe('polling transport', () => {
         expect(read).toHaveBeenCalledTimes(2);
         await vi.advanceTimersByTimeAsync(1);
         expect(read).toHaveBeenCalledTimes(3);
+        expect(current.status).toBe('completed');
         await vi.advanceTimersByTimeAsync(60000);
         expect(read).toHaveBeenCalledTimes(3);
         expect(connectivity).toHaveBeenLastCalledWith(null);

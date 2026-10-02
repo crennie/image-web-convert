@@ -1,22 +1,20 @@
-# Container view
+# Containers
 
-**Scope:** Image Web Convert. These are runtime and deployment boundaries, rather than Nx packages or Docker containers. The [context view](context.md) shows the surrounding user.
+**Scope:** Image Web Convert. The filesystem is shown as a data store because its ownership and durability affect runtime behavior.
 
 ```mermaid
 flowchart LR
-    user["User<br/>Chooses and downloads images"]
-    browser["Browser client<br/>React UI; selects files, uploads slots, polls snapshots"]
-    web["Web server<br/>React Router on Node.js; serves the frontend"]
-    api["Conversion API<br/>Express on Node.js; authenticates, schedules, converts, serves results"]
-    disk[("Filesystem storage<br/>Session records, inputs, output files, commit receipts")]
+    person["Person converting images"]
+    web["Web application<br/>React Router / browser workflow"]
+    api["API process<br/>Express / conversion scheduler / Sharp"]
+    disk[("Local filesystem<br/>Sessions, inputs, outputs, commit evidence")]
 
-    user -->|"Uses UI"| browser
-    browser -->|"Loads pages and assets over HTTP"| web
-    browser -->|"Calls /api over HTTP with session bearer token"| api
-    api -->|"Reads and writes session data and artifacts"| disk
-    api -->|"Returns snapshots and file or ZIP streams"| browser
+    person -->|Selects files, starts work, downloads| web
+    web -->|HTTP(S) /api: sessions, manifests, uploads, status, cancellation, downloads| api
+    api -->|Reads and writes session and conversion records, image files| disk
+    api -->|Returns authoritative snapshots and completed files| web
 ```
 
-The browser-facing `/api` path is proxied to the API by Vite during development. A deployment needs equivalent routing, or a configured `VITE_API_URL` and matching API CORS origin. React Router server rendering is enabled. The browser retains session credentials only in the active page session; the API stores their hashes in session records.
+The web application owns selected browser files, upload byte progress, polling, and presentation. The API owns admission, session bearer-token checks, state transitions, conversion scheduling, and downloads. Shared Zod schemas define the boundary contracts; `libs/ui`, `libs/node-shared`, and `libs/observability` are libraries, not separate runtime containers.
 
-`libs/schemas` supplies Zod HTTP contracts to both applications. `libs/ui` supplies reusable React UI, while `libs/node-shared` and `libs/observability` support Node code. They are source libraries inside the above containers, not separate runtime services. See [API components](components/api.md) and [deployment](deployment.md).
+The API's scheduler and storage claims are process-local. A deployment must give one persistent API process exclusive ownership of its storage root. See [deployment](deployment.md) and the [API component view](components/api.md).

@@ -1,0 +1,1658 @@
+{
+    "schemaVersion": 1,
+    "scope": "Current /conversion browser workflow, public session/conversion/file API, and API lifecycle behavior affecting conversion and retrieval. Includes browser, separately started API, and focused in-process environments.",
+    "testMappingStatus": "reviewed",
+    "excluded": [
+        "Old synchronous upload flow as active behavior; only retired-route compatibility remains in scope.",
+        "Unmounted legacy UI hook, implementation plans, infrastructure setup, generic UI primitives, telemetry, and future distributed processing."
+    ],
+    "documentedLimitations": [
+        "Reload or a new tab cannot resume a batch because browser credentials are not persisted.",
+        "Page-exit cancellation is best effort; conversion continues if it is lost.",
+        "Sharp/native and HEIC work lack hard wall-clock termination.",
+        "The current design runs one API process per storage root."
+    ],
+    "areas": [
+        {
+            "id": "select-and-create-a-batch",
+            "sources": [
+                "apps/web/app/routes/conversion/components/ConversionSelection.tsx",
+                "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx",
+                "docs/architecture/dynamic/process-conversion.md",
+                "README.md",
+                "docs/architecture/quality/constraints.md",
+                "docs/architecture/static/domain.md",
+                "docs/architecture/static/data.md",
+                "docs/architecture/quality/requirements.md",
+                "apps/api/src/routes/sessions.routes.ts"
+            ],
+            "cases": [
+                {
+                    "id": "UC-001",
+                    "actor": "Person",
+                    "given": "Conversion page is open",
+                    "when": "They choose one or more files",
+                    "then": "Selected files appear as pending and conversion can start.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/ConversionSelection.tsx",
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E01",
+                            "file": "apps/web-e2e/src/integration/upload.spec.ts",
+                            "name": "multiple selected files remain pending",
+                            "layer": "Mocked browser integration",
+                            "environment": "Browser with intercepted API responses",
+                            "asserts": "Both names and pending count appear."
+                        },
+                        {
+                            "evidenceId": "E66",
+                            "file": "apps/web-e2e/src/integration/upload.spec.ts",
+                            "name": "selected file becomes pending and visible",
+                            "layer": "Mocked browser integration",
+                            "environment": "Browser with intercepted API responses",
+                            "asserts": "Start conversion is disabled before selection and enabled after selection."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-002",
+                    "actor": "Person",
+                    "given": "Several files are pending",
+                    "when": "They remove one",
+                    "then": "That file disappears and the others remain pending.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/ConversionSelection.tsx",
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E02",
+                            "file": "apps/web-e2e/src/integration/upload.spec.ts",
+                            "name": "a pending file can be removed without removing the others",
+                            "layer": "Mocked browser integration",
+                            "environment": "Browser with intercepted API responses",
+                            "asserts": "Removed name disappears; sibling and count remain."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-003",
+                    "actor": "Person",
+                    "given": "Files are selected",
+                    "when": "They choose a nondefault output format and start",
+                    "then": "The browser sends that format and the completed download uses it.",
+                    "sources": [
+                        "docs/architecture/dynamic/process-conversion.md",
+                        "apps/web/app/routes/conversion/components/ConversionSelection.tsx",
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E57",
+                            "file": "apps/web-e2e/src/e2e/conversion.spec.ts",
+                            "name": "uses the selected JPEG format for the manifest and downloaded image",
+                            "layer": "Real browser E2E",
+                            "environment": "Built browser with separately started API and real encoder",
+                            "asserts": "Selecting JPEG produces a JPEG manifest and decoded JPEG download."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-004",
+                    "actor": "Browser",
+                    "given": "A new batch needs a session",
+                    "when": "It requests one",
+                    "then": "It receives a bearer token, fixed expiry, and effective upload limits; the API persists a token hash.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md",
+                        "docs/architecture/static/domain.md",
+                        "docs/architecture/static/data.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E05",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "creates, validates authorization, converts without polling, reads metadata and ZIP contents",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Session limits, slots, token rejection, accepted uploads, completion, metadata, downloads, and idempotent slot replay."
+                        },
+                        {
+                            "evidenceId": "E06",
+                            "file": "apps/api/src/services/__tests__/session.service.spec.ts",
+                            "name": "creates a new session dir, writes session.info.json, and returns sid/ttl/token/expiry",
+                            "layer": "Application service",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Session persistence and returned expiry/token."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-005",
+                    "actor": "Browser",
+                    "given": "A valid live session exists",
+                    "when": "It creates a fixed manifest",
+                    "then": "The API assigns ordered file slots and returns an authoritative operation snapshot.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md",
+                        "docs/architecture/static/domain.md",
+                        "docs/architecture/static/data.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E05",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "creates, validates authorization, converts without polling, reads metadata and ZIP contents",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Session limits, slots, token rejection, accepted uploads, completion, metadata, downloads, and idempotent slot replay."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-006",
+                    "actor": "Browser",
+                    "given": "Creation acknowledgement is uncertain",
+                    "when": "It retries the same request ID and intent",
+                    "then": "The existing operation and slot IDs are returned without creating a second operation.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E07",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "serializes concurrent operation intents and isolates active slot claims across sessions",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Same intent returns one operation; changed intent conflicts; duplicate slot rejected; sibling and separate session progress."
+                        },
+                        {
+                            "evidenceId": "E08",
+                            "file": "apps/web/app/routes/conversion/__tests__/conversionController.spec.ts",
+                            "name": "retries creation with the same session, frozen intent and request ID",
+                            "layer": "Browser controller",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Retry preserves request identity."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-007",
+                    "actor": "Browser",
+                    "given": "A session already has an operation",
+                    "when": "It submits changed intent",
+                    "then": "The API returns `409 conversion_conflict` and preserves the original operation.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E07",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "serializes concurrent operation intents and isolates active slot claims across sessions",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Same intent returns one operation; changed intent conflicts; duplicate slot rejected; sibling and separate session progress."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-008",
+                    "actor": "Browser",
+                    "given": "The manifest is empty, malformed, or has an unsupported output MIME",
+                    "when": "It creates an operation",
+                    "then": "The API rejects it without consuming the session or staging files.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E09",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "rejects malformed manifests, unsupported MIME and excess counts without consuming the session",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "400/413 responses, clean storage, and subsequent valid conversion."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-009",
+                    "actor": "Browser",
+                    "given": "Declared file count, per-file bytes, or aggregate bytes exceed effective limits",
+                    "when": "It creates an operation",
+                    "then": "The API returns `413 upload_limit_exceeded` before upload staging; a valid later request can still use the session.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E09",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "rejects malformed manifests, unsupported MIME and excess counts without consuming the session",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "400/413 responses, clean storage, and subsequent valid conversion."
+                        },
+                        {
+                            "evidenceId": "E10",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "enforces the backend aggregate-byte limit independently of the per-file ceiling",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Aggregate 413 despite individually valid sizes; later valid conversion."
+                        },
+                        {
+                            "evidenceId": "E56",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "rejects manifests above the effective size limit before staging bytes",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Per-file limit produces 413 before staging."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-010",
+                    "actor": "Browser",
+                    "given": "The configured nonterminal operation capacity is full",
+                    "when": "It creates another operation",
+                    "then": "The API rejects new admission while an idempotent retry of an existing operation still succeeds.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E11",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "creates idempotently at capacity, rejects changed intent and hides internal state",
+                            "layer": "In-process API",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Capacity 503, same-intent reuse, conflict, and public snapshot allowlist."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-011",
+                    "actor": "Person",
+                    "given": "The session endpoint's per-IP budget is exhausted",
+                    "when": "Another session is requested",
+                    "then": "The endpoint rate limiter rejects the request.",
+                    "sources": [
+                        "README.md",
+                        "apps/api/src/routes/sessions.routes.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E58",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "limits session creation to three requests per minute without invalidating existing sessions",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Fourth session request returns 429; an existing session can still create an operation."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-012",
+                    "actor": "Browser",
+                    "given": "The bearer token is absent, wrong, or belongs to another session",
+                    "when": "It accesses an operation or upload slot",
+                    "then": "Access is rejected before upload bytes are staged or another session's operation is exposed.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E05",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "creates, validates authorization, converts without polling, reads metadata and ZIP contents",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Session limits, slots, token rejection, accepted uploads, completion, metadata, downloads, and idempotent slot replay."
+                        },
+                        {
+                            "evidenceId": "E12",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "authenticates and validates operation/file association before receiving bytes",
+                            "layer": "In-process API",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Missing/wrong token and foreign IDs fail without staging."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-013",
+                    "actor": "Browser",
+                    "given": "The session has expired",
+                    "when": "It creates an operation or uploads",
+                    "then": "Access is rejected and no operation or request body is staged.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E13",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "rejects an expired test session through real authentication without creating operation data",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Expired creation gets 403 with no operation data."
+                        },
+                        {
+                            "evidenceId": "E14",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "rejects expired-session requests without receiving bytes",
+                            "layer": "In-process API",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Expired upload is rejected before body staging."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                }
+            ]
+        },
+        {
+            "id": "upload-and-processing",
+            "sources": [
+                "README.md",
+                "docs/architecture/dynamic/process-conversion.md",
+                "docs/architecture/static/domain.md",
+                "docs/architecture/static/data.md",
+                "docs/architecture/quality/constraints.md",
+                "docs/architecture/quality/requirements.md",
+                "docs/architecture/decisions/ADR-002-commit-files-independently.md"
+            ],
+            "cases": [
+                {
+                    "id": "UC-014",
+                    "actor": "Browser",
+                    "given": "A slot awaits bytes",
+                    "when": "It uploads one valid multipart file",
+                    "then": "The API durably accepts the bytes and acknowledges the slot before conversion finishes.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md",
+                        "docs/architecture/static/domain.md",
+                        "docs/architecture/static/data.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E05",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "creates, validates authorization, converts without polling, reads metadata and ZIP contents",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Session limits, slots, token rejection, accepted uploads, completion, metadata, downloads, and idempotent slot replay."
+                        },
+                        {
+                            "evidenceId": "E15",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "promotes accepted input and persists its fingerprint before acknowledgement",
+                            "layer": "Conversion storage",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Input and fingerprint are durable before return."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-015",
+                    "actor": "Browser",
+                    "given": "An upload was accepted but its acknowledgement was lost",
+                    "when": "It repeats that slot PUT",
+                    "then": "The accepted slot is acknowledged without replacing bytes or converting twice.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E05",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "creates, validates authorization, converts without polling, reads metadata and ZIP contents",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Session limits, slots, token rejection, accepted uploads, completion, metadata, downloads, and idempotent slot replay."
+                        },
+                        {
+                            "evidenceId": "E07",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "serializes concurrent operation intents and isolates active slot claims across sessions",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Same intent returns one operation; changed intent conflicts; duplicate slot rejected; sibling and separate session progress."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-016",
+                    "actor": "Browser",
+                    "given": "A multipart body is missing, malformed, or disconnected",
+                    "when": "It retries after the failed transfer",
+                    "then": "Temporary staging is removed and the same slot can still accept a valid upload.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E16",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "cleans missing and malformed multipart uploads and permits the same slot to retry",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Invalid bodies leave no accepted input or staging; retry succeeds."
+                        },
+                        {
+                            "evidenceId": "E17",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "cleans a genuinely disconnected multipart stream and accepts a retry on the same slot",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Disconnection clears staging and slot remains retryable."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-017",
+                    "actor": "Browser",
+                    "given": "Actual bytes differ from the declared slot size",
+                    "when": "It uploads the slot",
+                    "then": "The slot becomes a permanent file failure and successful siblings can continue.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E18",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "records permanent byte mismatch and continues successful siblings",
+                            "layer": "In-process API",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Mismatch becomes file failure while sibling converts."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-018",
+                    "actor": "Browser",
+                    "given": "A slot has an active upload",
+                    "when": "A second upload targets that slot",
+                    "then": "The second request gets `409 upload_in_progress` before another body is staged.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E07",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "serializes concurrent operation intents and isolates active slot claims across sessions",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Same intent returns one operation; changed intent conflicts; duplicate slot rejected; sibling and separate session progress."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-019",
+                    "actor": "Browser",
+                    "given": "One slot is uploading",
+                    "when": "A sibling slot or another session uploads",
+                    "then": "Independent uploads proceed within the process capacity limit.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E07",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "serializes concurrent operation intents and isolates active slot claims across sessions",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Same intent returns one operation; changed intent conflicts; duplicate slot rejected; sibling and separate session progress."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-020",
+                    "actor": "Browser",
+                    "given": "Upload transport exceeds idle or total deadline",
+                    "when": "The transfer times out",
+                    "then": "The request is aborted, staging is cleaned, and its unaccepted slot remains retryable after settlement.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E19",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "aborts idle uploads and permits a clean retry",
+                            "layer": "In-process API",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Idle transfer aborted and retried."
+                        },
+                        {
+                            "evidenceId": "E20",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "applies the total upload deadline even while bytes keep arriving",
+                            "layer": "In-process API",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Activity does not extend the total deadline; staging clears and the same slot accepts a valid retry."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-021",
+                    "actor": "Browser",
+                    "given": "Multipart framing is excessive or contains extra fields/files",
+                    "when": "It uploads",
+                    "then": "The API rejects the body before accepting the slot; a valid retry remains possible.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E21",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "rejects extra multipart files and fields without resolving the slot",
+                            "layer": "In-process API",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Extra multipart content rejected and slot remains unresolved."
+                        },
+                        {
+                            "evidenceId": "E55",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "bounds multipart framing before parsing and leaves oversized transport retryable",
+                            "layer": "In-process API",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Excess framing is rejected and a valid slot retry succeeds."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-022",
+                    "actor": "API process",
+                    "given": "At least one input is accepted and no slot awaits upload",
+                    "when": "A ready operation is discovered",
+                    "then": "Conversion begins without a start command or status GET.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E05",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "creates, validates authorization, converts without polling, reads metadata and ZIP contents",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Session limits, slots, token rejection, accepted uploads, completion, metadata, downloads, and idempotent slot replay."
+                        },
+                        {
+                            "evidenceId": "E22",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "finishes without polling when the client disappears without delivering exit cancellation",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Completion observed from disk without further client requests."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-023",
+                    "actor": "API process",
+                    "given": "Several operations are ready",
+                    "when": "The scheduler runs",
+                    "then": "Operations run FIFO and each operation's files run in manifest order, one active conversion per process.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E23",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "automatically runs FIFO batches and manifest order with global concurrency one",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Scheduler order and one active conversion."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-024",
+                    "actor": "Person",
+                    "given": "A valid default-WebP batch is ready",
+                    "when": "Conversion finishes",
+                    "then": "Snapshot counts show completion and downloads contain decoded WebP images.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E03",
+                            "file": "apps/web-e2e/src/e2e/conversion.spec.ts",
+                            "name": "converts the complete batch and downloads decoded images and ZIP contents",
+                            "layer": "Real browser E2E",
+                            "environment": "Built browser with separately started API and real encoder",
+                            "asserts": "Completed status and decoded WebP/ZIP contents."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-025",
+                    "actor": "Person",
+                    "given": "One accepted image cannot be decoded but another succeeds",
+                    "when": "Conversion settles",
+                    "then": "The snapshot reports partial completion, shows the failed file, and retains the successful download.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md",
+                        "docs/architecture/quality/requirements.md",
+                        "docs/architecture/decisions/ADR-002-commit-files-independently.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E24",
+                            "file": "apps/web-e2e/src/e2e/conversion.spec.ts",
+                            "name": "keeps successful downloads when an actual image fails to decode",
+                            "layer": "Real browser E2E",
+                            "environment": "Built browser with separately started API and real encoder",
+                            "asserts": "Partial UI result and decoded successful downloads."
+                        },
+                        {
+                            "evidenceId": "E25",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "preserves real successful conversions beside decode failures and gates downloads by committed file",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Per-file completed/failed states; unavailable individual output 404; ZIP contains only success."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-026",
+                    "actor": "Person",
+                    "given": "Every file is permanently rejected or fails",
+                    "when": "The operation settles",
+                    "then": "The operation reports `failed` without claiming a completed output.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E26",
+                            "file": "apps/api/src/services/__tests__/conversions.service.spec.ts",
+                            "name": "settles all permanently rejected uploads without processing",
+                            "layer": "Conversion transitions",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "All rejected slots yield a failed operation."
+                        },
+                        {
+                            "evidenceId": "E51",
+                            "file": "apps/api/src/services/__tests__/conversions.service.spec.ts",
+                            "name": "settles processing failure, prior success=%s",
+                            "layer": "Conversion transitions",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Two processing failures yield a failed operation and no completed files.",
+                            "parameter": "false"
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-027",
+                    "actor": "API process",
+                    "given": "An encoder exceeds its cooperative deadline",
+                    "when": "The invocation eventually settles",
+                    "then": "A late success is discarded, prior output remains, and the worker slot stays owned until settlement.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E27",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "retains the global slot after timeout until the invocation settles",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Timeout does not release active work early."
+                        },
+                        {
+                            "evidenceId": "E67",
+                            "file": "apps/api/src/services/__tests__/conversions.service.spec.ts",
+                            "name": "timeout remains active until settlement, discards late success, and preserves prior results",
+                            "layer": "Conversion transitions",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Late output is discarded and an earlier completed result remains."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-028",
+                    "actor": "Browser",
+                    "given": "An operation is active and a status request fails",
+                    "when": "Polling continues",
+                    "then": "The browser keeps the last known state, backs off, accepts a newer snapshot, and stops polling at terminal state.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E28",
+                            "file": "apps/web/app/routes/conversion/__tests__/conversionTransport.spec.ts",
+                            "name": "never overlaps requests; backs off, honors Retry-After, recovers and stops at terminal",
+                            "layer": "Browser transport",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Polling backoff, no overlap, retained state after error, newer completed snapshot, and terminal stop."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-029",
+                    "actor": "Browser",
+                    "given": "Upload outcome is unknown",
+                    "when": "The person retries",
+                    "then": "The browser checks the server snapshot first and sends bytes only if the slot still awaits upload.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E29",
+                            "file": "apps/web-e2e/src/e2e/conversion.spec.ts",
+                            "name": "reconciles and retries an interrupted upload against the real API",
+                            "layer": "Real browser E2E",
+                            "environment": "Built browser with separately started API and real encoder",
+                            "asserts": "UI retry follows interrupted transfer and retains same slot ID."
+                        },
+                        {
+                            "evidenceId": "E30",
+                            "file": "apps/web/app/routes/conversion/__tests__/conversionController.spec.ts",
+                            "name": "correlates duplicate names by client ID, reconciles acceptance before retrying bytes",
+                            "layer": "Browser controller",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Already accepted slot is not resent; awaiting slot is retried."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-030",
+                    "actor": "Person",
+                    "given": "Uploads are in progress",
+                    "when": "The browser reports progress",
+                    "then": "Network bytes are distinct from server-accepted and converted file counts.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E31",
+                            "file": "apps/web/app/routes/conversion/__tests__/conversionTransport.spec.ts",
+                            "name": "XHR sends one multipart file, reports actual/unknown progress and cleans up on abort",
+                            "layer": "Browser transport",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Transfer bytes reported independently of operation state."
+                        },
+                        {
+                            "evidenceId": "E54",
+                            "file": "apps/web/app/routes/conversion/__tests__/conversionTransport.spec.ts",
+                            "name": "keeps authoritative revisions, identity and transport progress distinct",
+                            "layer": "Browser view model",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Upload bytes do not override completed server file state."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                }
+            ]
+        },
+        {
+            "id": "retrieve-or-cancel-results",
+            "sources": [
+                "README.md",
+                "docs/architecture/dynamic/process-conversion.md",
+                "docs/architecture/quality/requirements.md",
+                "docs/architecture/decisions/ADR-002-commit-files-independently.md"
+            ],
+            "cases": [
+                {
+                    "id": "UC-031",
+                    "actor": "Person",
+                    "given": "A file has a committed output",
+                    "when": "They request metadata or the image",
+                    "then": "The API serves the authenticated metadata and decoded output, even while siblings process.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md",
+                        "docs/architecture/quality/requirements.md",
+                        "docs/architecture/decisions/ADR-002-commit-files-independently.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E05",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "creates, validates authorization, converts without polling, reads metadata and ZIP contents",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Session limits, slots, token rejection, accepted uploads, completion, metadata, downloads, and idempotent slot replay."
+                        },
+                        {
+                            "evidenceId": "E32",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "preserves completed downloads and ZIP members during processing and cancellation",
+                            "layer": "In-process API",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Completed output available before siblings finish and after cancel."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-032",
+                    "actor": "Person",
+                    "given": "Some requested ZIP members are unavailable",
+                    "when": "They request an archive",
+                    "then": "Available members are streamed in requested order with collision-safe names and missing IDs reported.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md",
+                        "docs/architecture/decisions/ADR-002-commit-files-independently.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E33",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "downloads all colliding filenames once, in requested order, with missing IDs reported",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "ZIP member order, unique names, missing header, valid contents."
+                        },
+                        {
+                            "evidenceId": "E25",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "preserves real successful conversions beside decode failures and gates downloads by committed file",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Per-file completed/failed states; unavailable individual output 404; ZIP contains only success."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-033",
+                    "actor": "Person",
+                    "given": "A requested file has no committed output",
+                    "when": "They request that file",
+                    "then": "The API returns `404 file_not_found`.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E25",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "preserves real successful conversions beside decode failures and gates downloads by committed file",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Per-file completed/failed states; unavailable individual output 404; ZIP contains only success."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-034",
+                    "actor": "Person",
+                    "given": "None of the requested ZIP members has a committed output",
+                    "when": "They request a ZIP",
+                    "then": "The API returns `404 file_not_found`.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E59",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "returns file_not_found when every requested ZIP member lacks a committed output",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "All-missing active ZIP gets JSON 404 without a download header."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-035",
+                    "actor": "Person",
+                    "given": "An archive source disappears before streaming",
+                    "when": "They request a ZIP",
+                    "then": "The API returns an error rather than a successful partial archive.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/decisions/ADR-002-commit-files-independently.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E34",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "forwards a real archiver missing-source warning without returning a successful ZIP",
+                            "layer": "In-process API",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Vanished source causes failed response, not successful ZIP."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-036",
+                    "actor": "Person",
+                    "given": "An operation has not reached processing",
+                    "when": "They cancel it",
+                    "then": "Queued/awaiting slots are cancelled and no encoder invocation starts.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E35",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "cancels before readiness without calling the converter",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Awaiting slots become cancelled with no encoder invocation."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-037",
+                    "actor": "Person",
+                    "given": "One output is committed and another file is encoding",
+                    "when": "They cancel",
+                    "then": "The active file may complete, later files are skipped, and committed results remain downloadable.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md",
+                        "docs/architecture/decisions/ADR-002-commit-files-independently.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E36",
+                            "file": "apps/web-e2e/src/e2e/lifecycle.spec.ts",
+                            "name": "cancels queued siblings while preserving completed and active-file results",
+                            "layer": "Real browser E2E",
+                            "environment": "Built browser with separately started API and real encoder",
+                            "asserts": "Pending cancellation, two completed files, one cancelled, downloadable ZIP."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-038",
+                    "actor": "Person",
+                    "given": "Cancellation acknowledgement is uncertain",
+                    "when": "They retry or await polling",
+                    "then": "The UI does not claim cancellation before confirmation and permits another cancel command.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E37",
+                            "file": "apps/web/app/routes/conversion/__tests__/conversionController.spec.ts",
+                            "name": "keeps cancellation as a command, retries unknown outcomes, preserves completed results",
+                            "layer": "Browser controller",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "No premature terminal state; retry and polling confirmation preserve output."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-039",
+                    "actor": "Browser",
+                    "given": "An operation is active",
+                    "when": "The page exits and keepalive cancellation arrives",
+                    "then": "The backend cancels later files without requiring the page to wait.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E38",
+                            "file": "apps/web-e2e/src/e2e/lifecycle.spec.ts",
+                            "name": "a real page exit delivers best-effort cancellation without waiting for conversion",
+                            "layer": "Real browser E2E",
+                            "environment": "Built browser with separately started API and real encoder",
+                            "asserts": "Navigation sends cancellation and later slot is cancelled."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-040",
+                    "actor": "API process",
+                    "given": "The page-exit cancellation is lost",
+                    "when": "The browser disappears",
+                    "then": "Backend conversion still finishes without polling or a client connection.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/process-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E39",
+                            "file": "apps/web-e2e/src/e2e/lifecycle.spec.ts",
+                            "name": "continues processing if page-exit cancellation never reaches the server",
+                            "layer": "Real browser E2E",
+                            "environment": "Built browser with separately started API and real encoder",
+                            "asserts": "Dropped cancellation leaves backend to complete both files."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                }
+            ]
+        },
+        {
+            "id": "expiry-restart-and-compatibility",
+            "sources": [
+                "README.md",
+                "docs/architecture/dynamic/recover-conversion.md",
+                "docs/architecture/quality/constraints.md",
+                "docs/architecture/quality/requirements.md",
+                "docs/architecture/decisions/ADR-002-commit-files-independently.md"
+            ],
+            "cases": [
+                {
+                    "id": "UC-041",
+                    "actor": "API process",
+                    "given": "A session expires while conversion or download holds a lease",
+                    "when": "Cleanup runs",
+                    "then": "Files remain until active use settles, then the expired operation can be removed.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/recover-conversion.md",
+                        "docs/architecture/quality/constraints.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E40",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "does not remove expired session files while a conversion or download owns them",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Active leases defer removal."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-042",
+                    "actor": "API process",
+                    "given": "The process stops after one file commits and another is processing",
+                    "when": "It restarts",
+                    "then": "Committed output survives, the uncommitted file is marked interrupted, and later accepted files continue.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/recover-conversion.md",
+                        "docs/architecture/decisions/ADR-002-commit-files-independently.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E41",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "recovers across a process crash, retains committed output and does not replay the interrupted file",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Restart preserves committed bytes, marks interruption, and completes later file."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-043",
+                    "actor": "API process",
+                    "given": "A manifest has one accepted slot and one unfilled slot",
+                    "when": "It restarts",
+                    "then": "The accepted slot remains accepted; the remaining slot can upload and complete.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/recover-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E42",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "resumes an unfinished upload manifest after restart without replacing accepted slots",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Accepted slot persists and remaining slot finishes."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-044",
+                    "actor": "API process",
+                    "given": "One stored operation is corrupt",
+                    "when": "Recovery encounters it",
+                    "then": "That session is isolated and healthy operations still run.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/recover-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E43",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "reports corrupt sessions without preventing healthy batches from completing",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Bad session isolated; healthy batch completes."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-045",
+                    "actor": "API process",
+                    "given": "A durable storage mutation fails",
+                    "when": "Scheduling continues",
+                    "then": "The runtime faults and stops further work/readiness instead of guessing state.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/recover-conversion.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E44",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "halts further processing after a storage commit failure",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Durable mutation failure stops further scheduling."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-046",
+                    "actor": "API process",
+                    "given": "Active work exists at shutdown",
+                    "when": "Shutdown is requested",
+                    "then": "New files do not start; active work and leases drain up to the configured grace period.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E45",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "drains the active file on shutdown and never starts the next file",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Active file drains; next is not claimed."
+                        },
+                        {
+                            "evidenceId": "E53",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "waits for outstanding request leases on shutdown",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Shutdown waits for an active lease to release."
+                        },
+                        {
+                            "evidenceId": "E68",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "reports grace expiry without pretending hung conversion stopped or deleting its input",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Grace expiry is reported while the active invocation and input remain."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-047",
+                    "actor": "Browser",
+                    "given": "It calls the retired synchronous upload endpoint",
+                    "when": "The request arrives",
+                    "then": "The API returns 404 without staging conversion data; the session can still use the operation API.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E46",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "returns 404 for retired uploads without consuming the session or staging a conversion",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Retired route 404 and operation API remains usable."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-048",
+                    "actor": "Person",
+                    "given": "An existing sealed legacy session has output",
+                    "when": "They request its file or ZIP",
+                    "then": "Authenticated legacy downloads remain available until session expiry.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E47",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "still downloads existing sealed legacy sessions individually and as ZIPs",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Sealed legacy file and ZIP downloads work while live; both reject with session_expired afterward."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                }
+            ]
+        },
+        {
+            "id": "additional-documented-boundary-paths",
+            "sources": [
+                "README.md",
+                "docs/architecture/quality/constraints.md",
+                "docs/architecture/dynamic/recover-conversion.md"
+            ],
+            "cases": [
+                {
+                    "id": "UC-049",
+                    "actor": "Browser",
+                    "given": "Status requests reach the separate polling budget",
+                    "when": "It continues to poll",
+                    "then": "The API eventually returns 429 while operation commands retain their separate budget.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E48",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "isolates the polling budget from commands and enforces its own ceiling",
+                            "layer": "In-process API",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Commands still succeed while status requests eventually reach 429."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-050",
+                    "actor": "Person",
+                    "given": "A ZIP stream is in progress",
+                    "when": "They abort the download",
+                    "then": "Pending archive work is aborted and the stream does not report a successful result.",
+                    "sources": ["README.md"],
+                    "tests": [
+                        {
+                            "evidenceId": "E49",
+                            "file": "apps/api/src/services/__tests__/files.service.spec.ts",
+                            "name": "rejects promptly on %s while finalization is pending",
+                            "layer": "Archive service",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Client close rejects promptly and aborts/destroys archive work.",
+                            "parameter": "abort"
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-051",
+                    "actor": "API process",
+                    "given": "An upload request left incomplete staging",
+                    "when": "The process starts",
+                    "then": "Abandoned conversion request staging is removed before requests are served.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/recover-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E50",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "removes only abandoned conversion request directories during startup cleanup",
+                            "layer": "In-process API",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Incomplete conversion staging is removed; unrelated staging remains."
+                        },
+                        {
+                            "evidenceId": "E69",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "removes abandoned request staging before the production API becomes ready",
+                            "layer": "API process",
+                            "environment": "Separately started built production API process and temporary storage",
+                            "asserts": "After production restart reports readiness, abandoned staging is gone, unrelated staging remains, and sessions work."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-052",
+                    "actor": "Person",
+                    "given": "An archive has started streaming",
+                    "when": "Its source fails after headers are sent",
+                    "then": "The response closes and its session lease is released.",
+                    "sources": ["README.md"],
+                    "tests": [
+                        {
+                            "evidenceId": "E52",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "closes a failed ZIP stream and releases its session lease",
+                            "layer": "In-process API",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "A post-header archive failure closes the body and shutdown can drain."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                }
+            ]
+        },
+        {
+            "id": "browser-control-and-recovery",
+            "sources": [
+                "apps/web/app/routes/conversion/components/ConversionSelection.tsx",
+                "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx",
+                "apps/web/app/routes/conversion/conversionController.ts"
+            ],
+            "cases": [
+                {
+                    "id": "UC-053",
+                    "actor": "Person",
+                    "given": "The conversion page is open",
+                    "when": "They focus Choose images and press Enter",
+                    "then": "The file chooser opens and selected files become visible.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/ConversionSelection.tsx",
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E60",
+                            "file": "apps/web-e2e/src/integration/upload.spec.ts",
+                            "name": "visible keyboard accessible upload control invokes the file chooser",
+                            "layer": "Mocked browser integration",
+                            "environment": "Browser with intercepted API responses",
+                            "asserts": "Enter opens the file chooser and the selected name appears."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-054",
+                    "actor": "Person",
+                    "given": "A selected batch cannot obtain a session",
+                    "when": "They start conversion",
+                    "then": "The page shows the session error and offers retry of batch creation.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx",
+                        "apps/web/app/routes/conversion/conversionController.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E61",
+                            "file": "apps/web-e2e/src/integration/upload.spec.ts",
+                            "name": "session failure keeps the batch available for retry",
+                            "layer": "Mocked browser integration",
+                            "environment": "Browser with intercepted API responses",
+                            "asserts": "A 503 session response shows an alert and enables Retry batch creation."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-055",
+                    "actor": "Person",
+                    "given": "The API rejects a batch manifest",
+                    "when": "They start conversion",
+                    "then": "The page explains the rejection and offers a new batch instead of retrying that intent.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx",
+                        "apps/web/app/routes/conversion/conversionController.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E62",
+                            "file": "apps/web-e2e/src/integration/upload.spec.ts",
+                            "name": "manifest rejection offers a new batch instead of retrying the rejected intent",
+                            "layer": "Mocked browser integration",
+                            "environment": "Browser with intercepted API responses",
+                            "asserts": "A 413 manifest response shows rejection and Start new batch, without Retry batch creation."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-056",
+                    "actor": "Person",
+                    "given": "Creation acknowledgement is lost until access expires",
+                    "when": "The deadline passes, then a reply arrives",
+                    "then": "The stale reply is ignored and the page offers a new batch.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx",
+                        "apps/web/app/routes/conversion/conversionController.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E63",
+                            "file": "apps/web/app/routes/conversion/__tests__/conversionController.spec.ts",
+                            "name": "expires a lost creation acknowledgement and ignores its eventual response",
+                            "layer": "Browser controller",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Access error appears, creation ends, and a late operation is ignored."
+                        },
+                        {
+                            "evidenceId": "E70",
+                            "file": "apps/web/app/routes/conversion/__tests__/ConversionOperationPanel.spec.tsx",
+                            "name": "offers a new batch when a lost creation acknowledgement outlives session access",
+                            "layer": "Browser component",
+                            "environment": "In-process jsdom with deterministic mocked session and pending creation response",
+                            "asserts": "Session expiry during pending creation shows an access alert and enabled Start new batch; a late result is not shown."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-057",
+                    "actor": "Person",
+                    "given": "A batch already exists",
+                    "when": "They deliberately start a new batch",
+                    "then": "The browser obtains a fresh session while preserving existing preview URLs until they are done.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx",
+                        "apps/web/app/routes/conversion/conversionController.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E64",
+                            "file": "apps/web/app/routes/conversion/__tests__/ConversionOperationPanel.spec.tsx",
+                            "name": "keeps preview URLs stable and creates a fresh session only on a deliberate new batch",
+                            "layer": "Browser component",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Preview URLs remain stable and deliberate new batch creates another session."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-058",
+                    "actor": "Browser",
+                    "given": "An operation is active",
+                    "when": "UI rerenders, visibility changes, or unmount occurs",
+                    "then": "These lifecycle events do not send cancellation; pagehide does.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx",
+                        "apps/web/app/routes/conversion/conversionController.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E65",
+                            "file": "apps/web/app/routes/conversion/__tests__/ConversionOperationPanel.spec.tsx",
+                            "name": "Strict Mode, rerender, visibility and unmount never send cancellation; pagehide does",
+                            "layer": "Browser component",
+                            "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
+                            "asserts": "Only pagehide triggers cancellation among the tested lifecycle events."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-059",
+                    "actor": "Person",
+                    "given": "No file is selected",
+                    "when": "They view the conversion page",
+                    "then": "Start conversion is disabled until a file is selected.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/ConversionSelection.tsx",
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E66",
+                            "file": "apps/web-e2e/src/integration/upload.spec.ts",
+                            "name": "selected file becomes pending and visible",
+                            "layer": "Mocked browser integration",
+                            "environment": "Browser with intercepted API responses",
+                            "asserts": "Start conversion is disabled before selection and enabled after selection."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                }
+            ]
+        }
+    ]
+}

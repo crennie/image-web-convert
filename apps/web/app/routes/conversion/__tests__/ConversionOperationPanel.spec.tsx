@@ -1,5 +1,11 @@
 import { StrictMode } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+    act,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+} from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import ConversionOperationPanel from '../components/ConversionOperationPanel';
 import { ConversionOperationStatus } from '../components/ConversionOperationStatus';
@@ -146,6 +152,59 @@ it('keeps preview URLs stable and creates a fresh session only on a deliberate n
     expect(fetch.mock.calls.some(([url]) => url.endsWith('/cancel'))).toBe(
         false,
     );
+});
+it('offers a new batch when a lost creation acknowledgement outlives session access', async () => {
+    let resolveCreation!: (response: Response) => void;
+    const creation = new Promise<Response>((resolve) => {
+        resolveCreation = resolve;
+    });
+    const fetch = vi.fn(async (url: string) => {
+        if (url === '/api/sessions')
+            return new Response(
+                JSON.stringify({
+                    sid: session.sessionId,
+                    token: session.token,
+                    expiresAt: new Date(Date.now() + 1_000).toISOString(),
+                    imageConfig: session.imageConfig,
+                }),
+            );
+        if (url.endsWith('/conversions')) return creation;
+        throw Error('Unexpected request');
+    });
+    vi.stubGlobal('fetch', fetch);
+    render(
+        <MemoryRouter>
+            <ConversionOperationPanel />
+        </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText('Choose images'), {
+        target: {
+            files: [new File(['abc'], 'same.png', { type: 'image/png' })],
+        },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Start conversion' }));
+    await waitFor(() =>
+        expect(
+            fetch.mock.calls.some(([url]) => url.endsWith('/conversions')),
+        ).toBe(true),
+    );
+    await waitFor(
+        () =>
+            expect(screen.getByRole('alert')).toHaveTextContent(
+                'Session access ended. Start a new batch to continue.',
+            ),
+        { timeout: 3_000 },
+    );
+    expect(
+        screen.getByRole('button', { name: 'Start new batch' }),
+    ).toBeEnabled();
+    await act(async () => {
+        resolveCreation(new Response(JSON.stringify(snapshot())));
+        await creation;
+    });
+    expect(
+        screen.queryByRole('button', { name: 'Cancel conversion' }),
+    ).not.toBeInTheDocument();
 });
 it('Strict Mode, rerender, visibility and unmount never send cancellation; pagehide does', async () => {
     const fetch = vi.fn(async (url: string, init?: RequestInit) => {

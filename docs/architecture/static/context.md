@@ -1,12 +1,13 @@
-# System context
+# System Context
 
-**Scope:** Image Web Convert as a single software system. This C4 context view shows the user and system boundary; internal runtime elements appear in the [container view](containers.md).
+**Scope:** Image Web Convert as one system. The browser and API shown in lower-level views are inside this boundary.
 
 ```mermaid
 flowchart LR
-    user["Image converter user<br/>Selects images and downloads results"]
-    system["Image Web Convert<br/>Accepts image batches, converts them, and serves results"]
-    user -->|"Submits images and options; views status; downloads files over HTTPS or local HTTP"| system
+    person["Person converting images"]
+    system["Image Web Convert<br/>Uploads, converts, and serves images"]
+    person -->|Selects images and format; downloads results| system
+    system -->|Shows upload, processing, and file outcomes| person
 ```
 
-The user's image files originate on their device. The system returns converted files or ZIP downloads to that device. It does not rely on an external identity provider, database, or queue in the current design. Session bearer tokens are issued by the API. See [constraints](../quality/constraints.md) for the resulting trust and hosting boundaries.
+The person uses the browser workflow. Conversion, session authorization, storage, and downloads are provided by this system. The current application has no required external service or external datastore. See the [container view](containers.md) for its runtime elements.

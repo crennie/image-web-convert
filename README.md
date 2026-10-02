@@ -4,8 +4,7 @@ Image Web Convert is a small Nx monorepo for converting uploaded images to
 web-friendly formats. The Express API uses Sharp for conversion and the React
 Router frontend provides the browser workflow.
 
-See the [architecture index](docs/architecture/README.md) for system boundaries,
-runtime behavior, design decisions, and quality constraints.
+See the [architecture documentation](docs/architecture/README.md) for system boundaries, runtime behavior, design decisions, and quality requirements.
 
 ## Setup and development
 
@@ -203,6 +202,8 @@ Shutdown stops accepting work and starting new files, drains active work within
 the grace period, and relies on restart recovery if the process must exit early.
 
 ## Browser testing
+
+The [use-case inventory](docs/testing/use-case-inventory.md) maps current conversion behaviors to test evidence and coverage levels.
 
 The standard browser `e2e` target runs against built frontend and API artifacts,
 real image encoding, and isolated filesystem storage. It builds its prerequisites,

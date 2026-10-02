@@ -2,22 +2,24 @@
 
 ## System
 
-Image Web Convert lets a user submit a batch of images in a browser and download web-friendly conversions. A React Router frontend handles selection, upload transport, and display; an Express API owns short-lived sessions, conversion state, image processing, and filesystem-backed results.
+Image Web Convert lets a person upload a batch of images, convert them to a web-friendly format, and download completed results. A browser application manages the interaction; a single Express API process owns sessions, conversion work, and local files.
 
 ## Architecture Views
 
-- [Static structure](static/context.md): system context, runtime elements, API components, concepts, storage, and deployment boundaries.
-- [Runtime behavior](dynamic/process-conversion.md): upload, scheduling, processing, and recovery scenarios.
-- Decisions: [backend-owned lifecycle](decisions/ADR-001-backend-owned-conversions.md) and [single-process filesystem state](decisions/ADR-002-single-process-filesystem-state.md).
-- [Constraints and quality](quality/constraints.md): operating boundaries and observable expectations.
+- [Static structure](static/context.md): system boundaries, runtime elements, data, and deployment.
+- [Runtime behavior](dynamic/process-conversion.md): conversion and recovery scenarios.
+- [Decisions](decisions/ADR-001-use-process-owned-filesystem-runtime.md): rationale for important boundaries.
+- [Constraints and quality](quality/constraints.md): operating limits and expected behavior.
 
 ## Key Artifacts
 
 - [Container view](static/containers.md)
+- [API component view](static/components/api.md)
 - [Conversion lifecycle](dynamic/process-conversion.md)
-- [Restart recovery](dynamic/recover-conversions.md)
+- [Restart recovery](dynamic/recover-conversion.md)
+- [Independent file commits](decisions/ADR-002-commit-files-independently.md)
 - [Quality requirements](quality/requirements.md)
 
 ## Current Architecture Summary
 
-The browser submits an immutable manifest and uploads individual slots; the API publishes authoritative operation snapshots and runs a process-local, sequential conversion scheduler. Session and operation records, accepted inputs, and committed outputs live under one filesystem storage root. The web and API runtimes communicate over HTTP; the API storage root has one process owner.
+The React Router frontend calls an Express API through `/api`. The API persists one immutable operation manifest per short-lived session, accepts each file into a separate slot, and processes ready operations in a process-local FIFO scheduler. Inputs, operation state, and independently committed outputs live on one filesystem root; startup recovery reconciles interrupted work before the API accepts requests.

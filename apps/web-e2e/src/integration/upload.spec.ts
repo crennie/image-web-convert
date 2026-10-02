@@ -44,11 +44,47 @@ test('visible keyboard accessible upload control invokes the file chooser', asyn
 });
 test('selected file becomes pending and visible', async ({ page }) => {
     await expect(page.getByText(/files? ready to upload/i)).toHaveCount(0);
+    await expect(
+        page.getByRole('button', { name: 'Start conversion' }),
+    ).toBeDisabled();
     await chooseFiles(page, firstImage);
     await expect(page.getByText('1 file ready to upload.')).toBeVisible();
     await expect(
         page.getByRole('button', { name: 'Start conversion' }),
     ).toBeEnabled();
+});
+
+test('session failure keeps the batch available for retry', async ({
+    page,
+}) => {
+    await page.route('**/api/sessions', (route) =>
+        route.fulfill({ status: 503, json: { message: 'Unavailable' } }),
+    );
+    await chooseFiles(page, firstImage);
+    await page.getByRole('button', { name: 'Start conversion' }).click();
+    await expect(page.getByRole('alert')).toContainText(
+        'Could not open a session. Please retry.',
+    );
+    await expect(
+        page.getByRole('button', { name: 'Retry batch creation' }),
+    ).toBeEnabled();
+});
+
+test('manifest rejection offers a new batch instead of retrying the rejected intent', async ({
+    page,
+}) => {
+    await page.route('**/api/sessions/e2e-session/conversions', (route) =>
+        route.fulfill({ status: 413, json: { type: 'upload_limit_exceeded' } }),
+    );
+    await chooseFiles(page, firstImage);
+    await page.getByRole('button', { name: 'Start conversion' }).click();
+    await expect(page.getByRole('alert')).toContainText('Batch rejected.');
+    await expect(
+        page.getByRole('button', { name: 'Start new batch' }),
+    ).toBeEnabled();
+    await expect(
+        page.getByRole('button', { name: 'Retry batch creation' }),
+    ).toHaveCount(0);
 });
 test('multiple selected files remain pending', async ({ page }) => {
     await chooseFiles(page, [firstImage, secondImage]);

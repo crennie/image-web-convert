@@ -1,29 +1,27 @@
-# Conversion API components
+# API Components
 
-**Scope:** the Express API container in the [container view](../containers.md). This C4 component view follows the active conversion operation workflow; legacy sealed-session download handlers remain mounted for existing records.
+**Scope:** the Express API process in the [container view](../containers.md). Arrows show the main call or data direction.
 
 ```mermaid
 flowchart LR
-    browser["Browser client"]
-    http["HTTP routes and controllers<br/>Authorization, limits, multipart admission, responses"]
-    runtime["Conversion runtime<br/>Operation admission, upload claims, FIFO scheduling, expiry"]
-    model["Conversion transitions<br/>Validated operation and file state changes"]
-    image["Image processor<br/>Sharp conversion; HEIC preprocessing"]
-    storage["Conversion storage<br/>Serialized mutations, artifacts, receipts, recovery"]
-    files["Download routes and service<br/>Commit checks, file and ZIP streaming"]
-    disk[("Session filesystem")]
+    web["Web application"]
+    http["HTTP adapters<br/>Routes, controllers, auth, upload receiver"]
+    runtime["Conversion runtime<br/>Admission, leases, FIFO scheduling, expiry"]
+    state["Conversion transitions<br/>Manifest and file state rules"]
+    store["Conversion storage<br/>Durable acceptance, commits, recovery"]
+    encoder["Image service<br/>Sharp / HEIC handling"]
+    files["File download service<br/>Individual files and ZIP"]
+    disk[("Local filesystem")]
 
-    browser -->|"HTTP commands and status requests"| http
-    http -->|"Create, read, upload, cancel"| runtime
-    http -->|"Resolve completed outputs"| files
-    runtime -->|"Applies transitions"| model
-    runtime -->|"Converts one file at a time"| image
-    runtime -->|"Persists state and outputs"| storage
-    storage -->|"Reads and writes records and artifacts"| disk
-    files -->|"Streams verified outputs"| disk
-    files -->|"Checks committed output via runtime"| runtime
+    web -->|/api requests with session token| http
+    http -->|Create, upload, read, cancel| runtime
+    http -->|Resolve downloads| files
+    runtime -->|Apply lifecycle rules| state
+    runtime -->|Persist/read operation and file results| store
+    runtime -->|Convert accepted inputs| encoder
+    store -->|Read/write records, inputs, receipts, outputs| disk
+    encoder -->|Read accepted input| disk
+    files -->|Read completed output| disk
 ```
 
-The HTTP boundary validates the session bearer token before reading an upload body. `conversion-runtime.service.ts` owns process-local admission, scheduling, expiry, and shutdown. `conversions.service.ts` defines state transitions; `conversion-storage.service.ts` serializes mutations and verifies committed output before download. `image.service.ts` wraps encoding. Status GETs read snapshots and do not drive scheduling.
-
-The process entrypoint removes abandoned request staging and starts recovery before listening. Storage failures that make scheduling unsafe affect readiness; invalid records are isolated by session. See [conversion processing](../../dynamic/process-conversion.md) and [restart recovery](../../dynamic/recover-conversions.md).
+The HTTP adapters authenticate and validate requests before staging upload bodies. The runtime admits operations and per-slot uploads, owns the one-file-at-a-time worker, and holds leases so expiry cleanup waits for active use. Pure transition functions define valid operation and file states. Storage serializes mutations and publishes each output with commit evidence. The file service streams completed images and ZIP archives independently of sibling file outcomes. `libs/schemas` defines public request and snapshot contracts used by both browser and API.

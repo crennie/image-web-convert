@@ -1,45 +1,43 @@
-# Process a conversion batch
+# Process Conversion
 
-**Scenario:** a user submits one batch through the active browser route. Participants correspond to the [container view](../static/containers.md); the API internals are expanded in [API components](../static/components/api.md).
+**Initiator:** a person selects files and a target format in the browser. **Scope:** the active operation workflow across browser, API, scheduler, and filesystem.
 
 ```mermaid
 sequenceDiagram
-    actor User
-    participant Browser as Browser client
+    actor Person
+    participant Web as Browser application
     participant API as Express API
-    participant Store as Filesystem storage
-    participant Worker as API scheduler and encoder
+    participant Store as Local filesystem
+    participant Worker as In-process scheduler / encoder
 
-    User->>Browser: Select files and output format
-    Browser->>API: POST /api/sessions
+    Person->>Web: Choose files and output format
+    Web->>API: POST /api/sessions
     API->>Store: Persist session and token hash
-    API-->>Browser: Session ID, bearer token, expiry, limits
-    Browser->>API: POST /api/sessions/:sid/conversions with fixed manifest
-    API->>Store: Persist operation and server-assigned slots
-    API-->>Browser: Operation snapshot
-    loop Slot uploads (up to two concurrent transports)
-        Browser->>API: PUT one multipart file per slot
-        API->>Store: Stage, validate, promote input, persist acceptance
-        API-->>Browser: Snapshot acknowledging accepted bytes
+    API-->>Web: Session token, expiry, effective limits
+    Web->>API: POST /conversions with fixed manifest
+    API->>Store: Persist operation and file slots
+    API-->>Web: IDs and authoritative snapshot
+    loop Each slot; up to two concurrent browser uploads
+        Web->>API: PUT /conversions/{id}/files/{fileId}
+        API->>Store: Stage and durably accept input
+        API-->>Web: Accepted snapshot
     end
-    API->>Store: Persist queued state when all slots settle upload admission
-    API->>Worker: Wake process-local FIFO scheduler
-    loop Each uploaded slot in manifest order
-        Worker->>Store: Persist processing claim
-        Worker->>Worker: Decode and encode image
-        Worker->>Store: Publish output, metadata, receipt, then completed snapshot
+    API->>Worker: Wake when all slots are accepted or permanently failed
+    loop Ready operations FIFO; files in manifest order
+        Worker->>Store: Persist processing state
+        Worker->>Worker: Decode and convert image
+        Worker->>Store: Commit file output or failure
     end
-    loop Until operation is terminal
-        Browser->>API: GET authoritative snapshot
-        API->>Store: Read operation
-        API-->>Browser: File states, counts, available outputs
+    loop While operation is active
+        Web->>API: GET /conversions/{id}
+        API-->>Web: Current snapshot
     end
-    User->>Browser: Download file or ZIP
-    Browser->>API: Authenticated download request
-    API->>Store: Verify completed output and commit evidence
-    API-->>Browser: File or ZIP stream
+    Person->>Web: Download completed files
+    Web->>API: GET file or POST ZIP download
+    API->>Store: Read committed output
+    API-->>Web: Image or ZIP stream
 ```
 
-The operation manifest and output format cannot change after creation. A matching request ID and intent reuses the operation; a different intent for the session returns a conflict. Upload admission checks authorization, slot identity, and process capacity before multipart parsing. A disconnected or incomplete transfer leaves its slot retryable; an accepted slot cannot be overwritten. The browser reconciles an uncertain upload with a status read before retrying. Polling is observational: the API scheduler advances queued work without a browser status request.
+The API checks authorization, manifest limits, and per-slot admission before reading multipart data. Acknowledgement means upload bytes were accepted, not converted. An interrupted transfer leaves an unaccepted slot retryable; a matching operation-creation retry returns the existing operation, while changed intent returns `conversion_conflict`. Processing continues without status requests. The browser polls snapshots for display and reconciles uncertain network failures against server state before retrying.
 
-Permanent slot failures allow the batch to progress once no slot awaits upload. Individual conversion failures preserve successful siblings; aggregate status becomes `completed`, `partially_completed`, or `failed` from the file outcomes. A user cancellation stops future uploads and requests a cooperative backend stop. The active encoder may settle successfully, while later files are skipped; already committed downloads remain available until expiry. A conversion deadline likewise waits for the invocation to settle before releasing its worker slot. See [quality requirements](../quality/requirements.md) for the resource and recovery limits.
+A failed file preserves successful siblings and yields `partially_completed` when at least one completes. Cancellation requests stop later work cooperatively; an active encoder may finish, and committed results remain downloadable. Session expiry is fixed at creation. See [restart recovery](recover-conversion.md) for crash behavior.

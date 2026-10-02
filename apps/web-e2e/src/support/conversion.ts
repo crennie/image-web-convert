@@ -1,7 +1,10 @@
 import sharp from 'sharp';
 import { readFile } from 'node:fs/promises';
 import type { Page, Locator, TestInfo } from '@playwright/test';
-import { ApiConversionOperationSchema } from '@image-web-convert/schemas';
+import {
+    ApiConversionOperationSchema,
+    type OutputMimeType,
+} from '@image-web-convert/schemas';
 import { expect } from './application';
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { zipEntries } from '../../../api-e2e/src/support/zip';
@@ -25,6 +28,7 @@ export async function image(name: string) {
 export async function submit(
     page: Page,
     files: { name: string; mimeType: string; buffer: Buffer }[],
+    outputMime?: OutputMimeType,
 ) {
     await page.goto('/conversion');
     const choose = page.getByRole('button', {
@@ -35,6 +39,10 @@ export async function submit(
     const chooser = page.waitForEvent('filechooser');
     await choose.click();
     await (await chooser).setFiles(files);
+    if (outputMime)
+        await page
+            .getByRole('combobox', { name: 'Output format' })
+            .selectOption(outputMime);
     const created = page.waitForResponse(
         (response) =>
             response.request().method() === 'POST' &&
