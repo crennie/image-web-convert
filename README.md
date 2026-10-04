@@ -144,6 +144,8 @@ Backend settings are authoritative. The session response exposes its effective
 file/byte limits. The session lifetime is fixed from creation and includes upload
 and queue time; polling, cancellation, and downloads do not extend it. Exceeding
 file/count/aggregate-byte limits returns HTTP 413 `upload_limit_exceeded`.
+The active conversion screen displays the server-provided expiry deadline in
+the browser's local time.
 
 | Environment variable                      | Default     | Meaning                                         |
 | ----------------------------------------- | ----------- | ----------------------------------------------- |
