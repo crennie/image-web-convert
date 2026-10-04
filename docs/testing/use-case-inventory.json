@@ -100,6 +100,22 @@
                             "layer": "Real browser E2E",
                             "environment": "Built browser with separately started API and real encoder",
                             "asserts": "Selecting JPEG produces a JPEG manifest and decoded JPEG download."
+                        },
+                        {
+                            "evidenceId": "E71",
+                            "file": "apps/web-e2e/src/e2e/conversion.spec.ts",
+                            "name": "uses the selected PNG format for the manifest and downloaded image",
+                            "layer": "Real browser E2E",
+                            "environment": "Built browser with separately started API and real encoder",
+                            "asserts": "Selecting PNG produces a PNG manifest and decoded PNG download."
+                        },
+                        {
+                            "evidenceId": "E72",
+                            "file": "apps/web-e2e/src/e2e/conversion.spec.ts",
+                            "name": "uses the selected AVIF format for the manifest and downloaded image",
+                            "layer": "Real browser E2E",
+                            "environment": "Built browser with separately started API and real encoder",
+                            "asserts": "Selecting AVIF produces an AVIF manifest and decoded AV1 download."
                         }
                     ],
                     "coverage": "covered",
@@ -1184,6 +1200,14 @@
                             "layer": "Conversion runtime",
                             "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
                             "asserts": "Active leases defer removal."
+                        },
+                        {
+                            "evidenceId": "E73",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "defers expired operation cleanup until active conversion settles",
+                            "layer": "API process",
+                            "environment": "Separately started local API process with an IPC-held encoder and temporary storage",
+                            "asserts": "A live cleanup sweep retains an expired operation and its input while conversion owns it; after release, the operation directory is removed."
                         }
                     ],
                     "coverage": "covered",

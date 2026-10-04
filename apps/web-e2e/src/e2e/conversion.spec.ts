@@ -73,6 +73,73 @@ test('uses the selected JPEG format for the manifest and downloaded image', asyn
         width: 32,
         height: 24,
     });
+    expect(await sharp(bytes).removeAlpha().raw().toBuffer()).toHaveLength(
+        32 * 24 * 3,
+    );
+});
+
+test('uses the selected PNG format for the manifest and downloaded image', async ({
+    page,
+}, info) => {
+    const source = await image('selected-png.jpg');
+    const operation = await submit(
+        page,
+        [
+            {
+                ...source,
+                mimeType: 'image/jpeg',
+                buffer: await sharp(source.buffer).jpeg().toBuffer(),
+            },
+        ],
+        'image/png',
+    );
+    expect(operation.options.outputMime).toBe('image/png');
+    await expect(page.getByRole('status')).toContainText(
+        'Operation: completed',
+    );
+    const bytes = await download(
+        page,
+        imageButton(page, 'selected-png.jpg'),
+        info,
+        'selected-png.png',
+    );
+    expect(await sharp(bytes).metadata()).toMatchObject({
+        format: 'png',
+        width: 32,
+        height: 24,
+    });
+    expect(await sharp(bytes).removeAlpha().raw().toBuffer()).toHaveLength(
+        32 * 24 * 3,
+    );
+});
+
+test('uses the selected AVIF format for the manifest and downloaded image', async ({
+    page,
+}, info) => {
+    const operation = await submit(
+        page,
+        [await image('selected-avif.png')],
+        'image/avif',
+    );
+    expect(operation.options.outputMime).toBe('image/avif');
+    await expect(page.getByRole('status')).toContainText(
+        'Operation: completed',
+    );
+    const bytes = await download(
+        page,
+        imageButton(page, 'selected-avif.png'),
+        info,
+        'selected-avif.avif',
+    );
+    expect(await sharp(bytes).metadata()).toMatchObject({
+        format: 'heif',
+        compression: 'av1',
+        width: 32,
+        height: 24,
+    });
+    expect(await sharp(bytes).removeAlpha().raw().toBuffer()).toHaveLength(
+        32 * 24 * 3,
+    );
 });
 
 test('keeps successful downloads when an actual image fails to decode', async ({

@@ -236,7 +236,8 @@ NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx run @image-web-convert/web
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx run @image-web-convert/web-e2e:browser-integration
 ```
 
-`e2e` covers complete and partial batches, decoded individual/ZIP contents,
+`e2e` covers complete and partial batches, decoded individual downloads in
+default WebP and selected JPEG, PNG, and AVIF formats, decoded ZIP contents,
 cancellation preserving completed results, a stream interrupted after API staging,
 retry of the same slot, and actual navigation with delivered or dropped page-exit
 cancellation. `browser-integration` retains focused UI checks with mocked API
@@ -250,7 +251,7 @@ built API entrypoint. The API process suite (`nx run @image-web-convert/api-e2e:
 checks abrupt and graceful restarts, committed-output retention, interrupted-file
 recovery, processing without status GETs or exit cancellation, upload disconnects,
 concurrent operation creation, per-slot contention with independent-session progress,
-ZIP name/order collisions, malformed requests, authorization/expiry, effective
+ZIP name/order collisions, malformed requests, authorization, expiry cleanup, effective
 limits, decode failures with partial downloads, endpoint retirement, and sealed
 legacy downloads.
 Restart recovery always uses the normal production entrypoint. Nx builds the test executable as a prerequisite.
