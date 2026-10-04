@@ -1200,6 +1200,14 @@
                             "layer": "Conversion runtime",
                             "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
                             "asserts": "Active leases defer removal."
+                        },
+                        {
+                            "evidenceId": "E73",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "defers expired operation cleanup until active conversion settles",
+                            "layer": "API process",
+                            "environment": "Separately started local API process with an IPC-held encoder and temporary storage",
+                            "asserts": "A live cleanup sweep retains an expired operation and its input while conversion owns it; after release, the operation directory is removed."
                         }
                     ],
                     "coverage": "covered",

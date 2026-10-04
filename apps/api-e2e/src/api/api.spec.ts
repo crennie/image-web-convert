@@ -399,6 +399,60 @@ it('rejects an expired test session through real authentication without creating
     expect(await fs.readdir(api.incoming)).toEqual([]);
 });
 
+it('defers expired operation cleanup until active conversion settles', async () => {
+    const s = await session();
+    const op = await create(s, 1);
+    await api.hold();
+    expect((await upload(s, op)).status).toBe(200);
+    await vi.waitFor(() => expect(api.held).toBe(true), { timeout: 10_000 });
+    expect((await api.readOperation(s.sid)).files[0].status).toBe('processing');
+
+    const sessionDirectory = path.join(api.storage, s.sid);
+    const inputPath = path.join(sessionDirectory, 'inputs', op.files[0].id);
+    const operationPath = path.join(sessionDirectory, 'conversion.info.json');
+    const sessionPath = path.join(sessionDirectory, 'session.info.json');
+    const expiredAt = new Date(Date.now() - 1000).toISOString();
+    const operationRecord = JSON.parse(
+        await fs.readFile(operationPath, 'utf8'),
+    );
+    const sessionRecord = JSON.parse(await fs.readFile(sessionPath, 'utf8'));
+    // The isolated fixture ages both durable records without a minute-long wait.
+    // Rename the operation atomically because the live sweeper reads it.
+    const stagedOperation = `${operationPath}.expiry-test`;
+    await fs.writeFile(
+        stagedOperation,
+        JSON.stringify({
+            ...operationRecord,
+            operation: { ...operationRecord.operation, expiresAt: expiredAt },
+        }),
+    );
+    await fs.rename(stagedOperation, operationPath);
+    await fs.writeFile(
+        sessionPath,
+        JSON.stringify({ ...sessionRecord, expiresAt: expiredAt }),
+    );
+
+    try {
+        await vi.waitFor(async () => {
+            const record = JSON.parse(await fs.readFile(operationPath, 'utf8'));
+            expect(record.operation.stopReason).toBe('session_expired');
+        });
+        expect(await fs.readFile(inputPath)).toEqual(png);
+        expect((await fetch(`${api.url}/readyz`)).status).toBe(200);
+    } finally {
+        await api.release();
+    }
+    await vi.waitFor(
+        async () => {
+            await expect(fs.stat(sessionDirectory)).rejects.toMatchObject({
+                code: 'ENOENT',
+            });
+        },
+        { timeout: 10_000, interval: 50 },
+    );
+    expect(await fs.readdir(api.storage)).toEqual([]);
+});
+
 it('preserves real successful conversions beside decode failures and gates downloads by committed file', async () => {
     await productionApi();
     const s = await session();

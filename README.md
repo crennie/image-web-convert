@@ -251,7 +251,7 @@ built API entrypoint. The API process suite (`nx run @image-web-convert/api-e2e:
 checks abrupt and graceful restarts, committed-output retention, interrupted-file
 recovery, processing without status GETs or exit cancellation, upload disconnects,
 concurrent operation creation, per-slot contention with independent-session progress,
-ZIP name/order collisions, malformed requests, authorization/expiry, effective
+ZIP name/order collisions, malformed requests, authorization, expiry cleanup, effective
 limits, decode failures with partial downloads, endpoint retirement, and sealed
 legacy downloads.
 Restart recovery always uses the normal production entrypoint. Nx builds the test executable as a prerequisite.
