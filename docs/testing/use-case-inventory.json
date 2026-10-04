@@ -24,7 +24,8 @@
                 "docs/architecture/static/domain.md",
                 "docs/architecture/static/data.md",
                 "docs/architecture/quality/requirements.md",
-                "apps/api/src/routes/sessions.routes.ts"
+                "apps/api/src/routes/sessions.routes.ts",
+                "libs/ui/src/lib/file-upload/hooks/useValidation.ts"
             ],
             "cases": [
                 {
@@ -401,6 +402,30 @@
                             "layer": "In-process API",
                             "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
                             "asserts": "Expired upload is rejected before body staging."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-064",
+                    "actor": "Person",
+                    "given": "The conversion page is open",
+                    "when": "They select an unsupported, duplicate, oversized, or excess file",
+                    "then": "The file is excluded with a reason while valid selections remain pending; no batch is created until they start conversion.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/ConversionSelection.tsx",
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx",
+                        "libs/ui/src/lib/file-upload/hooks/useValidation.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E79",
+                            "file": "apps/web/app/routes/conversion/__tests__/ConversionOperationPanel.spec.tsx",
+                            "name": "rejects invalid selected files with reasons before creating a batch",
+                            "layer": "Browser component",
+                            "environment": "In-process jsdom with deterministic file fixtures",
+                            "asserts": "Unsupported, duplicate, over-file-limit, and excess-count selections show reasons; valid files remain and no session request occurs."
                         }
                     ],
                     "coverage": "covered",
@@ -1167,6 +1192,29 @@
                     ],
                     "coverage": "covered",
                     "gaps": []
+                },
+                {
+                    "id": "UC-060",
+                    "actor": "Browser",
+                    "given": "A different session owns an active operation or completed output",
+                    "when": "It reads status, cancels, or requests metadata, an image, or a ZIP using its own bearer token",
+                    "then": "Each request is rejected without cancelling the operation or exposing the output.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E74",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "rejects foreign bearer access to status, cancellation, metadata and downloads",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Foreign bearer gets 401 on status, cancel, metadata, image, and ZIP; owner operation stays active and owner download works."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
                 }
             ]
         },
@@ -1278,6 +1326,14 @@
                             "layer": "Conversion runtime",
                             "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
                             "asserts": "Bad session isolated; healthy batch completes."
+                        },
+                        {
+                            "evidenceId": "E81",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "isolates a corrupt stored session while a healthy operation completes after restart",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Production restart stays ready, rejects only the corrupt session, and completes a healthy operation with a previously accepted upload."
                         }
                     ],
                     "coverage": "covered",
@@ -1399,7 +1455,12 @@
             "sources": [
                 "README.md",
                 "docs/architecture/quality/constraints.md",
-                "docs/architecture/dynamic/recover-conversion.md"
+                "docs/architecture/dynamic/recover-conversion.md",
+                "docs/architecture/static/deployment.md",
+                "apps/api/src/app.ts",
+                "apps/api/src/routes/conversion-files.routes.ts",
+                "apps/api/src/routes/sessions.routes.ts",
+                "apps/web/app/routes/conversion/api/conversionApi.ts"
             ],
             "cases": [
                 {
@@ -1492,6 +1553,59 @@
                             "layer": "In-process API",
                             "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
                             "asserts": "A post-header archive failure closes the body and shutdown can drain."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-065",
+                    "actor": "Cross-origin browser client",
+                    "given": "Its origin is configured and a ZIP has unavailable requested files",
+                    "when": "It requests the archive",
+                    "then": "The ZIP response includes missing IDs and grants that origin CORS permission and exposure for X-Missing-Ids.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md",
+                        "docs/architecture/static/deployment.md",
+                        "apps/api/src/app.ts",
+                        "apps/api/src/routes/conversion-files.routes.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E80",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "exposes missing ZIP IDs and retry deadlines to the configured browser origin",
+                            "layer": "API process",
+                            "environment": "Separately started built API with configured CORS origin and temporary storage",
+                            "asserts": "A partial ZIP has the missing-ID header, permits the configured origin, and lists X-Missing-Ids among exposed response headers."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-066",
+                    "actor": "Cross-origin browser client",
+                    "given": "Its origin is configured and the session request budget is exhausted",
+                    "when": "It requests another session",
+                    "then": "The 429 response includes a retry deadline and grants that origin CORS permission and exposure for Retry-After.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md",
+                        "docs/architecture/static/deployment.md",
+                        "apps/api/src/app.ts",
+                        "apps/api/src/routes/sessions.routes.ts",
+                        "apps/web/app/routes/conversion/api/conversionApi.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E80",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "exposes missing ZIP IDs and retry deadlines to the configured browser origin",
+                            "layer": "API process",
+                            "environment": "Separately started built API with configured CORS origin and temporary storage",
+                            "asserts": "The 429 has a positive Retry-After value, permits the configured origin, and lists Retry-After among exposed response headers."
                         }
                     ],
                     "coverage": "covered",
@@ -1671,6 +1785,81 @@
                             "layer": "Mocked browser integration",
                             "environment": "Browser with intercepted API responses",
                             "asserts": "Start conversion is disabled before selection and enabled after selection."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-061",
+                    "actor": "Person",
+                    "given": "An upload outcome is uncertain and the status check fails",
+                    "when": "They retry that file, then retry again after status recovers",
+                    "then": "No bytes are resent while status is unknown; the later retry can upload the same slot.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/conversionController.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E75",
+                            "file": "apps/web/app/routes/conversion/__tests__/conversionController.spec.ts",
+                            "name": "does not upload after failed reconciliation and preserves its retry action",
+                            "layer": "Browser controller",
+                            "environment": "In-process deterministic mocked browser services",
+                            "asserts": "Failed status reconciliation leaves the attempt retryable without another upload; a later status check permits the second upload."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-062",
+                    "actor": "Person",
+                    "given": "A batch is active when its fixed session deadline arrives",
+                    "when": "The browser reaches that deadline",
+                    "then": "It reports ended access and stops upload, cancellation, and download commands for that batch.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/conversionController.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E76",
+                            "file": "apps/web/app/routes/conversion/__tests__/conversionController.spec.ts",
+                            "name": "ends an active batch at fixed session expiry and prevents more commands",
+                            "layer": "Browser controller",
+                            "environment": "In-process deterministic mocked browser services and clock",
+                            "asserts": "Deadline sets the access message, stops uploads, and blocks subsequent cancel and download calls."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-063",
+                    "actor": "Person",
+                    "given": "A completed image is available and its download fails",
+                    "when": "They retry the download",
+                    "then": "The completed result remains available and the browser retries the same download.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx",
+                        "apps/web/app/routes/conversion/conversionController.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E77",
+                            "file": "apps/web/app/routes/conversion/__tests__/conversionController.spec.ts",
+                            "name": "retains a completed result and permits download retry after a transport failure",
+                            "layer": "Browser controller",
+                            "environment": "In-process deterministic mocked browser services",
+                            "asserts": "Failure sets retry guidance without changing the completed file; retry invokes download again and clears the error."
+                        },
+                        {
+                            "evidenceId": "E78",
+                            "file": "apps/web/app/routes/conversion/__tests__/ConversionOperationPanel.spec.tsx",
+                            "name": "shows download failure and keeps the completed image available for retry",
+                            "layer": "Browser component",
+                            "environment": "In-process jsdom with deterministic mocked HTTP responses",
+                            "asserts": "The rendered error appears beside the enabled completed-image download; retry requests the file again and clears the alert."
                         }
                     ],
                     "coverage": "covered",

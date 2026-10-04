@@ -146,7 +146,9 @@ export async function startApi(
     directory: string,
     logs: string,
     controlled = false,
-    limits: Partial<Pick<SessionImageConfig, 'maxTotalBytes'>> = {},
+    options: Partial<Pick<SessionImageConfig, 'maxTotalBytes'>> & {
+        corsOrigin?: string;
+    } = {},
 ) {
     const storage = path.join(directory, 'uploads');
     const incoming = path.join(directory, 'incoming');
@@ -158,7 +160,8 @@ export async function startApi(
         SESSION_TTL_MINUTES: '15',
         SESSION_MAX_FILES: '20',
         SESSION_PER_FILE_BYTES: '20000000',
-        SESSION_MAX_TOTAL_BYTES: String(limits.maxTotalBytes ?? 500_000_000),
+        SESSION_MAX_TOTAL_BYTES: String(options.maxTotalBytes ?? 500_000_000),
+        CORS_ORIGIN: options.corsOrigin ?? 'false',
         RATE_LIMIT_MAX: '1000',
         RATE_LIMIT_WINDOW_MS: '60000',
         CONVERSION_MAX_OPERATIONS: '3',
