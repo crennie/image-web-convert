@@ -2,7 +2,7 @@ import type {
     ApiConversionOperation,
     ConversionOutput,
 } from '@image-web-convert/schemas';
-import { Button } from '@image-web-convert/ui';
+import { Button, displayDateTime } from '@image-web-convert/ui';
 import type { ConversionClientState } from '../conversionController';
 import {
     batchUploadProgress,
@@ -45,6 +45,13 @@ export function ConversionOperationStatus({
             className="flex flex-col gap-4"
         >
             <h1 className="text-2xl font-bold">Image conversion</h1>
+            <p>
+                Session expires at{' '}
+                <time dateTime={operation.expiresAt}>
+                    {displayDateTime(new Date(operation.expiresAt))}
+                </time>{' '}
+                (local time). Download completed images before then.
+            </p>
             <div role="status" aria-live="polite" aria-atomic="true">
                 <p>Operation: {operation.status.replace(/_/g, ' ')}</p>
                 <p>

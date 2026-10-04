@@ -7,6 +7,7 @@ import {
     waitFor,
 } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
+import { displayDateTime } from '@image-web-convert/ui';
 import ConversionOperationPanel from '../components/ConversionOperationPanel';
 import { ConversionOperationStatus } from '../components/ConversionOperationStatus';
 import {
@@ -71,6 +72,43 @@ it('renders progressive authoritative outcomes and downloads without any local F
         screen.getByRole('button', { name: 'Retry upload same.png' }),
     );
     expect(onRetry).toHaveBeenCalledWith('client-c');
+});
+it('shows the server-provided session expiry in local time', () => {
+    const expiresAt = '2030-01-02T03:04:05.000Z';
+    const nextExpiresAt = '2030-01-02T04:05:06.000Z';
+    const props = {
+        cancelling: false,
+        uploadsStopped: false,
+        downloading: false,
+        errors: {},
+        uploads: {},
+        onDownload: vi.fn(),
+        onRetry: vi.fn(),
+        onCancel: vi.fn(),
+    };
+    const { container, rerender } = render(
+        <ConversionOperationStatus
+            {...props}
+            operation={snapshot([awaiting()], { expiresAt })}
+        />,
+    );
+    const deadline = container.querySelector('time');
+    expect(deadline).toHaveAttribute('datetime', expiresAt);
+    expect(deadline).toHaveTextContent(displayDateTime(new Date(expiresAt)));
+    expect(screen.getByText(/Session expires at/)).toHaveTextContent(
+        'local time',
+    );
+
+    rerender(
+        <ConversionOperationStatus
+            {...props}
+            operation={snapshot([awaiting()], { expiresAt: nextExpiresAt })}
+        />,
+    );
+    expect(deadline).toHaveAttribute('datetime', nextExpiresAt);
+    expect(deadline).toHaveTextContent(
+        displayDateTime(new Date(nextExpiresAt)),
+    );
 });
 it('disables cancellation while pending without showing a fake cancelled status', () => {
     render(

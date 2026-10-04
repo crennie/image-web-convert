@@ -1616,8 +1616,10 @@
         {
             "id": "browser-control-and-recovery",
             "sources": [
+                "README.md",
                 "apps/web/app/routes/conversion/components/ConversionSelection.tsx",
                 "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx",
+                "apps/web/app/routes/conversion/components/ConversionOperationStatus.tsx",
                 "apps/web/app/routes/conversion/conversionController.ts"
             ],
             "cases": [
@@ -1860,6 +1862,29 @@
                             "layer": "Browser component",
                             "environment": "In-process jsdom with deterministic mocked HTTP responses",
                             "asserts": "The rendered error appears beside the enabled completed-image download; retry requests the file again and clears the alert."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-067",
+                    "actor": "Person",
+                    "given": "An operation snapshot is shown",
+                    "when": "They view the active conversion screen",
+                    "then": "The screen shows the server-provided session expiry in local time so completed images can be downloaded before the deadline.",
+                    "sources": [
+                        "README.md",
+                        "apps/web/app/routes/conversion/components/ConversionOperationStatus.tsx"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E82",
+                            "file": "apps/web/app/routes/conversion/__tests__/ConversionOperationPanel.spec.tsx",
+                            "name": "shows the server-provided session expiry in local time",
+                            "layer": "Browser component",
+                            "environment": "In-process jsdom with deterministic operation snapshots",
+                            "asserts": "The visible deadline and time element use the snapshot expiry and update when it changes."
                         }
                     ],
                     "coverage": "covered",
