@@ -67,7 +67,7 @@ export function LandingPage({ SettingsDisplay = UI_SETTINGS_DISPLAY }: LandingPa
                                 Download your converted images directly.
                                 <ul className="list-disc pl-4">
                                     <li><strong>Important:</strong>&nbsp;Downloads are only available during your active session. If you leave, you'll need to re-upload and convert again.</li>
-                                    <li>Temporary server copies used during processing are permanently deleted after about {SettingsDisplay.uploadedFileLifespan}.</li>
+                                    <li>The server removes temporary copies after your session expires and any active processing or downloads finish.</li>
                                 </ul>
                             </div>
                         </div>

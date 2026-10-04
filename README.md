@@ -236,7 +236,8 @@ NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx run @image-web-convert/web
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx run @image-web-convert/web-e2e:browser-integration
 ```
 
-`e2e` covers complete and partial batches, decoded individual/ZIP contents,
+`e2e` covers complete and partial batches, decoded individual downloads in
+default WebP and selected JPEG, PNG, and AVIF formats, decoded ZIP contents,
 cancellation preserving completed results, a stream interrupted after API staging,
 retry of the same slot, and actual navigation with delivered or dropped page-exit
 cancellation. `browser-integration` retains focused UI checks with mocked API

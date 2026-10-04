@@ -139,8 +139,8 @@ describe('LandingPage', () => {
 
         const step3Region = within(step3);
         expect(step3Region.getByText(/downloads are only available during your active session/i)).toBeInTheDocument();
-        expect(step3Region.getByText(/permanently deleted after about/i)).toBeInTheDocument();
-        expect(step3Region.getByText(/30 minutes/i)).toBeInTheDocument();
+        expect(step3Region.getByText(/removes temporary copies after your session expires and any active processing or downloads finish/i)).toBeInTheDocument();
+        expect(step3Region.queryByText(/30 minutes/i)).not.toBeInTheDocument();
     });
 
     it('calls clearSession once on first mount', () => {
