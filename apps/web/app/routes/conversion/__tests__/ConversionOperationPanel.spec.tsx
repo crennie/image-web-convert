@@ -94,6 +94,53 @@ it('disables cancellation while pending without showing a fake cancelled status'
     );
     expect(screen.getByRole('status')).toHaveTextContent('awaiting uploads');
 });
+it('rejects invalid selected files with reasons before creating a batch', () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    render(
+        <MemoryRouter>
+            <ConversionOperationPanel />
+        </MemoryRouter>,
+    );
+    const choose = (files: File[]) =>
+        fireEvent.change(screen.getByLabelText('Choose images'), {
+            target: { files },
+        });
+    choose([new File(['text'], 'notes.txt', { type: 'text/plain' })]);
+    expect(screen.getByRole('alert')).toHaveTextContent(
+        'notes.txt - Unsupported file type.',
+    );
+    expect(
+        screen.getByRole('button', { name: 'Start conversion' }),
+    ).toBeDisabled();
+
+    const valid = new File(['abc'], 'valid.png', { type: 'image/png' });
+    choose([valid]);
+    choose([valid]);
+    expect(screen.getByRole('alert')).toHaveTextContent(
+        'valid.png - Duplicate of a file already added.',
+    );
+    choose([
+        new File([new Uint8Array(20_000_001)], 'large.png', {
+            type: 'image/png',
+        }),
+    ]);
+    expect(screen.getByRole('alert')).toHaveTextContent(
+        'large.png - Exceeds per-file size limit',
+    );
+    choose(
+        Array.from(
+            { length: 20 },
+            (_, index) =>
+                new File(['abc'], `${index}.png`, { type: 'image/png' }),
+        ),
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+        'You can add up to 20 files.',
+    );
+    expect(screen.getByText('20 files ready to upload.')).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+});
 it('keeps preview URLs stable and creates a fresh session only on a deliberate new batch', async () => {
     let sessions = 0;
     const fetch = vi.fn(async (url: string, init?: RequestInit) => {
@@ -152,6 +199,64 @@ it('keeps preview URLs stable and creates a fresh session only on a deliberate n
     expect(fetch.mock.calls.some(([url]) => url.endsWith('/cancel'))).toBe(
         false,
     );
+});
+it('shows download failure and keeps the completed image available for retry', async () => {
+    let downloadAttempts = 0;
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === '/api/sessions')
+            return new Response(
+                JSON.stringify({ sid: session.sessionId, ...session }),
+            );
+        if (url.endsWith('/conversions')) {
+            const intent = JSON.parse(init?.body as string);
+            return new Response(
+                JSON.stringify(
+                    snapshot([
+                        {
+                            ...completed(),
+                            clientId: intent.files[0].clientId,
+                        },
+                    ]),
+                ),
+            );
+        }
+        if (url.endsWith('/files/a')) {
+            downloadAttempts++;
+            return new Response('image', {
+                status: downloadAttempts === 1 ? 503 : 200,
+            });
+        }
+        throw Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetch);
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(
+        () => undefined,
+    );
+    render(
+        <MemoryRouter>
+            <ConversionOperationPanel />
+        </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText('Choose images'), {
+        target: {
+            files: [new File(['abc'], 'same.png', { type: 'image/png' })],
+        },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Start conversion' }));
+    const retry = await screen.findByRole('button', {
+        name: 'Download a.webp',
+    });
+    fireEvent.click(retry);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Download failed. Please retry while this session is available.',
+    );
+    expect(retry).toBeEnabled();
+    fireEvent.click(retry);
+    await waitFor(() => expect(downloadAttempts).toBe(2));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect(
+        screen.getByRole('button', { name: 'Download a.webp' }),
+    ).toBeEnabled();
 });
 it('offers a new batch when a lost creation acknowledgement outlives session access', async () => {
     let resolveCreation!: (response: Response) => void;

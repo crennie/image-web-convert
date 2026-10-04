@@ -83,7 +83,60 @@ it('does not upload after failed reconciliation and preserves its retry action',
     services.getConversion.mockRejectedValue(new Error('offline'));
     await controller.retryUpload('client-a');
     expect(controller.getSnapshot().uploads['client-a'].status).toBe('error');
+    expect(
+        controller.getSnapshot().uploads['client-a'].reconciliationError,
+    ).toBe(true);
     expect(services.uploadConversionFile).toHaveBeenCalledOnce();
+    services.getConversion.mockResolvedValue(
+        snapshot([awaiting()], { revision: 3 }),
+    );
+    await controller.retryUpload('client-a');
+    await vi.waitFor(() =>
+        expect(services.uploadConversionFile).toHaveBeenCalledTimes(2),
+    );
+    expect(
+        services.uploadConversionFile.mock.calls.map((call) => call[2].id),
+    ).toEqual(['a', 'a']);
+    disconnect();
+});
+it('ends an active batch at fixed session expiry and prevents more commands', async () => {
+    vi.useFakeTimers();
+    const { controller, services, disconnect } = setup();
+    await controller.submit([local()], 'image/webp', async () => ({
+        ...session,
+        expiresAt: new Date(Date.now() + 1000).toISOString(),
+    }));
+    expect(controller.getSnapshot().operation?.status).toBe('awaiting_uploads');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(controller.getSnapshot().errors.access).toBe(
+        'Session access ended. Start a new batch to continue.',
+    );
+    expect(controller.getSnapshot().uploadsStopped).toBe(true);
+    await controller.retryUpload('client-a');
+    await controller.cancel();
+    await controller.download(['a']);
+    expect(services.cancelConversion).not.toHaveBeenCalled();
+    expect(services.downloadConversion).not.toHaveBeenCalled();
+    expect(services.uploadConversionFile).toHaveBeenCalledOnce();
+    disconnect();
+});
+it('retains a completed result and permits download retry after a transport failure', async () => {
+    const { controller, services, disconnect } = setup();
+    services.createConversion.mockResolvedValue(snapshot([completed()]));
+    services.downloadConversion.mockRejectedValueOnce(new Error('offline'));
+    await controller.submit([local()], 'image/webp', async () => session);
+    const result = controller.getSnapshot().operation?.files[0];
+    expect(result?.status).toBe('completed');
+    if (result?.status !== 'completed')
+        throw new Error('Expected completed file');
+    await controller.download(result.output);
+    expect(controller.getSnapshot().errors.download).toBe(
+        'Download failed. Please retry while this session is available.',
+    );
+    expect(controller.getSnapshot().operation?.files[0]).toEqual(result);
+    await controller.download(result.output);
+    expect(controller.getSnapshot().errors.download).toBeUndefined();
+    expect(services.downloadConversion).toHaveBeenCalledTimes(2);
     disconnect();
 });
 it('keeps cancellation as a command, retries unknown outcomes, preserves completed results', async () => {

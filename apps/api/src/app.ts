@@ -12,15 +12,16 @@ import {
     errorTranslator,
 } from '@image-web-convert/observability';
 import createApiRouter from './api/index.js';
-import { createConversionRuntime, type ConversionRuntime } from './services/conversion-runtime.service.js';
+import {
+    createConversionRuntime,
+    type ConversionRuntime,
+} from './services/conversion-runtime.service.js';
 
 export type AppDeps = {
     conversions?: ConversionRuntime;
 };
 
-export async function createApp(
-    deps: AppDeps = {},
-): Promise<express.Express> {
+export async function createApp(deps: AppDeps = {}): Promise<express.Express> {
     const env = loadEnv();
     const app = express();
     // Construct without starting timers. The process entrypoint starts recovery
@@ -65,7 +66,7 @@ export async function createApp(
             crossOriginEmbedderPolicy: false, // COEP not needed for plain API
             crossOriginOpenerPolicy: { policy: 'same-origin' },
             crossOriginResourcePolicy: { policy: 'same-site' },
-        })
+        }),
     );
 
     app.use(express.urlencoded({ extended: true }));
@@ -76,8 +77,13 @@ export async function createApp(
         cors({
             origin: env.CORS_ORIGIN,
             credentials: false,
-            exposedHeaders: ['Content-Disposition', 'Content-Length'],
-        })
+            exposedHeaders: [
+                'Content-Disposition',
+                'Content-Length',
+                'X-Missing-Ids',
+                'Retry-After',
+            ],
+        }),
     );
 
     // 4) Body parsers with strict limits
@@ -86,7 +92,7 @@ export async function createApp(
         express.urlencoded({
             extended: false,
             limit: env.BODY_LIMIT_URLENCODED,
-        })
+        }),
     );
 
     // 5) Compression
@@ -98,11 +104,15 @@ export async function createApp(
         max: env.RATE_LIMIT_MAX,
         standardHeaders: true,
         legacyHeaders: false,
-        skip: (req) => req.path === '/healthz' || req.path === '/readyz' ||
-            (req.method === 'GET' && /^\/api\/sessions\/[^/]+\/conversions\/[^/]+\/?$/.test(req.path)),
+        skip: (req) =>
+            req.path === '/healthz' ||
+            req.path === '/readyz' ||
+            (req.method === 'GET' &&
+                /^\/api\/sessions\/[^/]+\/conversions\/[^/]+\/?$/.test(
+                    req.path,
+                )),
     });
     app.use(limiter);
-
 
     // --------- API (Session/File Upload/Download) Handler ----
     app.use('/api', createApiRouter());

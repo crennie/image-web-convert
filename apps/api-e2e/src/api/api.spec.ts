@@ -99,7 +99,7 @@ async function expectApiError(response: Response, code: number, type: string) {
     expect(ApiErrorSchema.parse(await response.json()).type).toBe(type);
 }
 
-async function productionApi(maxTotalBytes?: number) {
+async function productionApi(maxTotalBytes?: number, corsOrigin?: string) {
     await api.stop();
     api = await startApi(
         directory,
@@ -109,7 +109,7 @@ async function productionApi(maxTotalBytes?: number) {
             path.basename(directory),
         ),
         false,
-        { maxTotalBytes },
+        { maxTotalBytes, corsOrigin },
     );
 }
 
@@ -190,6 +190,46 @@ it('creates, validates authorization, converts without polling, reads metadata a
     expect(await output(s, op)).toEqual(first);
 });
 
+it('rejects foreign bearer access to status, cancellation, metadata and downloads', async () => {
+    const activeSession = await session();
+    const active = await create(activeSession, 1);
+    const finishedSession = await session();
+    const finished = await create(finishedSession, 1);
+    expect((await upload(finishedSession, finished)).status).toBe(200);
+    await diskStatus(finishedSession, 'completed');
+    const foreign = await session();
+    const foreignHeaders = headers(foreign);
+
+    const requests = [
+        fetch(`${base(activeSession)}/conversions/${active.id}`, {
+            headers: foreignHeaders,
+        }),
+        fetch(`${base(activeSession)}/conversions/${active.id}/cancel`, {
+            method: 'POST',
+            headers: foreignHeaders,
+        }),
+        fetch(`${base(finishedSession)}/files/${finished.files[0].id}/meta`, {
+            headers: foreignHeaders,
+        }),
+        fetch(`${base(finishedSession)}/files/${finished.files[0].id}`, {
+            headers: foreignHeaders,
+        }),
+        fetch(`${base(finishedSession)}/files/download`, {
+            method: 'POST',
+            headers: { ...foreignHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: [finished.files[0].id] }),
+        }),
+    ];
+    for (const response of await Promise.all(requests))
+        await expectApiError(response, 401, 'invalid_token');
+
+    expect((await status(activeSession, active)).cancelRequestedAt).toBeNull();
+    expect((await api.readOperation(activeSession.sid)).status).toBe(
+        'awaiting_uploads',
+    );
+    await output(finishedSession, finished);
+});
+
 it('limits session creation to three requests per minute without invalidating existing sessions', async () => {
     const first = await session();
     await session();
@@ -198,6 +238,70 @@ it('limits session creation to three requests per minute without invalidating ex
     expect(limited.status).toBe(429);
     const operation = await create(first, 1);
     expect(operation.sessionId).toBe(first.sid);
+});
+
+it('exposes missing ZIP IDs and retry deadlines to the configured browser origin', async () => {
+    const origin = 'https://convert.example';
+    await productionApi(undefined, origin);
+    const exposed = (response: Response) =>
+        (response.headers.get('access-control-expose-headers') ?? '')
+            .toLowerCase()
+            .split(',')
+            .map((header) => header.trim());
+    const owner = await session();
+    const operation = await create(owner);
+    expect((await upload(owner, operation)).status).toBe(200);
+    expect(
+        (
+            await upload(
+                owner,
+                operation,
+                1,
+                owner.token,
+                Buffer.alloc(png.length),
+            )
+        ).status,
+    ).toBe(200);
+    await diskStatus(owner, 'partially_completed');
+
+    const zip = await fetch(`${base(owner)}/files/download`, {
+        method: 'POST',
+        headers: {
+            ...headers(owner),
+            Origin: origin,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ids: operation.files.map((file) => file.id) }),
+    });
+    expect(zip.status).toBe(200);
+    expect(zip.headers.get('access-control-allow-origin')).toBe(origin);
+    expect(zip.headers.get('x-missing-ids')).toBe(operation.files[1].id);
+    expect(exposed(zip)).toEqual(
+        expect.arrayContaining([
+            'content-disposition',
+            'content-length',
+            'x-missing-ids',
+        ]),
+    );
+    await zip.arrayBuffer();
+
+    for (let count = 0; count < 2; count++)
+        expect(
+            (
+                await fetch(`${api.url}/api/sessions`, {
+                    method: 'POST',
+                    headers: { Origin: origin },
+                })
+            ).status,
+        ).toBe(201);
+    const limited = await fetch(`${api.url}/api/sessions`, {
+        method: 'POST',
+        headers: { Origin: origin },
+    });
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('access-control-allow-origin')).toBe(origin);
+    expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(exposed(limited)).toContain('retry-after');
 });
 
 it('returns file_not_found when every requested ZIP member lacks a committed output', async () => {
@@ -682,6 +786,40 @@ it('resumes an unfinished upload manifest after restart without replacing accept
     expect((await upload(s, op, 1)).status).toBe(200);
     await diskStatus(s, 'completed');
     await output(s, op);
+});
+
+it('isolates a corrupt stored session while a healthy operation completes after restart', async () => {
+    const damaged = await session();
+    const damagedOp = await create(damaged, 1);
+    const healthy = await session();
+    const healthyOp = await create(healthy);
+    expect((await upload(healthy, healthyOp)).status).toBe(200);
+
+    await api.stop();
+    const damagedRecord = path.join(
+        api.storage,
+        damaged.sid,
+        'conversion.info.json',
+    );
+    await fs.writeFile(damagedRecord, '{broken');
+    await api.restart();
+
+    expect((await fetch(`${api.url}/readyz`)).status).toBe(200);
+    await expectApiError(
+        await fetch(`${base(damaged)}/conversions/${damagedOp.id}`, {
+            headers: headers(damaged),
+        }),
+        503,
+        'storage_error',
+    );
+    expect(await fs.readFile(damagedRecord, 'utf8')).toBe('{broken');
+    expect(
+        (await status(healthy, healthyOp)).files.map((file) => file.status),
+    ).toEqual(['uploaded', 'awaiting_upload']);
+    expect((await upload(healthy, healthyOp, 1)).status).toBe(200);
+    await diskStatus(healthy, 'completed');
+    await output(healthy, healthyOp);
+    await output(healthy, healthyOp, 1);
 });
 
 it('removes abandoned request staging before the production API becomes ready', async () => {
