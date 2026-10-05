@@ -129,14 +129,11 @@ recovery, and refreshing/reopening a tab is not a resume feature.
 The synchronous `POST /api/sessions/:sid/uploads` endpoint is retired and returns
 404 without loading its multipart middleware or starting conversion. Existing
 sealed legacy sessions still support authenticated metadata, file, and ZIP reads
-until their original expiry. The old shared UI components, cosmetic progress,
-contracts, and backend upload modules remain for compatibility tests and separate
-cleanup. The preserved `useFileUploads` hook calls the retired endpoint and is
-not a supported end-to-end workflow; the mounted route uses the operation API.
-The legacy waiting indicator is explicitly cosmetic and displays no measured
-percentage or conversion stage. API completion/error controls that legacy page's
-workflow. The active route reports actual network upload bytes and backend file
-states; it does not report a measured encoding percentage.
+until their original expiry. The unmounted legacy conversion page and its upload
+hook have been removed. Shared legacy UI components, cosmetic progress,
+contracts, and backend upload modules remain for separate cleanup and
+compatibility tests. The active route reports actual network upload bytes and
+backend file states; it does not report a measured encoding percentage.
 
 ## Limits, deadlines, and storage
 
