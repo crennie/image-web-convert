@@ -65,6 +65,28 @@ function upload(
         },
     );
 }
+function partialUpload(s: Session, op: ApiConversionOperation) {
+    const request = http.request(
+        `${base(s)}/conversions/${op.id}/files/${op.files[0].id}`,
+        {
+            method: 'PUT',
+            headers: {
+                ...headers(s),
+                'Content-Type': 'multipart/form-data; boundary=deadline',
+            },
+        },
+    );
+    let closed = false;
+    request.on('error', () => undefined);
+    request.on('response', (response) => response.resume());
+    request.once('close', () => {
+        closed = true;
+    });
+    request.write(
+        '--deadline\r\nContent-Disposition: form-data; name="file"; filename="0.png"\r\nContent-Type: image/png\r\n\r\npartial',
+    );
+    return { request, isClosed: () => closed };
+}
 async function status(s: Session, op: ApiConversionOperation) {
     const response = await fetch(`${base(s)}/conversions/${op.id}`, {
         headers: headers(s),
@@ -99,7 +121,14 @@ async function expectApiError(response: Response, code: number, type: string) {
     expect(ApiErrorSchema.parse(await response.json()).type).toBe(type);
 }
 
-async function productionApi(maxTotalBytes?: number, corsOrigin?: string) {
+async function productionApi(
+    options: {
+        maxTotalBytes?: number;
+        corsOrigin?: string;
+        uploadIdleMs?: number;
+        uploadTotalMs?: number;
+    } = {},
+) {
     await api.stop();
     api = await startApi(
         directory,
@@ -109,7 +138,7 @@ async function productionApi(maxTotalBytes?: number, corsOrigin?: string) {
             path.basename(directory),
         ),
         false,
-        { maxTotalBytes, corsOrigin },
+        options,
     );
 }
 
@@ -242,7 +271,7 @@ it('limits session creation to three requests per minute without invalidating ex
 
 it('exposes missing ZIP IDs and retry deadlines to the configured browser origin', async () => {
     const origin = 'https://convert.example';
-    await productionApi(undefined, origin);
+    await productionApi({ corsOrigin: origin });
     const exposed = (response: Response) =>
         (response.headers.get('access-control-expose-headers') ?? '')
             .toLowerCase()
@@ -416,7 +445,7 @@ it('rejects malformed manifests, unsupported MIME and excess counts without cons
 });
 
 it('enforces the backend aggregate-byte limit independently of the per-file ceiling', async () => {
-    await productionApi(png.length);
+    await productionApi({ maxTotalBytes: png.length });
     const s = await session();
     expect(s.imageConfig.maxTotalBytes).toBe(png.length);
     expect(s.imageConfig.maxBytesPerFile).toBeGreaterThan(png.length);
@@ -473,6 +502,88 @@ it('cleans missing and malformed multipart uploads and permits the same slot to 
     expect((await upload(s, op)).status).toBe(200);
     await diskStatus(s, 'completed');
     await output(s, op);
+});
+
+it('records a real byte mismatch as a permanent failure while a sibling completes', async () => {
+    await productionApi();
+    const s = await session();
+    const op = await create(s);
+    await expectApiError(
+        await upload(s, op, 0, s.token, png.subarray(0, -1)),
+        400,
+        'upload_size_mismatch',
+    );
+    const failed = await status(s, op);
+    expect(failed.files[0]).toMatchObject({
+        status: 'failed',
+        error: { type: 'upload_size_mismatch' },
+    });
+    expect(failed.files[1].status).toBe('awaiting_upload');
+    await expectApiError(await upload(s, op), 409, 'stale_file_upload');
+    expect((await upload(s, op, 1)).status).toBe(200);
+    await diskStatus(s, 'partially_completed');
+    const completed = await status(s, op);
+    expect(completed.files.map((file) => file.status)).toEqual([
+        'failed',
+        'completed',
+    ]);
+    await output(s, op, 1);
+    expect(await fs.readdir(api.incoming)).toEqual([]);
+    expect(await fs.readdir(path.join(api.storage, s.sid, 'inputs'))).toEqual(
+        [],
+    );
+});
+
+async function expectTimedOutUploadIsRetryable(
+    options: { uploadIdleMs: number; uploadTotalMs: number },
+    keepActive: boolean,
+) {
+    await productionApi(options);
+    const s = await session();
+    const op = await create(s, 1);
+    const { request, isClosed } = partialUpload(s, op);
+    const activity = keepActive
+        ? setInterval(() => {
+              if (!request.destroyed) request.write('a');
+          }, 100)
+        : undefined;
+    try {
+        await vi.waitFor(
+            async () => expect(await fs.readdir(api.incoming)).toHaveLength(1),
+            { timeout: 10_000 },
+        );
+        await vi.waitFor(() => expect(isClosed()).toBe(true), {
+            timeout: 10_000,
+        });
+        await vi.waitFor(
+            async () => expect(await fs.readdir(api.incoming)).toEqual([]),
+            { timeout: 10_000 },
+        );
+        expect((await status(s, op)).files[0].status).toBe('awaiting_upload');
+        expect(
+            await fs.readdir(path.join(api.storage, s.sid, 'inputs')),
+        ).toEqual([]);
+        expect((await upload(s, op)).status).toBe(200);
+        await diskStatus(s, 'completed');
+        await output(s, op);
+    } finally {
+        if (activity) clearInterval(activity);
+        request.destroy();
+    }
+}
+
+it('aborts an idle upload in the production process and accepts a retry', async () => {
+    await expectTimedOutUploadIsRetryable(
+        { uploadIdleMs: 1_200, uploadTotalMs: 5_000 },
+        false,
+    );
+});
+
+it('enforces the total upload deadline despite activity in the production process', async () => {
+    await expectTimedOutUploadIsRetryable(
+        { uploadIdleMs: 5_000, uploadTotalMs: 1_800 },
+        true,
+    );
 });
 
 it('rejects an expired test session through real authentication without creating operation data', async () => {
