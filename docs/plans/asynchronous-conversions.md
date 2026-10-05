@@ -1209,3 +1209,18 @@ Suggested continuation prompt:
   confirm Firefox/WebKit and artifact upload. The migration implementation is
   complete; legacy module deletion, dependency cleanup, process isolation, and
   browser refresh recovery were not added to scope.
+
+### Post-migration frontend cleanup — 2026-10-05
+
+The unmounted `ConversionPage` and its `PageInstructions`, exclusive tests,
+`ConversionState` type, and retired-endpoint `useFileUploads` hook/export were
+removed. The mounted `ConversionOperationPanel`, shared UI components, cosmetic
+progress utilities, backend legacy upload modules, and sealed legacy download
+support remain. The README and use-case inventory now describe the current
+boundary; all 67 in-scope use cases retain their evidence mappings.
+
+Local validation passed: use-case inventory check, root lint, typecheck, tests,
+build, and all nine real Chromium browser E2E cases. Lint and build emitted only
+the existing warnings in unchanged files/tooling. Firefox/WebKit and hosted CI
+were not rerun for this frontend cleanup. Backend legacy module/dependency
+cleanup and the architectural limits above remain separate work.

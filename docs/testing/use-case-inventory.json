@@ -4,7 +4,7 @@
     "testMappingStatus": "reviewed",
     "excluded": [
         "Old synchronous upload flow as active behavior; only retired-route compatibility remains in scope.",
-        "Unmounted legacy UI hook, implementation plans, infrastructure setup, generic UI primitives, telemetry, and future distributed processing."
+        "Implementation plans, infrastructure setup, generic UI primitives, telemetry, and future distributed processing."
     ],
     "documentedLimitations": [
         "Reload or a new tab cannot resume a batch because browser credentials are not persisted.",
