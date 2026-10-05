@@ -148,6 +148,8 @@ export async function startApi(
     controlled = false,
     options: Partial<Pick<SessionImageConfig, 'maxTotalBytes'>> & {
         corsOrigin?: string;
+        uploadIdleMs?: number;
+        uploadTotalMs?: number;
     } = {},
 ) {
     const storage = path.join(directory, 'uploads');
@@ -166,8 +168,8 @@ export async function startApi(
         RATE_LIMIT_WINDOW_MS: '60000',
         CONVERSION_MAX_OPERATIONS: '3',
         CONVERSION_MAX_UPLOADS: '2',
-        CONVERSION_UPLOAD_IDLE_MS: '60000',
-        CONVERSION_UPLOAD_TOTAL_MS: '300000',
+        CONVERSION_UPLOAD_IDLE_MS: String(options.uploadIdleMs ?? 60000),
+        CONVERSION_UPLOAD_TOTAL_MS: String(options.uploadTotalMs ?? 300000),
         CONVERSION_FILE_TIMEOUT_MS: '120000',
         CONVERSION_SWEEP_INTERVAL_MS: '100',
         CONVERSION_SHUTDOWN_GRACE_MS: '10000',

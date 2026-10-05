@@ -558,6 +558,14 @@
                             "layer": "In-process API",
                             "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
                             "asserts": "Mismatch becomes file failure while sibling converts."
+                        },
+                        {
+                            "evidenceId": "E83",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "records a real byte mismatch as a permanent failure while a sibling completes",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Wrong-sized upload returns 400 and fails the slot permanently; the sibling completes and remains downloadable with clean staging."
                         }
                     ],
                     "coverage": "covered",
@@ -635,6 +643,22 @@
                             "layer": "In-process API",
                             "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
                             "asserts": "Activity does not extend the total deadline; staging clears and the same slot accepts a valid retry."
+                        },
+                        {
+                            "evidenceId": "E84",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "aborts an idle upload in the production process and accepts a retry",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Idle incomplete transfer closes, staging clears, and the unaccepted slot completes on retry."
+                        },
+                        {
+                            "evidenceId": "E85",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "enforces the total upload deadline despite activity in the production process",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Active incomplete transfer closes at the total deadline despite incoming bytes; staging clears and retry completes."
                         }
                     ],
                     "coverage": "covered",
