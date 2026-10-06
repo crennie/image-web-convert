@@ -9,8 +9,7 @@ export default function createApiRouter(): Router {
     const apiRouter: Router = Router();
 
     apiRouter.use('/sessions', sessionsRouter);
-    // Synchronous /uploads is retired. Unmatched requests return 404 without
-    // loading its multipart parser or starting the legacy converter.
+    // The retired synchronous /uploads route has no handler; it returns 404.
     apiRouter.use('/sessions/:sid/conversions', createConversionsRouter());
     apiRouter.use('/sessions/:sid/files', conversionFilesRouter);
     apiRouter.use('/sessions/:sid/files', filesRouter);

@@ -1453,8 +1453,8 @@
                     "id": "UC-048",
                     "actor": "Person",
                     "given": "An existing sealed legacy session has output",
-                    "when": "They request its file or ZIP",
-                    "then": "Authenticated legacy downloads remain available until session expiry.",
+                    "when": "They request its metadata, file, or ZIP",
+                    "then": "Authenticated legacy metadata and downloads remain available until session expiry.",
                     "sources": [
                         "README.md",
                         "docs/architecture/quality/constraints.md"
@@ -1466,7 +1466,7 @@
                             "name": "still downloads existing sealed legacy sessions individually and as ZIPs",
                             "layer": "API process",
                             "environment": "Separately started local API process and temporary storage",
-                            "asserts": "Sealed legacy file and ZIP downloads work while live; both reject with session_expired afterward."
+                            "asserts": "Sealed legacy metadata, file, and ZIP reads work while live; all three reject with session_expired afterward."
                         }
                     ],
                     "coverage": "covered",

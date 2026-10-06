@@ -127,13 +127,12 @@ or expires the operation independently. Credentials are not persisted for browse
 recovery, and refreshing/reopening a tab is not a resume feature.
 
 The synchronous `POST /api/sessions/:sid/uploads` endpoint is retired and returns
-404 without loading its multipart middleware or starting conversion. Existing
-sealed legacy sessions still support authenticated metadata, file, and ZIP reads
-until their original expiry. The unmounted legacy conversion page and its upload
-hook have been removed. Shared legacy UI components, cosmetic progress,
-contracts, and backend upload modules remain for separate cleanup and
-compatibility tests. The active route reports actual network upload bytes and
-backend file states; it does not report a measured encoding percentage.
+404 without staging or converting files. Its backend upload modules have been
+removed. Existing sealed legacy sessions still support authenticated metadata,
+file, and ZIP reads until their original expiry. The unmounted legacy conversion
+page and its upload hook have been removed; shared legacy UI components, cosmetic
+progress, and contracts remain. The active route reports actual network upload
+bytes and backend file states; it does not report a measured encoding percentage.
 
 ## Limits, deadlines, and storage
 

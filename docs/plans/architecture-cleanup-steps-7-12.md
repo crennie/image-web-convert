@@ -12,6 +12,9 @@ step numbers, not additional phases of that six-phase migration. The initial req
 authorized and completed; implement later steps only when requested and record
 their evidence here.
 
+The legacy upload files named in the historical step 7 instructions were removed
+in the subsequent backend cleanup. Sealed-session download compatibility remains.
+
 ## Scope corrections from repository review
 
 | Step | Current evidence | Remaining scope |
