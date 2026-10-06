@@ -55,7 +55,7 @@ Recheck these files before implementing their corresponding phase:
 | API routing | `apps/api/src/api/index.ts`, `apps/api/src/routes/`, `apps/api/src/controllers/` |
 | Current orchestration | `apps/api/src/services/conversion-runtime.service.ts` |
 | Conversion | `apps/api/src/services/image.service.ts`, `apps/api/src/services/image.config.ts` |
-| Persistence | `apps/api/src/services/storage.service.ts`, `storage.paths.ts`, `sessions.service.ts` |
+| Persistence | `apps/api/src/services/conversion-storage.service.ts`, `storage.paths.ts`, `sessions.service.ts`; `storage.service.ts` retains legacy metadata reads |
 | Lifecycle and limits | `apps/api/src/main.ts`, `app.ts`, `env.ts` |
 | Contracts | `libs/schemas/src/lib/api/api.ts`, `apiError.ts` |
 | Server integration | `apps/api-e2e/src/api/api.spec.ts` |
@@ -65,8 +65,8 @@ The retired upload service used `Promise.allSettled`, sealed the entire session,
 and rolled back accepted outputs if the final session write failed. The completed
 operation-owned workflow replaces those behaviors with durable slot acceptance,
 sequential scheduling, and independent output commits/downloads. Legacy upload
-modules remain for existing tests and separate cleanup, but their router is no
-longer imported or mounted. The preserved legacy shared UI is not the active route.
+modules were removed after migration, including their router. The preserved legacy
+shared UI is not the active route.
 
 ## Target contracts and invariants
 
@@ -1224,3 +1224,21 @@ build, and all nine real Chromium browser E2E cases. Lint and build emitted only
 the existing warnings in unchanged files/tooling. Firefox/WebKit and hosted CI
 were not rerun for this frontend cleanup. Backend legacy module/dependency
 cleanup and the architectural limits above remain separate work.
+
+### Backend legacy upload cleanup — 2026-10-06
+
+Removed the unmounted synchronous upload router, controller, service, and their
+exclusive tests. `storage.service.ts` now retains only metadata reads needed for
+sealed legacy sessions; the active operation storage and download paths are
+unchanged. Removed `express-fileupload`, its types, and their unused transitive
+packages from the npm manifest and lockfile. The retired endpoint still returns
+404, and seeded sealed-session file and ZIP downloads remain supported.
+
+The use-case inventory check, root lint, typecheck, tests, and build passed. The
+root tests include 25 real API process cases, including retired-route and legacy
+download compatibility. The first Chromium browser run passed 8 of 9 cases; its
+interrupted-upload retry case stalled after an `upload_in_progress` response. That
+case passed alone, and a second full Chromium run passed all 9 cases. Nx reported
+the browser target as flaky. Firefox/WebKit and hosted CI were not run for this
+cleanup; their prior environment limitation remains. Shared legacy UI and schemas,
+process isolation, and browser refresh recovery remain separate work.

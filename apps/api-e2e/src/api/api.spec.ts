@@ -1007,6 +1007,14 @@ it('still downloads existing sealed legacy sessions individually and as ZIPs', a
         counts: { files: 1, totalBytes: png.length },
     };
     await fs.writeFile(infoPath, JSON.stringify(sealed));
+    const legacyMetadata = await fetch(
+        `${base(legacy)}/files/${meta.id}/meta`,
+        {
+            headers: headers(legacy),
+        },
+    );
+    expect(legacyMetadata.status).toBe(200);
+    expect(UploadMetaSchema.parse(await legacyMetadata.json())).toEqual(meta);
     expect(await output(legacy, operation)).toEqual(bytes);
     const zip = await fetch(`${base(legacy)}/files/download`, {
         method: 'POST',
@@ -1026,6 +1034,13 @@ it('still downloads existing sealed legacy sessions individually and as ZIPs', a
     );
     await expectApiError(
         await fetch(`${base(legacy)}/files/${meta.id}`, {
+            headers: headers(legacy),
+        }),
+        403,
+        'session_expired',
+    );
+    await expectApiError(
+        await fetch(`${base(legacy)}/files/${meta.id}/meta`, {
             headers: headers(legacy),
         }),
         403,
