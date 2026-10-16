@@ -66,16 +66,25 @@ function ConversionBatch({ onNewBatch }: { onNewBatch: () => void }) {
                 <ConversionOperationStatus
                     {...state}
                     operation={state.operation}
+                    localFiles={selection.items}
+                    onNewBatch={
+                        isTerminal(state.operation) ? onNewBatch : undefined
+                    }
                     onRetry={(id) => void workflow.retryUpload(id)}
                     onCancel={() => void workflow.cancel()}
                     onDownload={(result) => void workflow.download(result)}
                 />
             )}
-            {(state.errors.access ||
-                state.creationRejected ||
-                (state.operation && isTerminal(state.operation))) && (
-                <Button onClick={onNewBatch}>Start new batch</Button>
-            )}
+            {!state.operation &&
+                (state.errors.access || state.creationRejected) && (
+                    <Button
+                        variant="ghost"
+                        className="self-start px-2 underline-offset-4 hover:underline"
+                        onClick={onNewBatch}
+                    >
+                        Start new batch
+                    </Button>
+                )}
         </div>
     );
 }

@@ -58,18 +58,18 @@ export function ConversionSelection({
                 Select images and an output format. Completed images are
                 available as soon as they are ready.
             </p>
-            {items.length > 0 && (
-                <p aria-live="polite" aria-atomic="true">
-                    {items.length} {items.length === 1 ? 'file' : 'files'} ready
-                    to upload.
-                </p>
-            )}
             <SelectionDropzone
                 disabled={disabled}
                 populated={items.length > 0}
                 onAdd={onAdd}
                 browseRef={browse}
             />
+            {items.length > 0 && (
+                <p aria-live="polite" aria-atomic="true">
+                    {items.length} {items.length === 1 ? 'file' : 'files'} ready
+                    to upload.
+                </p>
+            )}
             <div
                 className="sr-only"
                 role="status"
@@ -80,10 +80,10 @@ export function ConversionSelection({
             </div>
             {errors.length > 0 && (
                 <div className="border-l-4 border-destructive/60 pl-3 text-destructive">
-                    <div className="flex justify-end">
+                    <div className="flex justify-start">
                         <Button
                             variant="ghost"
-                            className="px-2 text-sm font-normal text-muted-foreground hover:underline"
+                            className="px-2 text-sm font-medium text-destructive hover:underline"
                             aria-label="Clear all errors"
                             onClick={() => {
                                 browse.current?.focus();
@@ -104,7 +104,7 @@ export function ConversionSelection({
                             >
                                 <Button
                                     variant="ghost"
-                                    className="w-11 shrink-0"
+                                    className="w-11 shrink-0 text-destructive font-normal"
                                     aria-label={`Dismiss error: ${error.message}`}
                                     ref={(element) => {
                                         if (element)

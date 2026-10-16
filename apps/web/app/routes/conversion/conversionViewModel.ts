@@ -1,3 +1,4 @@
+import { displayBytes } from '@image-web-convert/ui';
 import type {
     ApiConversionOperation,
     ConversionFile,
@@ -34,7 +35,7 @@ export function fileDisplayState(file: ConversionFile, upload?: UploadAttempt) {
             : file.status.replace(/_/g, ' ');
     switch (upload?.status) {
         case 'sending':
-            return `Uploading: ${upload.loaded} transport bytes${upload.total === undefined ? ' (total unknown)' : ` of ${upload.total}`}`;
+            return `Uploading: ${displayBytes(upload.loaded)} sent${upload.total === undefined ? ' (total unknown)' : ` of ${displayBytes(upload.total)}`}`;
         case 'error':
             if (upload.reconciliationError)
                 return 'Could not check upload status — retry when connected';

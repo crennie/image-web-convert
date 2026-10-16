@@ -63,6 +63,12 @@ it('renders progressive authoritative outcomes and downloads without any local F
         screen.queryByText('/internal/private/path'),
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Download a.webp' }));
+    fireEvent.click(
+        screen.getByRole('button', {
+            name: 'Download same.png from thumbnail',
+        }),
+    );
+    expect(onDownload).toHaveBeenCalledTimes(2);
     expect(onDownload).toHaveBeenCalledWith(
         operation.files[0].status === 'completed'
             ? operation.files[0].output
@@ -412,4 +418,161 @@ it('Strict Mode, rerender, visibility and unmount never send cancellation; pageh
     expect(
         fetch.mock.calls.filter(([url]) => url.endsWith('/cancel')),
     ).toHaveLength(1);
+});
+
+it('keeps thumbnails, output metadata and new-batch action inside the results panel', () => {
+    const onNewBatch = vi.fn();
+    render(
+        <ConversionOperationStatus
+            operation={snapshot([completed()])}
+            uploads={{}}
+            cancelling={false}
+            uploadsStopped={false}
+            downloading={false}
+            errors={{}}
+            localFiles={[
+                {
+                    id: 'client-a',
+                    file: new File(['image'], 'same.png'),
+                    previewUrl: 'blob:original',
+                },
+            ]}
+            onRetry={vi.fn()}
+            onCancel={vi.fn()}
+            onDownload={vi.fn()}
+            onNewBatch={onNewBatch}
+        />,
+    );
+    const panel = screen.getByRole('region', { name: 'Conversion operation' });
+    const preview = screen.getByRole('img', { name: 'Preview of same.png' });
+    expect(preview).toHaveAttribute('src', 'blob:original');
+    expect(screen.getByText('10 × 10 · 2 B')).toBeInTheDocument();
+    expect(screen.queryByText('a.webp')).not.toBeInTheDocument();
+    const newBatch = screen.getByRole('button', { name: 'Start new batch' });
+    expect(panel).toContainElement(newBatch);
+    fireEvent.click(newBatch);
+    expect(onNewBatch).toHaveBeenCalledOnce();
+    fireEvent.error(preview);
+    expect(
+        screen.getByRole('img', { name: 'Preview unavailable for same.png' }),
+    ).toHaveAttribute('src', '/image-preview-unavailable.svg');
+});
+
+it('formats file sizes and disables both download controls while a download is active', () => {
+    const file = completed();
+    if (file.status !== 'completed')
+        throw new Error('Expected completed fixture');
+    file.output.meta.output.sizeBytes = 1536;
+    const onDownload = vi.fn();
+    render(
+        <ConversionOperationStatus
+            operation={snapshot([file])}
+            uploads={{}}
+            cancelling={false}
+            uploadsStopped={false}
+            downloading
+            errors={{}}
+            onRetry={vi.fn()}
+            onCancel={vi.fn()}
+            onDownload={onDownload}
+        />,
+    );
+    expect(screen.getByText('10 × 10 · 1.5 KB')).toBeInTheDocument();
+    const icon = screen.getByRole('button', { name: 'Download a.webp' });
+    const thumbnail = screen.getByRole('button', {
+        name: 'Download same.png from thumbnail',
+    });
+    expect(icon).toBeDisabled();
+    expect(thumbnail).toBeDisabled();
+    fireEvent.click(icon);
+    fireEvent.click(thumbnail);
+    expect(onDownload).not.toHaveBeenCalled();
+});
+
+it('shows batch downloads and restart only after processing ends, retaining partial results', () => {
+    const props = {
+        uploads: {},
+        cancelling: false,
+        uploadsStopped: false,
+        downloading: false,
+        errors: {},
+        onRetry: vi.fn(),
+        onCancel: vi.fn(),
+        onDownload: vi.fn(),
+        onNewBatch: vi.fn(),
+    };
+    const { rerender } = render(
+        <ConversionOperationStatus
+            {...props}
+            operation={snapshot([completed(), awaiting('b')])}
+        />,
+    );
+    expect(
+        screen.queryByRole('button', {
+            name: 'Download completed images as ZIP',
+        }),
+    ).not.toBeInTheDocument();
+    expect(
+        screen.queryByRole('button', { name: 'Start new batch' }),
+    ).not.toBeInTheDocument();
+    expect(
+        screen.getByRole('button', { name: 'Cancel conversion' }),
+    ).toBeEnabled();
+    expect(
+        screen.getByRole('button', { name: 'Download a.webp' }),
+    ).toBeEnabled();
+    expect(screen.queryByText(/Upload transport/)).not.toBeInTheDocument();
+    rerender(
+        <ConversionOperationStatus
+            {...props}
+            operation={snapshot(
+                [
+                    completed(),
+                    {
+                        ...awaiting('b'),
+                        status: 'cancelled',
+                        finishedAt: time,
+                        reason: 'user_cancelled',
+                    },
+                ],
+                { status: 'cancelled' },
+            )}
+        />,
+    );
+    fireEvent.click(
+        screen.getByRole('button', {
+            name: 'Download completed images as ZIP',
+        }),
+    );
+    expect(props.onDownload).toHaveBeenCalledWith(['a']);
+    expect(
+        screen.getByRole('button', { name: 'Start new batch' }),
+    ).toBeEnabled();
+    expect(
+        screen.queryByRole('button', { name: 'Cancel conversion' }),
+    ).not.toBeInTheDocument();
+    rerender(
+        <ConversionOperationStatus
+            {...props}
+            operation={snapshot(
+                [
+                    {
+                        ...awaiting(),
+                        status: 'cancelled',
+                        finishedAt: time,
+                        reason: 'user_cancelled',
+                    },
+                ],
+                { status: 'cancelled' },
+            )}
+        />,
+    );
+    expect(
+        screen.queryByRole('button', {
+            name: 'Download completed images as ZIP',
+        }),
+    ).not.toBeInTheDocument();
+    expect(
+        screen.getByRole('button', { name: 'Start new batch' }),
+    ).toBeEnabled();
 });

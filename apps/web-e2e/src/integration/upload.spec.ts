@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page, Locator } from '@playwright/test';
 import { expect, test } from '../support/application';
 import { firstImage, secondImage, type ImageFixture } from '../fixtures/images';
 import type {
@@ -6,6 +6,11 @@ import type {
     ApiCreateConversionRequest,
     ConversionFile,
 } from '@image-web-convert/schemas';
+
+function requiredBounds(box: Awaited<ReturnType<Locator['boundingBox']>>) {
+    if (!box) throw new Error('Expected a visible element with layout bounds');
+    return box;
+}
 
 const sessionResponse = {
     sid: 'e2e-session',
@@ -116,6 +121,7 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
 }) => {
     let operation: ApiConversionOperation;
     let uploads = 0;
+    let finishBatch = false;
     const now = new Date().toISOString();
     await page.route(
         '**/api/sessions/e2e-session/conversions',
@@ -252,6 +258,39 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
                 },
             };
         }
+        if (finishBatch) {
+            const first = operation.files[0];
+            if (first.status !== 'completed')
+                throw new Error('Expected completed first file');
+            operation = {
+                ...operation,
+                revision: operation.revision + 1,
+                status: 'completed',
+                finishedAt: now,
+                files: [
+                    first,
+                    {
+                        ...first,
+                        id: operation.files[1].id,
+                        clientId: operation.files[1].clientId,
+                        name: operation.files[1].name,
+                        output: {
+                            ...first.output,
+                            meta: {
+                                ...first.output.meta,
+                                id: operation.files[1].id,
+                            },
+                        },
+                    },
+                ],
+                counts: {
+                    ...operation.counts,
+                    processing: 0,
+                    completed: 2,
+                    settled: 2,
+                },
+            };
+        }
         await route.fulfill({ status: 200, json: operation });
     });
     await page.route(
@@ -274,12 +313,96 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     await page.getByRole('button', { name: 'Start conversion' }).click();
     await expect(page.getByRole('status')).toContainText('1 completed');
     await expect(page.getByRole('status')).toContainText('1 processing');
+    await expect(page.getByRole('status')).not.toContainText(
+        /0 (failed|cancelled)/,
+    );
+    await expect(
+        page.getByRole('button', { name: 'Download completed images as ZIP' }),
+    ).toHaveCount(0);
+    await expect(
+        page.getByRole('button', { name: 'Start new batch' }),
+    ).toHaveCount(0);
+    const row = page.getByRole('listitem', {
+        name: firstImage.name,
+        exact: true,
+    });
+    const thumbnail = row.getByRole('button', {
+        name: `Download ${firstImage.name} from thumbnail`,
+    });
+    const icon = row.getByRole('button', {
+        name: 'Download converted.webp',
+        exact: true,
+    });
+    await expect(row.getByText('1 × 1 · 3 B')).toBeVisible();
+    await expect(row.getByText('converted.webp', { exact: true })).toHaveCount(
+        0,
+    );
+    await expect(row.getByRole('img')).toHaveAttribute('src', /^blob:/);
+    for (const width of [375, 1280]) {
+        await page.setViewportSize({ width, height: 900 });
+        const boxes = await Promise.all([
+            row.boundingBox().then(requiredBounds),
+            thumbnail.boundingBox().then(requiredBounds),
+            icon.boundingBox().then(requiredBounds),
+        ]);
+        const [rowBox, thumbBox, iconBox] = boxes;
+        expect(thumbBox.x).toBeLessThan(iconBox.x);
+        expect(iconBox.width).toBeGreaterThanOrEqual(44);
+        expect(iconBox.height).toBeGreaterThanOrEqual(44);
+        expect(iconBox.x + iconBox.width).toBeLessThanOrEqual(
+            rowBox.x + rowBox.width,
+        );
+        expect(
+            await page.evaluate(
+                () => document.documentElement.scrollWidth <= window.innerWidth,
+            ),
+        ).toBe(true);
+    }
+    const thumbnailDownload = page.waitForEvent('download');
+    await thumbnail.focus();
+    await thumbnail.press('Enter');
+    expect((await thumbnailDownload).suggestedFilename()).toBe(
+        'converted.webp',
+    );
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Download converted.webp' }).click();
     expect((await download).suggestedFilename()).toBe('converted.webp');
     await expect(
         page.getByRole('button', { name: 'Cancel conversion' }),
     ).toBeEnabled();
+    finishBatch = true;
+    await expect(page.getByRole('status')).toContainText(
+        'Operation: completed',
+    );
+    await expect(page.getByRole('status')).toContainText('2 completed.');
+    await expect(
+        page.getByRole('button', { name: 'Cancel conversion' }),
+    ).toHaveCount(0);
+    const zip = page.getByRole('button', {
+        name: 'Download completed images as ZIP',
+    });
+    const restart = page.getByRole('button', { name: 'Start new batch' });
+    await expect(zip).toBeEnabled();
+    await expect(restart).toBeEnabled();
+    const zipBox = await zip.boundingBox().then(requiredBounds);
+    const restartBox = await restart.boundingBox().then(requiredBounds);
+    const panelBox = await page
+        .getByRole('region', { name: 'Conversion operation' })
+        .boundingBox()
+        .then(requiredBounds);
+    expect(Math.abs(zipBox.y - restartBox.y)).toBeLessThan(2);
+    expect(zipBox.width).toBeLessThan(panelBox.width / 2);
+    expect(restartBox.x + restartBox.width).toBeGreaterThan(
+        panelBox.x + panelBox.width * 0.9,
+    );
+    await restart.focus();
+    await restart.press('Enter');
+    await expect(
+        page.getByRole('button', { name: 'Choose images' }),
+    ).toBeVisible();
+    await expect(
+        page.getByRole('list', { name: 'Pending images' }),
+    ).toHaveCount(0);
 });
 
 test('dropzone accepts files and errors clear on selection changes or dismissal', async ({
@@ -380,4 +503,73 @@ test('pending cards stay uniform with scrollable names and a working local fallb
     ).toBeEnabled();
     await page.getByLabel('Output format').selectOption('image/png');
     await expect(page.getByLabel('Output format')).toHaveValue('image/png');
+});
+
+test('error block supports keyboard dismissal and clear-all without changing pending files', async ({
+    page,
+}) => {
+    await page.setViewportSize({ width: 375, height: 900 });
+    const bad = {
+        name: 'invalid.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from('bad'),
+    };
+    await chooseFiles(page, [firstImage, bad, { ...bad, name: 'another.txt' }]);
+    const errors = page.getByRole('list', { name: 'Selection errors' });
+    const block = errors.locator('..');
+    await expect(errors.getByRole('listitem')).toHaveCount(2);
+    await expect(block).toHaveCSS('border-left-width', '4px');
+    await expect(block).toHaveCSS('border-right-width', '0px');
+    for (const error of await errors.getByRole('listitem').all()) {
+        await expect(error).toHaveCSS('border-width', '0px');
+        const dismissBox = await error
+            .getByRole('button')
+            .boundingBox()
+            .then(requiredBounds);
+        const messageBox = await error
+            .locator('span')
+            .last()
+            .boundingBox()
+            .then(requiredBounds);
+        expect(dismissBox.x).toBeLessThan(messageBox.x);
+    }
+    const clear = page.getByRole('button', { name: 'Clear all errors' });
+    const clearBox = await clear.boundingBox().then(requiredBounds);
+    const blockBox = await block.boundingBox().then(requiredBounds);
+    expect(clearBox.x - blockBox.x).toBeLessThan(24);
+    const zoneBox = await page
+        .getByTestId('selection-dropzone')
+        .boundingBox()
+        .then(requiredBounds);
+    const countBox = await page
+        .getByText('1 file ready to upload.')
+        .boundingBox()
+        .then(requiredBounds);
+    expect(countBox.y).toBeGreaterThanOrEqual(zoneBox.y + zoneBox.height);
+    await errors.getByRole('button').first().focus();
+    await page.keyboard.press('Enter');
+    await expect(errors.getByRole('listitem')).toHaveCount(1);
+    await expect(errors.getByRole('button')).toBeFocused();
+    await clear.focus();
+    await page.keyboard.press('Enter');
+    await expect(errors).toHaveCount(0);
+    await expect(clear).toHaveCount(0);
+    await expect(
+        page.getByRole('button', { name: 'Choose images' }),
+    ).toBeFocused();
+    await expect(
+        page
+            .getByRole('list', { name: 'Pending images' })
+            .getByRole('listitem'),
+    ).toHaveCount(1);
+    await expect(
+        page.getByRole('button', { name: 'Start conversion' }),
+    ).toBeEnabled();
+    await chooseFiles(page, bad);
+    await expect(errors).toHaveCount(1);
+    await page
+        .getByRole('button', { name: `Remove ${firstImage.name}` })
+        .click();
+    await expect(errors).toHaveCount(0);
+    await expect(page.getByText('1 file ready to upload.')).toHaveCount(0);
 });

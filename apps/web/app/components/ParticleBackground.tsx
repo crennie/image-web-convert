@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 /** Perspective projection gives each point a real depth and a camera-facing trail. */
 export function ParticleBackground() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const [paused, setPaused] = useState(false);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -80,7 +79,7 @@ export function ParticleBackground() {
             cancelAnimationFrame(frame);
             lastTime = 0;
             draw(0);
-            if (!paused && !motion.matches && !document.hidden) {
+            if (!motion.matches && !document.hidden) {
                 frame = requestAnimationFrame(animate);
             }
         };
@@ -114,23 +113,13 @@ export function ParticleBackground() {
             motion.removeEventListener('change', sync);
             theme.removeEventListener('change', sync);
         };
-    }, [paused]);
+    }, []);
 
     return (
-        <>
-            <canvas
-                ref={canvasRef}
-                className="particle-background"
-                aria-hidden="true"
-            />
-            <button
-                type="button"
-                className="motion-control"
-                aria-pressed={paused}
-                onClick={() => setPaused((value) => !value)}
-            >
-                {paused ? 'Resume background' : 'Pause background'}
-            </button>
-        </>
+        <canvas
+            ref={canvasRef}
+            className="particle-background"
+            aria-hidden="true"
+        />
     );
 }
