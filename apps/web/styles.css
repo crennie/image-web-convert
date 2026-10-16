@@ -1,77 +1,129 @@
 @import 'tailwindcss';
 @source "../../libs/ui/src";
 
-@custom-variant dark (&:is(.dark *));
-
 :root {
-    /* font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-    line-height: 1.5;
-    font-weight: 400;
-
-    color-scheme: light dark;
-    color: rgba(255, 255, 255, 0.87); */
-    --background: oklch(0.8926 0.1018 128.08);
-    --foreground: oklch(0.1312 0.0165 276.19);
-
-    --primary: oklch(0.406 0.0485 179.57);
-    --primary-foreground: oklch(1 0 0);
-
-    --secondary: oklch(0.7688 0.0331 56.46);
-    --secondary-foreground: oklch(0.1312 0.0165 276.19);
-
-    --destructive: oklch(0.577 0.245 27.325);
-
-    --muted: oklch(0.9745 0.0239 127.57);
+    color-scheme: light;
+    --background: #eef4f7;
+    --foreground: #182d3b;
+    --surface: #ffffff;
+    --primary: #086b64;
+    --primary-foreground: #ffffff;
+    --secondary: #e1eeed;
+    --secondary-foreground: #194c49;
+    --destructive: #b42338;
+    --muted: #f0f5f8;
+    --muted-foreground: #526574;
+    --border: #bfced7;
+    --glow: #bcdedb;
+    --glow-secondary: #d4dcf2;
+    --panel-shadow: 0 16px 48px -24px #193e5260;
 }
 
-.dark {
-    --background: oklch(0.8926 0.1018 128.08);
-    --foreground: oklch(0.1312 0.0165 276.19);
-
-    --primary: oklch(0.406 0.0485 179.57);
-    --primary-foreground: oklch(0.1312 0.0165 276.19);
-
-    --secondary: oklch(0.7688 0.0331 56.46);
-    --secondary-foreground: oklch(0.1312 0.0165 276.19);
-
-    --destructive: oklch(0.577 0.245 27.325);
-
-    --muted: oklch(0.9745 0.0239 127.57);
+@media (prefers-color-scheme: dark) {
+    :root {
+        color-scheme: dark;
+        --background: #0e1923;
+        --foreground: #e7eff5;
+        --surface: #192b38;
+        --primary: #80ded0;
+        --primary-foreground: #102d2a;
+        --secondary: #2a454c;
+        --secondary-foreground: #d7f1ed;
+        --destructive: #ffa4b0;
+        --muted: #213542;
+        --muted-foreground: #b0c1cf;
+        --border: #496170;
+        --glow: #183d43;
+        --glow-secondary: #252f50;
+        --panel-shadow: 0 16px 48px -24px #000000b0;
+    }
 }
 
 @theme inline {
+    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
     --color-background: var(--background);
     --color-foreground: var(--foreground);
+    --color-surface: var(--surface);
     --color-primary: var(--primary);
     --color-primary-foreground: var(--primary-foreground);
     --color-secondary: var(--secondary);
     --color-secondary-foreground: var(--secondary-foreground);
     --color-destructive: var(--destructive);
     --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-border: var(--border);
 }
 
 @layer base {
-    .body-background {
-        background-color: var(--color-background);
-        background-size: 20px 20px;
-        background-image: radial-gradient(
-            var(--color-primary),
-            0.4px,
-            var(--color-background) 0.4px
-        );
+    body {
+        margin: 0;
+        font-family: var(--font-sans);
+        font-size: 1rem;
+        line-height: 1.65;
+        color: var(--foreground);
+        background-color: var(--background);
     }
-    .navbar-background {
-        background-color: var(--color-background);
-        opacity: 0.8;
-        background-image: radial-gradient(
-                var(--color-primary) 0.4px,
-                transparent 0.4px
-            ),
+    .body-background {
+        min-height: 100svh;
+        background-image:
+            radial-gradient(ellipse at 0% 0%, var(--glow), transparent 60%),
             radial-gradient(
-                var(--color-primary) 0.4px,
-                var(--color-background) 0.4px
+                ellipse at 100% 40%,
+                var(--glow-secondary),
+                transparent 65%
             );
-        background-size: 25px 25px;
-        background-position: 0 0, 10px 10px;
+        background-attachment: fixed;
+    }
+    h1,
+    h2,
+    h3 {
+        line-height: 1.2;
+        letter-spacing: -0.025em;
+    }
+    select {
+        min-height: 2.75rem;
+        border: 1px solid var(--border);
+        border-radius: 0.75rem;
+        padding: 0.625rem 1rem;
+        background-color: var(--surface);
+        color: var(--foreground);
+        font: inherit;
+    }
+    option {
+        background-color: var(--surface);
+        color: var(--foreground);
+    }
+    select:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    :where(button, a, select, input):focus-visible {
+        outline: 3px solid var(--primary);
+        outline-offset: 4px;
+    }
+    [role='alert'] {
+        color: var(--destructive);
+        background: var(--surface);
+        border-left: 3px solid var(--destructive);
+        border-radius: 0.5rem;
+        padding: 1rem;
+        overflow-wrap: anywhere;
+    }
+    hr {
+        border-color: var(--border);
+    }
+}
+
+@layer components {
+    .navbar-background {
+        background: var(--surface);
+        box-shadow: 0 2px 16px #102d3b0d;
+    }
+    .surface-panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 1.25rem;
+        padding: clamp(1.25rem, 4vw, 2.5rem);
+        box-shadow: var(--panel-shadow);
     }
 }

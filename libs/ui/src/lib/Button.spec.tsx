@@ -9,6 +9,11 @@ describe('Button', () => {
         const btn = screen.getByRole('button', { name: /click me/i });
         expect(btn).toBeInTheDocument();
         expect(btn).toHaveAttribute('type', 'button'); // default
+        expect(btn).toHaveClass(
+            'bg-primary',
+            'text-primary-foreground',
+            'min-h-11',
+        );
     });
 
     it('applies primary variant classes', () => {
@@ -40,11 +45,14 @@ describe('Button', () => {
 
     it('respects disabled and sets aria-disabled', async () => {
         render(
-            <Button disabled onClick={() => {
-                // pass
-            }}>
+            <Button
+                disabled
+                onClick={() => {
+                    // pass
+                }}
+            >
                 Disabled
-            </Button>
+            </Button>,
         );
         const btn = screen.getByRole('button', { name: /disabled/i });
         expect(btn).toBeDisabled();
@@ -55,9 +63,11 @@ describe('Button', () => {
         render(
             <Button disabled onClick={handler}>
                 Still Disabled
-            </Button>
+            </Button>,
         );
-        await userEvent.click(screen.getByRole('button', { name: /still disabled/i }));
+        await userEvent.click(
+            screen.getByRole('button', { name: /still disabled/i }),
+        );
         expect(handler).not.toHaveBeenCalled();
     });
 
@@ -70,7 +80,10 @@ describe('Button', () => {
 
     it('allows overriding type (e.g., submit)', () => {
         render(<Button type="submit">Submit</Button>);
-        expect(screen.getByRole('button', { name: /submit/i })).toHaveAttribute('type', 'submit');
+        expect(screen.getByRole('button', { name: /submit/i })).toHaveAttribute(
+            'type',
+            'submit',
+        );
     });
 
     it('does NOT render unknown DOM props like variant', () => {
