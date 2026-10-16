@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
     Button,
+    displayBytes,
     FILE_UPLOAD_CONFIG,
     type SelectionError,
 } from '@image-web-convert/ui';
@@ -155,6 +156,20 @@ export function ConversionSelection({
                             />
                         ))}
                     </ul>
+                    <p className="text-sm text-muted-foreground">
+                        {items.length} {items.length === 1 ? 'image' : 'images'}{' '}
+                        ·{' '}
+                        {displayBytes(
+                            items.reduce(
+                                (total, item) => total + item.file.size,
+                                0,
+                            ),
+                        )}{' '}
+                        total · Convert to{' '}
+                        {outputMime.split('/')[1].toUpperCase()}. Originals stay
+                        unchanged. Keep this page open during conversion, then
+                        download individual images or a ZIP.
+                    </p>
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
                         <label className="flex flex-col gap-2 font-medium sm:max-w-xs">
                             Output format{' '}

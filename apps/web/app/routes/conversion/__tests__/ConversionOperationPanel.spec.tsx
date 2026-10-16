@@ -231,12 +231,15 @@ it('keeps preview URLs stable and creates a fresh session only on a deliberate n
     rerender(ui);
     expect(URL.createObjectURL).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button', { name: 'Start conversion' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Files/ }));
     await screen.findByRole('button', { name: 'Download a.webp' });
     expect(sessions).toBe(1);
     fireEvent.click(screen.getByRole('button', { name: 'Start new batch' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Leave results' }));
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
     choose();
     fireEvent.click(screen.getByRole('button', { name: 'Start conversion' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Files/ }));
     await screen.findByRole('button', { name: 'Download a.webp' });
     expect(sessions).toBe(2);
     unmount();
@@ -287,6 +290,7 @@ it('shows download failure and keeps the completed image available for retry', a
         },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Start conversion' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Files/ }));
     const retry = await screen.findByRole('button', {
         name: 'Download a.webp',
     });
@@ -444,6 +448,7 @@ it('keeps thumbnails, output metadata and new-batch action inside the results pa
         />,
     );
     const panel = screen.getByRole('region', { name: 'Conversion operation' });
+    fireEvent.click(screen.getByRole('button', { name: /Files/ }));
     const preview = screen.getByRole('img', { name: 'Preview of same.png' });
     expect(preview).toHaveAttribute('src', 'blob:original');
     expect(screen.getByText('10 × 10 · 2 B')).toBeInTheDocument();
@@ -451,6 +456,7 @@ it('keeps thumbnails, output metadata and new-batch action inside the results pa
     const newBatch = screen.getByRole('button', { name: 'Start new batch' });
     expect(panel).toContainElement(newBatch);
     fireEvent.click(newBatch);
+    fireEvent.click(screen.getByRole('button', { name: 'Leave results' }));
     expect(onNewBatch).toHaveBeenCalledOnce();
     fireEvent.error(preview);
     expect(
@@ -478,6 +484,7 @@ it('formats file sizes and disables both download controls while a download is a
         />,
     );
     expect(screen.getByText('10 × 10 · 1.5 KB')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Files/ }));
     const icon = screen.getByRole('button', { name: 'Download a.webp' });
     const thumbnail = screen.getByRole('button', {
         name: 'Download same.png from thumbnail',

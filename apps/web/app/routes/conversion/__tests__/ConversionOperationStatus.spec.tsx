@@ -126,7 +126,9 @@ it.each(attempts)(
             );
             expect(input.onRetry).toHaveBeenCalledWith('client-a');
         } else
-            expect(within(row).queryByRole('button')).not.toBeInTheDocument();
+            expect(
+                within(row).queryByRole('button', { name: /Retry upload/ }),
+            ).not.toBeInTheDocument();
     },
 );
 const serverStates: { name: string; file: ConversionFile; text: string }[] = [
@@ -186,6 +188,8 @@ it.each(serverStates)(
                 })}
             />,
         );
+        if (file.status === 'completed')
+            fireEvent.click(screen.getByRole('button', { name: /Files/ }));
         const row = within(screen.getByRole('listitem', { name: 'same.png' }));
         expect(row.getByText(text, { exact: true })).toBeInTheDocument();
         expect(
@@ -255,6 +259,8 @@ it.each(['completed', 'partially_completed', 'failed', 'cancelled'] as const)(
         fireEvent.click(
             screen.getByRole('button', { name: 'Start new batch' }),
         );
+        expect(input.onNewBatch).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Leave results' }));
         expect(input.onNewBatch).toHaveBeenCalledOnce();
     },
 );
@@ -303,6 +309,7 @@ it('disables icon, thumbnail and ZIP downloads after access expires', () => {
 it('retains download controls after both preview sources fail', () => {
     const input = props({ operation: snapshot([completed()]) });
     render(<ConversionOperationStatus {...input} />);
+    fireEvent.click(screen.getByRole('button', { name: /Files/ }));
     fireEvent.error(screen.getByRole('img', { name: 'Preview of same.png' }));
     fireEvent.error(
         screen.getByRole('img', { name: 'Preview unavailable for same.png' }),
@@ -314,4 +321,103 @@ it('retains download controls after both preview sources fail', () => {
         }),
     );
     expect(input.onDownload).toHaveBeenCalledOnce();
+});
+
+it('collapses on successful completion once, lets users reopen, and leaves errors expanded', () => {
+    const input = props();
+    const { rerender } = render(<ConversionOperationStatus {...input} />);
+    const toggle = screen.getByRole('button', { name: /Files/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    rerender(
+        <ConversionOperationStatus
+            {...input}
+            operation={snapshot([completed()])}
+        />,
+    );
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(
+        screen.queryByRole('button', { name: 'Download a.webp' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /as ZIP/ })).toBeVisible();
+    fireEvent.click(toggle);
+    rerender(
+        <ConversionOperationStatus
+            {...input}
+            operation={snapshot([completed()], { revision: 2 })}
+        />,
+    );
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(
+        screen.getByRole('button', { name: 'Download a.webp' }),
+    ).toBeEnabled();
+    const failed = {
+        ...awaiting('b'),
+        status: 'failed' as const,
+        finishedAt: time,
+        error: { type: 'malformed_image' as const, message: 'Invalid image' },
+    };
+    rerender(
+        <ConversionOperationStatus
+            {...input}
+            operation={snapshot([completed(), failed], {
+                status: 'partially_completed',
+            })}
+        />,
+    );
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+});
+
+it.each(['image', 'zip'] as const)(
+    'shows a loader only for the pending %s download and clears it on failure',
+    (target) => {
+        const input = props({ operation: snapshot([completed()]) });
+        const { rerender } = render(<ConversionOperationStatus {...input} />);
+        fireEvent.click(screen.getByRole('button', { name: /Files/ }));
+        const image = screen.getByRole('button', { name: 'Download a.webp' });
+        const zip = screen.getByRole('button', { name: /as ZIP/ });
+        fireEvent.click(
+            target === 'image'
+                ? screen.getByRole('button', { name: /from thumbnail/ })
+                : zip,
+        );
+        rerender(<ConversionOperationStatus {...input} downloading />);
+        expect(
+            (target === 'image' ? image : zip).querySelector(
+                '.motion-safe\\:animate-spin',
+            ),
+        ).not.toBeNull();
+        expect(
+            (target === 'image' ? zip : image).querySelector(
+                '.motion-safe\\:animate-spin',
+            ),
+        ).toBeNull();
+        expect(image).toBeDisabled();
+        expect(zip).toBeDisabled();
+        rerender(
+            <ConversionOperationStatus
+                {...input}
+                errors={{ download: 'Download failed' }}
+            />,
+        );
+        expect(image).toBeEnabled();
+        expect(zip).toBeEnabled();
+        expect(
+            screen.queryByText(/Preparing .* download/),
+        ).not.toBeInTheDocument();
+    },
+);
+
+it('reveals status help on focus and dismisses it with Escape', () => {
+    render(<ConversionOperationStatus {...props()} />);
+    const trigger = screen.getByRole('button', { name: 'Waiting to upload' });
+    fireEvent.focus(trigger);
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+        'Keep this page open',
+    );
+    expect(trigger).toHaveAttribute(
+        'aria-describedby',
+        screen.getByRole('tooltip').id,
+    );
+    fireEvent.keyDown(trigger, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
 });
