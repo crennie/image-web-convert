@@ -63,10 +63,16 @@ export function ConversionOperationStatus({
             <div role="status" aria-live="polite" aria-atomic="true">
                 <p>Operation: {operation.status.replace(/_/g, ' ')}</p>
                 <p>
-                    {operation.counts.completed} completed,{' '}
-                    {operation.counts.failed} failed,{' '}
-                    {operation.counts.cancelled} cancelled;{' '}
-                    {operation.counts.processing} processing.
+                    {[
+                        `${operation.counts.completed} completed`,
+                        ...(['failed', 'cancelled', 'processing'] as const)
+                            .filter((status) => operation.counts[status] > 0)
+                            .map(
+                                (status) =>
+                                    `${operation.counts[status]} ${status}`,
+                            ),
+                    ].join(', ')}
+                    .
                 </p>
                 {!isTerminal(operation) &&
                     (cancelling || operation.cancelRequestedAt) && (
@@ -166,7 +172,7 @@ export function ConversionOperationStatus({
                     </li>
                 ))}
             </ul>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
                 {finished && outputs.length > 0 && (
                     <Button
                         className="self-start"
