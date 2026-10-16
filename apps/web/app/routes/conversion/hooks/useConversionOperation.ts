@@ -22,6 +22,7 @@ export function useConversionOperation() {
     }, [controller]);
     return {
         state,
+        leave: controller.pageExit,
         imageConfig: session?.imageConfig,
         submit: (files: LocalConversionFile[], mime: OutputMimeType) =>
             controller.submit(files, mime, startSession),

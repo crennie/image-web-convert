@@ -10,6 +10,7 @@ import type { OutputMimeType } from '@image-web-convert/schemas';
 import { ErrorBoundary } from 'react-error-boundary';
 import { ConversionErrorBoundary } from './ConversionErrorBoundary';
 import { useConversionOperation } from '../hooks/useConversionOperation';
+import { BatchNavigationGuard } from './BatchNavigationGuard';
 import { isTerminal } from '../conversionViewModel';
 import { ConversionSelection } from './ConversionSelection';
 import { ConversionOperationStatus } from './ConversionOperationStatus';
@@ -41,6 +42,9 @@ function ConversionBatch({ onNewBatch }: { onNewBatch: () => void }) {
                     onSubmit={() => void workflow.submit(selection.items, mime)}
                 />
             )}
+            {state.submitted && !state.operation && (
+                <BatchNavigationGuard active onLeave={workflow.leave} />
+            )}
             {state.creating && <p role="status">Creating conversion batch…</p>}
             {Object.entries(state.errors).map(
                 ([category, message]) =>
@@ -65,6 +69,7 @@ function ConversionBatch({ onNewBatch }: { onNewBatch: () => void }) {
             {state.operation && (
                 <ConversionOperationStatus
                     {...state}
+                    onLeave={workflow.leave}
                     operation={state.operation}
                     localFiles={selection.items}
                     onNewBatch={

@@ -61,6 +61,11 @@ export async function download(
     info: TestInfo,
     name: string,
 ) {
+    const collapsed = page.getByRole('button', {
+        name: /Files \(/,
+        expanded: false,
+    });
+    if (await collapsed.count()) await collapsed.click();
     const event = page.waitForEvent('download');
     await button.click();
     const result = await event;

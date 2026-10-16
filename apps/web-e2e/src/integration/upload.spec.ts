@@ -358,6 +358,16 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
             ),
         ).toBe(true);
     }
+    await page.getByRole('link', { name: 'Home' }).click();
+    const leaveActive = page.getByRole('dialog', {
+        name: 'Leave this conversion?',
+    });
+    await expect(leaveActive).toBeVisible();
+    await leaveActive
+        .getByRole('button', { name: 'Stay on this batch' })
+        .click();
+    await expect(leaveActive).toBeHidden();
+    await expect(page).toHaveURL(/\/conversion$/);
     const thumbnailDownload = page.waitForEvent('download');
     await thumbnail.focus();
     await thumbnail.press('Enter');
@@ -396,7 +406,32 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
         panelBox.x + panelBox.width * 0.9,
     );
     await restart.focus();
+    const files = page.getByRole('button', { name: /Files \(/ });
+    await expect(files).toHaveAttribute('aria-expanded', 'false');
+    await files.click();
+    await expect(row).toBeVisible();
+    const help = row.getByRole('button', { name: 'completed', exact: true });
+    await help.focus();
+    await expect(page.getByRole('tooltip')).toBeVisible();
+    await help.press('Escape');
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await files.click();
     await restart.press('Enter');
+    const dialog = page.getByRole('dialog', { name: 'Leave these results?' });
+    await expect(dialog).toBeVisible();
+    const stay = dialog.getByRole('button', { name: 'Stay on this batch' });
+    await expect(stay).toBeFocused();
+    await stay.press('Shift+Tab');
+    await expect(
+        dialog.getByRole('button', { name: 'Leave results' }),
+    ).toBeFocused();
+    await dialog.getByRole('button', { name: 'Leave results' }).press('Tab');
+    await expect(stay).toBeFocused();
+    await dialog.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(restart).toBeFocused();
+    await restart.click();
+    await dialog.getByRole('button', { name: 'Leave results' }).click();
     await expect(
         page.getByRole('button', { name: 'Choose images' }),
     ).toBeVisible();
