@@ -21,8 +21,10 @@ export function Nav({ className }: NavProps) {
                 className="flex items-center gap-3 cursor-pointer"
             >
                 <img
-                    className="h-10 w-10 object-contain"
-                    src="/web_convert_logo.png"
+                    className="h-10 w-10 shrink-0 object-contain"
+                    src="/logo.svg"
+                    width={40}
+                    height={40}
                     alt="Site logo"
                 ></img>
                 <span className="text-base sm:text-lg font-semibold tracking-tight">

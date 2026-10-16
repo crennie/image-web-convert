@@ -9,7 +9,8 @@ import {
     isRouteErrorResponse,
 } from 'react-router';
 import { Nav, SessionProvider } from '@image-web-convert/ui';
-import "../styles.css";
+import '../styles.css';
+import { ParticleBackground } from './components/ParticleBackground';
 
 export function ErrorBoundary(...args: any[]) {
     const error = args[0].error;
@@ -43,6 +44,8 @@ export const meta: MetaFunction = () => [
 ];
 
 export const links: LinksFunction = () => [
+    { rel: 'icon', href: '/favicon.ico', sizes: '16x16 32x32 48x48' },
+    { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
     { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
     {
         rel: 'preconnect',
@@ -68,11 +71,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Links />
             </head>
             <body className="body-background text-foreground min-h-screen overscroll-none">
-                <div className="pt-[65px]">
+                <ParticleBackground />
+                <div className="site-content pt-[65px]">
                     <Nav className="h-[65px]" />
-                    <SessionProvider>
-                        {children}
-                    </SessionProvider>
+                    <SessionProvider>{children}</SessionProvider>
                 </div>
                 <ScrollRestoration />
                 <Scripts />
