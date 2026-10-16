@@ -22,10 +22,12 @@ export function ConversionSelection({
     onRemove,
     onSubmit,
     onDismissError,
+    onClearErrors,
 }: {
     items: LocalConversionFile[];
     errors: SelectionError[];
     onDismissError: (id: string) => void;
+    onClearErrors: () => void;
     disabled: boolean;
     outputMime: OutputMimeType;
     onMime: (mime: OutputMimeType) => void;
@@ -56,6 +58,12 @@ export function ConversionSelection({
                 Select images and an output format. Completed images are
                 available as soon as they are ready.
             </p>
+            {items.length > 0 && (
+                <p aria-live="polite" aria-atomic="true">
+                    {items.length} {items.length === 1 ? 'file' : 'files'} ready
+                    to upload.
+                </p>
+            )}
             <SelectionDropzone
                 disabled={disabled}
                 populated={items.length > 0}
@@ -71,46 +79,66 @@ export function ConversionSelection({
                 {announcement}
             </div>
             {errors.length > 0 && (
-                <ul
-                    aria-label="Selection errors"
-                    className="flex flex-col gap-2"
-                >
-                    {errors.map((error, index) => (
-                        <li
-                            key={error.id}
-                            className="flex items-start justify-between gap-3 rounded-lg border border-destructive/40 p-3 text-destructive"
+                <div className="border-l-4 border-destructive/60 pl-3 text-destructive">
+                    <div className="flex justify-end">
+                        <Button
+                            variant="ghost"
+                            className="px-2 text-sm font-normal text-muted-foreground hover:underline"
+                            aria-label="Clear all errors"
+                            onClick={() => {
+                                browse.current?.focus();
+                                onClearErrors();
+                            }}
                         >
-                            <span className="min-w-0 break-words">
-                                {error.message}
-                            </span>
-                            <Button
-                                variant="ghost"
-                                className="w-11 shrink-0"
-                                aria-label={`Dismiss error: ${error.message}`}
-                                ref={(element) => {
-                                    if (element)
-                                        dismissButtons.current.set(
-                                            error.id,
-                                            element,
-                                        );
-                                    else
-                                        dismissButtons.current.delete(error.id);
-                                }}
-                                onClick={() => {
-                                    const next =
-                                        errors[index + 1] ?? errors[index - 1];
-                                    (next
-                                        ? dismissButtons.current.get(next.id)
-                                        : browse.current
-                                    )?.focus();
-                                    onDismissError(error.id);
-                                }}
+                            Clear all
+                        </Button>
+                    </div>
+                    <ul
+                        aria-label="Selection errors"
+                        className="flex flex-col gap-1"
+                    >
+                        {errors.map((error, index) => (
+                            <li
+                                key={error.id}
+                                className="flex items-start gap-2"
                             >
-                                <span aria-hidden="true">×</span>
-                            </Button>
-                        </li>
-                    ))}
-                </ul>
+                                <Button
+                                    variant="ghost"
+                                    className="w-11 shrink-0"
+                                    aria-label={`Dismiss error: ${error.message}`}
+                                    ref={(element) => {
+                                        if (element)
+                                            dismissButtons.current.set(
+                                                error.id,
+                                                element,
+                                            );
+                                        else
+                                            dismissButtons.current.delete(
+                                                error.id,
+                                            );
+                                    }}
+                                    onClick={() => {
+                                        const next =
+                                            errors[index + 1] ??
+                                            errors[index - 1];
+                                        (next
+                                            ? dismissButtons.current.get(
+                                                  next.id,
+                                              )
+                                            : browse.current
+                                        )?.focus();
+                                        onDismissError(error.id);
+                                    }}
+                                >
+                                    <span aria-hidden="true">×</span>
+                                </Button>
+                                <span className="min-w-0 break-words py-2.5">
+                                    {error.message}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
             )}
             {items.length > 0 && (
                 <>
@@ -127,10 +155,6 @@ export function ConversionSelection({
                             />
                         ))}
                     </ul>
-                    <p>
-                        {items.length} {items.length === 1 ? 'file' : 'files'}{' '}
-                        ready to upload.
-                    </p>
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
                         <label className="flex flex-col gap-2 font-medium sm:max-w-xs">
                             Output format{' '}

@@ -32,6 +32,7 @@ function ConversionBatch({ onNewBatch }: { onNewBatch: () => void }) {
                     items={selection.items}
                     errors={selection.selectionErrors}
                     onDismissError={selection.dismissError}
+                    onClearErrors={selection.clearErrors}
                     disabled={!state.connected || state.creating}
                     outputMime={mime}
                     onMime={setMime}

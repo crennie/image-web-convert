@@ -18,6 +18,7 @@ function Harness({ disabled = false }: { disabled?: boolean }) {
             items={files.items}
             errors={files.selectionErrors}
             onDismissError={files.dismissError}
+            onClearErrors={files.clearErrors}
             disabled={disabled}
             outputMime={mime}
             onMime={setMime}
@@ -122,4 +123,26 @@ it('ignores text drops and clears cancelled drag feedback', () => {
     fireEvent.blur(window);
     expect(zone.className).not.toContain('ring-2');
     expect(screen.getByText('Drag images here')).toBeInTheDocument();
+});
+
+it('clears all errors without removing files and returns focus to browse', () => {
+    const { container } = render(<Harness />);
+    choose(container, [
+        png(),
+        new File(['x'], 'bad.txt'),
+        new File(['y'], 'other.txt'),
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all errors' }));
+    expect(
+        screen.queryByRole('list', { name: 'Selection errors' }),
+    ).not.toBeInTheDocument();
+    expect(
+        screen.queryByRole('button', { name: 'Clear all errors' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('one.png')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Choose images' })).toHaveFocus();
+    choose(container, [new File(['x'], 'bad.txt')]);
+    expect(
+        screen.getByRole('list', { name: 'Selection errors' }),
+    ).toHaveTextContent('bad.txt');
 });
