@@ -13,13 +13,18 @@ describe('NavButton', () => {
     });
 
     function renderWithRouter(ui: React.ReactNode, route = '/') {
-        return render(<MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>);
+        return render(
+            <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>,
+        );
     }
 
     it('renders a link with accessible name from children', () => {
-        renderWithRouter(<NavButton href="conversion">Convert Files</NavButton>);
+        renderWithRouter(
+            <NavButton href="conversion">Convert Files</NavButton>,
+        );
         const link = screen.getByRole('link', { name: /convert files/i });
         expect(link).toBeInTheDocument();
+        expect(link).toHaveClass('bg-primary', 'text-primary-foreground');
     });
 
     it('resolves relative href to absolute URL at the root', () => {
@@ -38,7 +43,7 @@ describe('NavButton', () => {
                         element={<NavButton href="conversion">Go</NavButton>}
                     />
                 </Routes>
-            </MemoryRouter>
+            </MemoryRouter>,
         );
 
         const link = screen.getByRole('link', { name: /go/i });
@@ -46,14 +51,19 @@ describe('NavButton', () => {
     });
 
     it('calls getButtonStyles with provided variant and className, and applies the returned classes', () => {
-        const spy = vi.spyOn(ButtonModule, 'getButtonStyles').mockReturnValue('computed-classes');
+        const spy = vi
+            .spyOn(ButtonModule, 'getButtonStyles')
+            .mockReturnValue('computed-classes');
         renderWithRouter(
             <NavButton href="conversion" variant="secondary" className="custom">
                 Convert
-            </NavButton>
+            </NavButton>,
         );
         expect(spy).toHaveBeenCalledTimes(1);
-        expect(spy).toHaveBeenCalledWith({ variant: 'secondary', className: 'custom' });
+        expect(spy).toHaveBeenCalledWith({
+            variant: 'secondary',
+            className: 'custom',
+        });
 
         const link = screen.getByRole('link', { name: /convert/i });
         expect(link.className).toMatch(/computed-classes/);
@@ -64,7 +74,7 @@ describe('NavButton', () => {
         renderWithRouter(
             <NavButton href="conversion" ref={ref}>
                 Ref Test
-            </NavButton>
+            </NavButton>,
         );
         expect(ref.current).toBeInstanceOf(HTMLAnchorElement);
         expect(ref.current?.tagName).toBe('A');
@@ -80,7 +90,7 @@ describe('NavButton', () => {
                 data-test="nav"
             >
                 Convert
-            </NavButton>
+            </NavButton>,
         );
         const link = screen.getByRole('link', { name: /convert/i });
         expect(link).toHaveAttribute('target', '_blank');
@@ -93,7 +103,7 @@ describe('NavButton', () => {
         renderWithRouter(
             <NavButton href="conversion" variant="primary">
                 Convert
-            </NavButton>
+            </NavButton>,
         );
         const link = screen.getByRole('link', { name: /convert/i });
 

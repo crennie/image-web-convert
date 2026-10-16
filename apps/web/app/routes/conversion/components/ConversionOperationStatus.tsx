@@ -42,7 +42,7 @@ export function ConversionOperationStatus({
     return (
         <section
             aria-label="Conversion operation"
-            className="flex flex-col gap-4"
+            className="surface-panel flex flex-col gap-4"
         >
             <h1 className="text-2xl font-bold">Image conversion</h1>
             <p>
@@ -92,7 +92,7 @@ export function ConversionOperationStatus({
                 {operation.files.map((file) => (
                     <li
                         key={file.id}
-                        className="rounded border p-3"
+                        className="rounded-xl border border-border bg-muted p-4 break-words"
                         aria-labelledby={`${file.id}-name`}
                         aria-describedby={`${file.id}-status${file.status === 'failed' ? ` ${file.id}-error` : ''}`}
                     >

@@ -27,9 +27,12 @@ export function ConversionSelection({
 }) {
     const input = useRef<HTMLInputElement>(null);
     return (
-        <section aria-label="Select images" className="flex flex-col gap-4">
-            <h1 className="text-2xl font-bold">Convert images</h1>
-            <p>
+        <section
+            aria-label="Select images"
+            className="surface-panel flex flex-col gap-5"
+        >
+            <h1 className="text-3xl sm:text-4xl font-bold">Convert images</h1>
+            <p className="text-muted-foreground">
                 Select images and an output format. Completed images are
                 available as soon as they are ready.
             </p>
@@ -46,10 +49,14 @@ export function ConversionSelection({
                     event.target.value = '';
                 }}
             />
-            <Button disabled={disabled} onClick={() => input.current?.click()}>
+            <Button
+                variant="secondary"
+                disabled={disabled}
+                onClick={() => input.current?.click()}
+            >
                 Choose images
             </Button>
-            <label>
+            <label className="flex flex-col gap-2 font-medium sm:max-w-xs">
                 Output format{' '}
                 <select
                     disabled={disabled}
@@ -74,7 +81,10 @@ export function ConversionSelection({
             )}
             <ul className="flex flex-wrap gap-4">
                 {items.map((item) => (
-                    <li key={item.id} className="rounded border p-3">
+                    <li
+                        key={item.id}
+                        className="min-w-0 max-w-full rounded-xl border border-border bg-muted p-4 break-words"
+                    >
                         {item.previewUrl && (
                             <img
                                 src={item.previewUrl}
@@ -84,6 +94,7 @@ export function ConversionSelection({
                         )}
                         <p>{item.file.name}</p>
                         <Button
+                            variant="secondary"
                             disabled={disabled}
                             aria-label={`Remove ${item.file.name}`}
                             onClick={() => onRemove(item)}

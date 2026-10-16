@@ -211,6 +211,14 @@ server. Each test owns temporary storage under `tmp/browser-tests`, dynamically
 allocated ports, readiness checks, and process/data cleanup.
 
 Install the locked dependencies with `npm ci --legacy-peer-deps`, matching CI.
+The devcontainer image installs Chromium, Firefox, and WebKit plus their system
+libraries using the Playwright version in the root `package-lock.json`. Browsers
+are available to the `vscode` user through
+`PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers`; keep that image-provided path
+when running tests. Rebuild the devcontainer after changing the Dockerfile or
+upgrading Playwright in the lockfile. Editing the Dockerfile does not install
+libraries into an already-running container.
+
 On a supported local machine or CI runner, install the matching browser binaries
 and system prerequisites once:
 
@@ -218,7 +226,7 @@ and system prerequisites once:
 npx playwright install --with-deps
 ```
 
-In a workspace-restricted container, install browser binaries inside the repository
+In a workspace-restricted container without the preinstalled browsers, install browser binaries inside the repository
 and use the same path when running tests. Native OS libraries must already be
 available; missing libraries are an execution failure, not a skipped success.
 
