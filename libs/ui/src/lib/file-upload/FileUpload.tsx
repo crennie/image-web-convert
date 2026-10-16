@@ -8,7 +8,10 @@ import { FileItem } from '../files/FileListItem';
 import { useFileItems } from './hooks/useFileItems';
 import { FileUploadConfig } from './file-upload.config';
 
-type FileUploadProps = Omit<ReturnType<typeof useFileItems>, 'addErrors'> & {
+type FileUploadProps = Omit<
+    ReturnType<typeof useFileItems>,
+    'addErrors' | 'selectionErrors' | 'dismissError'
+> & {
     config?: FileUploadConfig;
     onUploadStart: (formData: FormData, setConversionExt: string) => void;
 };

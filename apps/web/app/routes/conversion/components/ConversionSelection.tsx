@@ -1,9 +1,15 @@
-import { useRef } from 'react';
-import { Button, FILE_UPLOAD_CONFIG } from '@image-web-convert/ui';
+import { useEffect, useRef, useState } from 'react';
+import {
+    Button,
+    FILE_UPLOAD_CONFIG,
+    type SelectionError,
+} from '@image-web-convert/ui';
 import {
     OutputMimeTypeSchema,
     type OutputMimeType,
 } from '@image-web-convert/schemas';
+import { SelectionDropzone } from './SelectionDropzone';
+import { PendingFileCard } from './PendingFileCard';
 import type { LocalConversionFile } from '../conversionController';
 
 export function ConversionSelection({
@@ -15,9 +21,11 @@ export function ConversionSelection({
     onAdd,
     onRemove,
     onSubmit,
+    onDismissError,
 }: {
     items: LocalConversionFile[];
-    errors: string[];
+    errors: SelectionError[];
+    onDismissError: (id: string) => void;
     disabled: boolean;
     outputMime: OutputMimeType;
     onMime: (mime: OutputMimeType) => void;
@@ -25,7 +33,19 @@ export function ConversionSelection({
     onRemove: (file: LocalConversionFile) => void;
     onSubmit: () => void;
 }) {
-    const input = useRef<HTMLInputElement>(null);
+    const browse = useRef<HTMLButtonElement>(null);
+    const dismissButtons = useRef(new Map<string, HTMLButtonElement>());
+    const [announcement, setAnnouncement] = useState('');
+    const previousIds = useRef(new Set<string>());
+    useEffect(() => {
+        const added = errors.filter(
+            (error) => !previousIds.current.has(error.id),
+        );
+        previousIds.current = new Set(errors.map((error) => error.id));
+        if (added.length)
+            setAnnouncement(added.map((error) => error.message).join(' '));
+        else if (!errors.length) setAnnouncement('');
+    }, [errors]);
     return (
         <section
             aria-label="Select images"
@@ -36,83 +56,113 @@ export function ConversionSelection({
                 Select images and an output format. Completed images are
                 available as soon as they are ready.
             </p>
-            <input
-                ref={input}
-                hidden
-                type="file"
-                multiple
-                accept={String(FILE_UPLOAD_CONFIG.accept)}
-                aria-label="Choose images"
+            <SelectionDropzone
                 disabled={disabled}
-                onChange={(event) => {
-                    onAdd(Array.from(event.target.files ?? []));
-                    event.target.value = '';
-                }}
+                populated={items.length > 0}
+                onAdd={onAdd}
+                browseRef={browse}
             />
-            <Button
-                variant="secondary"
-                disabled={disabled}
-                onClick={() => input.current?.click()}
+            <div
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
             >
-                Choose images
-            </Button>
-            <label className="flex flex-col gap-2 font-medium sm:max-w-xs">
-                Output format{' '}
-                <select
-                    disabled={disabled}
-                    value={outputMime}
-                    onChange={(event) =>
-                        onMime(OutputMimeTypeSchema.parse(event.target.value))
-                    }
-                >
-                    {FILE_UPLOAD_CONFIG.outputMimeOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                            {option.display.toUpperCase()}
-                        </option>
-                    ))}
-                </select>
-            </label>
+                {announcement}
+            </div>
             {errors.length > 0 && (
-                <ul role="alert">
+                <ul
+                    aria-label="Selection errors"
+                    className="flex flex-col gap-2"
+                >
                     {errors.map((error, index) => (
-                        <li key={`${index}-${error}`}>{error}</li>
+                        <li
+                            key={error.id}
+                            className="flex items-start justify-between gap-3 rounded-lg border border-destructive/40 p-3 text-destructive"
+                        >
+                            <span className="min-w-0 break-words">
+                                {error.message}
+                            </span>
+                            <Button
+                                variant="ghost"
+                                className="w-11 shrink-0"
+                                aria-label={`Dismiss error: ${error.message}`}
+                                ref={(element) => {
+                                    if (element)
+                                        dismissButtons.current.set(
+                                            error.id,
+                                            element,
+                                        );
+                                    else
+                                        dismissButtons.current.delete(error.id);
+                                }}
+                                onClick={() => {
+                                    const next =
+                                        errors[index + 1] ?? errors[index - 1];
+                                    (next
+                                        ? dismissButtons.current.get(next.id)
+                                        : browse.current
+                                    )?.focus();
+                                    onDismissError(error.id);
+                                }}
+                            >
+                                <span aria-hidden="true">×</span>
+                            </Button>
+                        </li>
                     ))}
                 </ul>
             )}
-            <ul className="flex flex-wrap gap-4">
-                {items.map((item) => (
-                    <li
-                        key={item.id}
-                        className="min-w-0 max-w-full rounded-xl border border-border bg-muted p-4 break-words"
-                    >
-                        {item.previewUrl && (
-                            <img
-                                src={item.previewUrl}
-                                alt={`Preview of ${item.file.name}`}
-                                className="h-24 w-24 object-contain"
-                            />
-                        )}
-                        <p>{item.file.name}</p>
-                        <Button
-                            variant="secondary"
-                            disabled={disabled}
-                            aria-label={`Remove ${item.file.name}`}
-                            onClick={() => onRemove(item)}
-                        >
-                            Remove
-                        </Button>
-                    </li>
-                ))}
-            </ul>
             {items.length > 0 && (
-                <p>
-                    {items.length} {items.length === 1 ? 'file' : 'files'} ready
-                    to upload.
-                </p>
+                <>
+                    <ul
+                        aria-label="Pending images"
+                        className="flex flex-wrap justify-center gap-4 sm:justify-start"
+                    >
+                        {items.map((item) => (
+                            <PendingFileCard
+                                key={item.id}
+                                item={item}
+                                disabled={disabled}
+                                onRemove={onRemove}
+                            />
+                        ))}
+                    </ul>
+                    <p>
+                        {items.length} {items.length === 1 ? 'file' : 'files'}{' '}
+                        ready to upload.
+                    </p>
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                        <label className="flex flex-col gap-2 font-medium sm:max-w-xs">
+                            Output format{' '}
+                            <select
+                                disabled={disabled}
+                                value={outputMime}
+                                onChange={(event) =>
+                                    onMime(
+                                        OutputMimeTypeSchema.parse(
+                                            event.target.value,
+                                        ),
+                                    )
+                                }
+                            >
+                                {FILE_UPLOAD_CONFIG.outputMimeOptions.map(
+                                    (option) => (
+                                        <option
+                                            key={option.value}
+                                            value={option.value}
+                                        >
+                                            {option.display.toUpperCase()}
+                                        </option>
+                                    ),
+                                )}
+                            </select>
+                        </label>
+                        <Button disabled={disabled} onClick={onSubmit}>
+                            Start conversion
+                        </Button>
+                    </div>
+                </>
             )}
-            <Button disabled={disabled || !items.length} onClick={onSubmit}>
-                Start conversion
-            </Button>
         </section>
     );
 }

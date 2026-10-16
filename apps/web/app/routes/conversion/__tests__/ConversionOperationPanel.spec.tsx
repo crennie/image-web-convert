@@ -145,27 +145,27 @@ it('rejects invalid selected files with reasons before creating a batch', () => 
             target: { files },
         });
     choose([new File(['text'], 'notes.txt', { type: 'text/plain' })]);
-    expect(screen.getByRole('alert')).toHaveTextContent(
-        'notes.txt - Unsupported file type.',
-    );
     expect(
-        screen.getByRole('button', { name: 'Start conversion' }),
-    ).toBeDisabled();
+        screen.getByRole('list', { name: 'Selection errors' }),
+    ).toHaveTextContent('notes.txt - Unsupported file type.');
+    expect(
+        screen.queryByRole('button', { name: 'Start conversion' }),
+    ).not.toBeInTheDocument();
 
     const valid = new File(['abc'], 'valid.png', { type: 'image/png' });
     choose([valid]);
     choose([valid]);
-    expect(screen.getByRole('alert')).toHaveTextContent(
-        'valid.png - Duplicate of a file already added.',
-    );
+    expect(
+        screen.getByRole('list', { name: 'Selection errors' }),
+    ).toHaveTextContent('valid.png - Duplicate of a file already added.');
     choose([
         new File([new Uint8Array(20_000_001)], 'large.png', {
             type: 'image/png',
         }),
     ]);
-    expect(screen.getByRole('alert')).toHaveTextContent(
-        'large.png - Exceeds per-file size limit',
-    );
+    expect(
+        screen.getByRole('list', { name: 'Selection errors' }),
+    ).toHaveTextContent('large.png - Exceeds per-file size limit');
     choose(
         Array.from(
             { length: 20 },
@@ -173,9 +173,9 @@ it('rejects invalid selected files with reasons before creating a batch', () => 
                 new File(['abc'], `${index}.png`, { type: 'image/png' }),
         ),
     );
-    expect(screen.getByRole('alert')).toHaveTextContent(
-        'You can add up to 20 files.',
-    );
+    expect(
+        screen.getByRole('list', { name: 'Selection errors' }),
+    ).toHaveTextContent('You can add up to 20 files.');
     expect(screen.getByText('20 files ready to upload.')).toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalled();
 });

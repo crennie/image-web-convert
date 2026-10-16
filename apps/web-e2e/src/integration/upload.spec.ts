@@ -46,7 +46,7 @@ test('selected file becomes pending and visible', async ({ page }) => {
     await expect(page.getByText(/files? ready to upload/i)).toHaveCount(0);
     await expect(
         page.getByRole('button', { name: 'Start conversion' }),
-    ).toBeDisabled();
+    ).toHaveCount(0);
     await chooseFiles(page, firstImage);
     await expect(page.getByText('1 file ready to upload.')).toBeVisible();
     await expect(
@@ -280,4 +280,104 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     await expect(
         page.getByRole('button', { name: 'Cancel conversion' }),
     ).toBeEnabled();
+});
+
+test('dropzone accepts files and errors clear on selection changes or dismissal', async ({
+    page,
+}) => {
+    const zone = page.getByTestId('selection-dropzone');
+    await zone.evaluate((element) => {
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(
+            new File(['bad'], 'bad.txt', { type: 'text/plain' }),
+        );
+        element.dispatchEvent(
+            new DragEvent('dragenter', { bubbles: true, dataTransfer }),
+        );
+        element.dispatchEvent(
+            new DragEvent('drop', { bubbles: true, dataTransfer }),
+        );
+    });
+    await expect(
+        page.getByRole('list', { name: 'Selection errors' }),
+    ).toContainText('Unsupported file type');
+    await page.getByRole('button', { name: /Dismiss error/ }).click();
+    await expect(
+        page.getByRole('list', { name: 'Selection errors' }),
+    ).toHaveCount(0);
+    await expect(
+        page.getByRole('button', { name: 'Choose images' }),
+    ).toBeFocused();
+    const rejected = {
+        name: 'bad.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from('bad'),
+    };
+    await chooseFiles(page, firstImage);
+    await chooseFiles(page, rejected);
+    await expect(
+        page.getByRole('list', { name: 'Selection errors' }),
+    ).toContainText('Unsupported file type');
+    await chooseFiles(page, secondImage);
+    await expect(
+        page.getByRole('list', { name: 'Selection errors' }),
+    ).toHaveCount(0);
+    await chooseFiles(page, rejected);
+    await page
+        .getByRole('button', { name: `Remove ${firstImage.name}` })
+        .click();
+    await expect(
+        page.getByRole('list', { name: 'Selection errors' }),
+    ).toHaveCount(0);
+});
+
+test('pending cards stay uniform with scrollable names and a working local fallback', async ({
+    page,
+}) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const longName = 'very-long-image-name-'.repeat(12) + '.png';
+    await chooseFiles(page, [firstImage, { ...secondImage, name: longName }]);
+    const cards = page
+        .getByRole('list', { name: 'Pending images' })
+        .getByRole('listitem');
+    const widths = await cards.evaluateAll((elements) =>
+        elements.map((element) => element.getBoundingClientRect().width),
+    );
+    expect(widths[0]).toBe(widths[1]);
+    const filename = page.getByRole('region', {
+        name: `Filename: ${longName}`,
+        exact: true,
+    });
+    expect(
+        await filename.evaluate(
+            (element) => element.scrollWidth > element.clientWidth,
+        ),
+    ).toBe(true);
+    await filename.focus();
+    await filename.press('End');
+    expect(
+        await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+    ).toBe(true);
+    await page
+        .getByRole('img', {
+            name: `Preview of ${firstImage.name}`,
+            exact: true,
+        })
+        .evaluate((element) => element.dispatchEvent(new Event('error')));
+    await expect(page.getByText('Preview unavailable')).toBeVisible();
+    const fallback = page.locator('img[src="/image-preview-unavailable.svg"]');
+    await expect
+        .poll(() =>
+            fallback.evaluate(
+                (element) => (element as HTMLImageElement).naturalWidth,
+            ),
+        )
+        .toBeGreaterThan(0);
+    await expect(
+        page.getByRole('button', { name: 'Start conversion' }),
+    ).toBeEnabled();
+    await page.getByLabel('Output format').selectOption('image/png');
+    await expect(page.getByLabel('Output format')).toHaveValue('image/png');
 });
