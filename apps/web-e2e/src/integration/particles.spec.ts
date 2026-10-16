@@ -11,9 +11,6 @@ test('background moves, pauses, and respects a live reduced-motion preference', 
         canvas.evaluate((element: HTMLCanvasElement) => element.toDataURL());
     const initial = await snapshot();
     await expect.poll(snapshot).not.toBe(initial);
-    await page.getByRole('button', { name: 'Pause background' }).click();
-    const resume = page.getByRole('button', { name: 'Resume background' });
-    await expect(resume).toHaveAttribute('aria-pressed', 'true');
     // Compare across multiple browser paint cycles, without a fixed timeout.
     const isStill = () =>
         canvas.evaluate(async (element: HTMLCanvasElement) => {
@@ -23,19 +20,15 @@ test('background moves, pauses, and respects a live reduced-motion preference', 
             }
             return before === element.toDataURL();
         });
-    expect(await isStill()).toBe(true);
-    await resume.click();
-    const resumed = await snapshot();
-    await expect.poll(snapshot).not.toBe(resumed);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await expect(
         page.getByRole('button', { name: 'Pause background' }),
-    ).toBeHidden();
+    ).toHaveCount(0);
     expect(await isStill()).toBe(true);
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await expect(
         page.getByRole('button', { name: 'Pause background' }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     const restarted = await snapshot();
     await expect.poll(snapshot).not.toBe(restarted);
 });

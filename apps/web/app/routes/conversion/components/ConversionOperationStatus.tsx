@@ -3,7 +3,11 @@ import type {
     ConversionOutput,
 } from '@image-web-convert/schemas';
 import { Button, displayDateTime } from '@image-web-convert/ui';
-import type { ConversionClientState } from '../conversionController';
+import { ConversionThumbnail } from './ConversionThumbnail';
+import type {
+    LocalConversionFile,
+    ConversionClientState,
+} from '../conversionController';
 import {
     batchUploadProgress,
     canRetryUpload,
@@ -22,11 +26,15 @@ export function ConversionOperationStatus({
     onRetry,
     onCancel,
     onDownload,
+    localFiles = [],
+    onNewBatch,
 }: Pick<
     ConversionClientState,
     'uploads' | 'cancelling' | 'uploadsStopped' | 'downloading' | 'errors'
 > & {
     operation: ApiConversionOperation;
+    localFiles?: LocalConversionFile[];
+    onNewBatch?: () => void;
     onRetry: (clientId: string) => void;
     onCancel: () => void;
     onDownload: (result: ConversionOutput | string[]) => void;
@@ -92,49 +100,68 @@ export function ConversionOperationStatus({
                 {operation.files.map((file) => (
                     <li
                         key={file.id}
-                        className="rounded-xl border border-border bg-muted p-4 break-words"
+                        className="flex items-start gap-3 rounded-xl border border-border bg-muted p-4"
                         aria-labelledby={`${file.id}-name`}
                         aria-describedby={`${file.id}-status${file.status === 'failed' ? ` ${file.id}-error` : ''}`}
                     >
-                        <p id={`${file.id}-name`} className="font-semibold">
-                            {file.name}
-                        </p>
-                        <p id={`${file.id}-status`}>
-                            {fileDisplayState(file, uploads[file.clientId])}
-                        </p>
-                        {file.status === 'failed' && (
-                            <p id={`${file.id}-error`}>
-                                File conversion failed (
-                                {file.error.type.replace(/_/g, ' ')}). Try a new
-                                batch with a supported image.
-                            </p>
-                        )}
-                        {canRetryUpload(file, uploads[file.clientId]) && (
-                            <Button
-                                disabled={stopped}
-                                onClick={() => onRetry(file.clientId)}
-                                aria-label={`Retry upload ${file.name}`}
-                            >
-                                Check server and retry upload
-                            </Button>
-                        )}
-                        {file.status === 'completed' && (
-                            <div>
-                                <p>
-                                    {file.output.meta.output.storedName} —{' '}
-                                    {file.output.meta.output.width} ×{' '}
-                                    {file.output.meta.output.height},{' '}
-                                    {file.output.meta.output.sizeBytes} bytes
-                                </p>
-                                <Button
-                                    disabled={disabled || downloading}
-                                    onClick={() => onDownload(file.output)}
-                                    aria-label={`Download ${file.output.meta.output.storedName}`}
+                        <ConversionThumbnail
+                            key={
+                                localFiles.find(
+                                    (local) => local.id === file.clientId,
+                                )?.previewUrl ?? file.clientId
+                            }
+                            src={
+                                localFiles.find(
+                                    (local) => local.id === file.clientId,
+                                )?.previewUrl
+                            }
+                            name={file.name}
+                        />
+                        <div className="min-w-0 flex-1 break-words">
+                            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                                <p
+                                    id={`${file.id}-name`}
+                                    className="min-w-0 font-semibold"
                                 >
-                                    Download
-                                </Button>
+                                    {file.name}
+                                </p>
+                                <span className="text-sm text-muted-foreground">
+                                    {file.status === 'completed'
+                                        ? `${file.output.meta.output.width} × ${file.output.meta.output.height} · ${file.output.meta.output.sizeBytes} bytes`
+                                        : `${file.declaredBytes} bytes`}
+                                </span>
                             </div>
-                        )}
+                            <p id={`${file.id}-status`}>
+                                {fileDisplayState(file, uploads[file.clientId])}
+                            </p>
+                            {file.status === 'failed' && (
+                                <p id={`${file.id}-error`}>
+                                    File conversion failed (
+                                    {file.error.type.replace(/_/g, ' ')}). Try a
+                                    new batch with a supported image.
+                                </p>
+                            )}
+                            {canRetryUpload(file, uploads[file.clientId]) && (
+                                <Button
+                                    disabled={stopped}
+                                    onClick={() => onRetry(file.clientId)}
+                                    aria-label={`Retry upload ${file.name}`}
+                                >
+                                    Check server and retry upload
+                                </Button>
+                            )}
+                            {file.status === 'completed' && (
+                                <div>
+                                    <Button
+                                        disabled={disabled || downloading}
+                                        onClick={() => onDownload(file.output)}
+                                        aria-label={`Download ${file.output.meta.output.storedName}`}
+                                    >
+                                        Download
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
                     </li>
                 ))}
             </ul>
@@ -160,6 +187,15 @@ export function ConversionOperationStatus({
                     {errors.cancellation
                         ? 'Retry cancellation'
                         : 'Cancel conversion'}
+                </Button>
+            )}
+            {onNewBatch && (
+                <Button
+                    variant="ghost"
+                    className="self-start px-2 underline-offset-4 hover:underline"
+                    onClick={onNewBatch}
+                >
+                    Start new batch
                 </Button>
             )}
         </section>

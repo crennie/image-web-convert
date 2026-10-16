@@ -413,3 +413,41 @@ it('Strict Mode, rerender, visibility and unmount never send cancellation; pageh
         fetch.mock.calls.filter(([url]) => url.endsWith('/cancel')),
     ).toHaveLength(1);
 });
+
+it('keeps thumbnails, output metadata and new-batch action inside the results panel', () => {
+    const onNewBatch = vi.fn();
+    render(
+        <ConversionOperationStatus
+            operation={snapshot([completed()])}
+            uploads={{}}
+            cancelling={false}
+            uploadsStopped={false}
+            downloading={false}
+            errors={{}}
+            localFiles={[
+                {
+                    id: 'client-a',
+                    file: new File(['image'], 'same.png'),
+                    previewUrl: 'blob:original',
+                },
+            ]}
+            onRetry={vi.fn()}
+            onCancel={vi.fn()}
+            onDownload={vi.fn()}
+            onNewBatch={onNewBatch}
+        />,
+    );
+    const panel = screen.getByRole('region', { name: 'Conversion operation' });
+    const preview = screen.getByRole('img', { name: 'Preview of same.png' });
+    expect(preview).toHaveAttribute('src', 'blob:original');
+    expect(screen.getByText('10 × 10 · 2 bytes')).toBeInTheDocument();
+    expect(screen.queryByText('a.webp')).not.toBeInTheDocument();
+    const newBatch = screen.getByRole('button', { name: 'Start new batch' });
+    expect(panel).toContainElement(newBatch);
+    fireEvent.click(newBatch);
+    expect(onNewBatch).toHaveBeenCalledOnce();
+    fireEvent.error(preview);
+    expect(
+        screen.getByRole('img', { name: 'Preview unavailable for same.png' }),
+    ).toHaveAttribute('src', '/image-preview-unavailable.svg');
+});
