@@ -2,7 +2,8 @@ import type {
     ApiConversionOperation,
     ConversionOutput,
 } from '@image-web-convert/schemas';
-import { Button, displayDateTime } from '@image-web-convert/ui';
+import { Button, displayBytes, displayDateTime } from '@image-web-convert/ui';
+import { FaDownload } from 'react-icons/fa';
 import { ConversionThumbnail } from './ConversionThumbnail';
 import type {
     LocalConversionFile,
@@ -76,10 +77,10 @@ export function ConversionOperationStatus({
                     )}
             </div>
             <p>
-                Upload transport: {progress.loaded} bytes sent
+                Upload transport: {displayBytes(progress.loaded)} sent
                 {progress.total === undefined
                     ? ' (total unknown)'
-                    : ` of ${progress.total}`}{' '}
+                    : ` of ${displayBytes(progress.total)}`}{' '}
                 across current attempts. Server accepted:{' '}
                 {operation.counts.uploaded} of {operation.counts.expected}{' '}
                 files.
@@ -116,6 +117,12 @@ export function ConversionOperationStatus({
                                 )?.previewUrl
                             }
                             name={file.name}
+                            disabled={disabled || downloading}
+                            onDownload={
+                                file.status === 'completed'
+                                    ? () => onDownload(file.output)
+                                    : undefined
+                            }
                         />
                         <div className="min-w-0 flex-1 break-words">
                             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -127,8 +134,8 @@ export function ConversionOperationStatus({
                                 </p>
                                 <span className="text-sm text-muted-foreground">
                                     {file.status === 'completed'
-                                        ? `${file.output.meta.output.width} × ${file.output.meta.output.height} · ${file.output.meta.output.sizeBytes} bytes`
-                                        : `${file.declaredBytes} bytes`}
+                                        ? `${file.output.meta.output.width} × ${file.output.meta.output.height} · ${displayBytes(file.output.meta.output.sizeBytes)}`
+                                        : displayBytes(file.declaredBytes)}
                                 </span>
                             </div>
                             <p id={`${file.id}-status`}>
@@ -150,28 +157,37 @@ export function ConversionOperationStatus({
                                     Check server and retry upload
                                 </Button>
                             )}
-                            {file.status === 'completed' && (
-                                <div>
-                                    <Button
-                                        disabled={disabled || downloading}
-                                        onClick={() => onDownload(file.output)}
-                                        aria-label={`Download ${file.output.meta.output.storedName}`}
-                                    >
-                                        Download
-                                    </Button>
-                                </div>
-                            )}
                         </div>
+                        {file.status === 'completed' && (
+                            <Button
+                                variant="secondary"
+                                className="size-11 shrink-0 self-center rounded-full p-0"
+                                disabled={disabled || downloading}
+                                onClick={() => onDownload(file.output)}
+                                aria-label={`Download ${file.output.meta.output.storedName}`}
+                                title={`Download ${file.name}`}
+                            >
+                                <FaDownload
+                                    className="size-4"
+                                    aria-hidden="true"
+                                />
+                            </Button>
+                        )}
                     </li>
                 ))}
             </ul>
             {outputs.length > 0 && (
                 <Button
+                    className="self-start"
                     disabled={disabled || downloading}
                     onClick={() =>
                         onDownload(outputs.map((output) => output.meta.id))
                     }
                 >
+                    <FaDownload
+                        className="size-4 shrink-0"
+                        aria-hidden="true"
+                    />
                     Download completed images as ZIP
                 </Button>
             )}

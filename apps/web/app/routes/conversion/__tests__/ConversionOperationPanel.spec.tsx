@@ -63,6 +63,12 @@ it('renders progressive authoritative outcomes and downloads without any local F
         screen.queryByText('/internal/private/path'),
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Download a.webp' }));
+    fireEvent.click(
+        screen.getByRole('button', {
+            name: 'Download same.png from thumbnail',
+        }),
+    );
+    expect(onDownload).toHaveBeenCalledTimes(2);
     expect(onDownload).toHaveBeenCalledWith(
         operation.files[0].status === 'completed'
             ? operation.files[0].output
@@ -440,7 +446,7 @@ it('keeps thumbnails, output metadata and new-batch action inside the results pa
     const panel = screen.getByRole('region', { name: 'Conversion operation' });
     const preview = screen.getByRole('img', { name: 'Preview of same.png' });
     expect(preview).toHaveAttribute('src', 'blob:original');
-    expect(screen.getByText('10 × 10 · 2 bytes')).toBeInTheDocument();
+    expect(screen.getByText('10 × 10 · 2 B')).toBeInTheDocument();
     expect(screen.queryByText('a.webp')).not.toBeInTheDocument();
     const newBatch = screen.getByRole('button', { name: 'Start new batch' });
     expect(panel).toContainElement(newBatch);
@@ -450,4 +456,35 @@ it('keeps thumbnails, output metadata and new-batch action inside the results pa
     expect(
         screen.getByRole('img', { name: 'Preview unavailable for same.png' }),
     ).toHaveAttribute('src', '/image-preview-unavailable.svg');
+});
+
+it('formats file sizes and disables both download controls while a download is active', () => {
+    const file = completed();
+    if (file.status !== 'completed')
+        throw new Error('Expected completed fixture');
+    file.output.meta.output.sizeBytes = 1536;
+    const onDownload = vi.fn();
+    render(
+        <ConversionOperationStatus
+            operation={snapshot([file])}
+            uploads={{}}
+            cancelling={false}
+            uploadsStopped={false}
+            downloading
+            errors={{}}
+            onRetry={vi.fn()}
+            onCancel={vi.fn()}
+            onDownload={onDownload}
+        />,
+    );
+    expect(screen.getByText('10 × 10 · 1.5 KB')).toBeInTheDocument();
+    const icon = screen.getByRole('button', { name: 'Download a.webp' });
+    const thumbnail = screen.getByRole('button', {
+        name: 'Download same.png from thumbnail',
+    });
+    expect(icon).toBeDisabled();
+    expect(thumbnail).toBeDisabled();
+    fireEvent.click(icon);
+    fireEvent.click(thumbnail);
+    expect(onDownload).not.toHaveBeenCalled();
 });
