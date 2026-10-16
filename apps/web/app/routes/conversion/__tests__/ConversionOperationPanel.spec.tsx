@@ -488,3 +488,91 @@ it('formats file sizes and disables both download controls while a download is a
     fireEvent.click(thumbnail);
     expect(onDownload).not.toHaveBeenCalled();
 });
+
+it('shows batch downloads and restart only after processing ends, retaining partial results', () => {
+    const props = {
+        uploads: {},
+        cancelling: false,
+        uploadsStopped: false,
+        downloading: false,
+        errors: {},
+        onRetry: vi.fn(),
+        onCancel: vi.fn(),
+        onDownload: vi.fn(),
+        onNewBatch: vi.fn(),
+    };
+    const { rerender } = render(
+        <ConversionOperationStatus
+            {...props}
+            operation={snapshot([completed(), awaiting('b')])}
+        />,
+    );
+    expect(
+        screen.queryByRole('button', {
+            name: 'Download completed images as ZIP',
+        }),
+    ).not.toBeInTheDocument();
+    expect(
+        screen.queryByRole('button', { name: 'Start new batch' }),
+    ).not.toBeInTheDocument();
+    expect(
+        screen.getByRole('button', { name: 'Cancel conversion' }),
+    ).toBeEnabled();
+    expect(
+        screen.getByRole('button', { name: 'Download a.webp' }),
+    ).toBeEnabled();
+    expect(screen.queryByText(/Upload transport/)).not.toBeInTheDocument();
+    rerender(
+        <ConversionOperationStatus
+            {...props}
+            operation={snapshot(
+                [
+                    completed(),
+                    {
+                        ...awaiting('b'),
+                        status: 'cancelled',
+                        finishedAt: time,
+                        reason: 'user_cancelled',
+                    },
+                ],
+                { status: 'cancelled' },
+            )}
+        />,
+    );
+    fireEvent.click(
+        screen.getByRole('button', {
+            name: 'Download completed images as ZIP',
+        }),
+    );
+    expect(props.onDownload).toHaveBeenCalledWith(['a']);
+    expect(
+        screen.getByRole('button', { name: 'Start new batch' }),
+    ).toBeEnabled();
+    expect(
+        screen.queryByRole('button', { name: 'Cancel conversion' }),
+    ).not.toBeInTheDocument();
+    rerender(
+        <ConversionOperationStatus
+            {...props}
+            operation={snapshot(
+                [
+                    {
+                        ...awaiting(),
+                        status: 'cancelled',
+                        finishedAt: time,
+                        reason: 'user_cancelled',
+                    },
+                ],
+                { status: 'cancelled' },
+            )}
+        />,
+    );
+    expect(
+        screen.queryByRole('button', {
+            name: 'Download completed images as ZIP',
+        }),
+    ).not.toBeInTheDocument();
+    expect(
+        screen.getByRole('button', { name: 'Start new batch' }),
+    ).toBeEnabled();
+});

@@ -68,11 +68,7 @@ function ConversionBatch({ onNewBatch }: { onNewBatch: () => void }) {
                     operation={state.operation}
                     localFiles={selection.items}
                     onNewBatch={
-                        state.errors.access ||
-                        state.creationRejected ||
-                        isTerminal(state.operation)
-                            ? onNewBatch
-                            : undefined
+                        isTerminal(state.operation) ? onNewBatch : undefined
                     }
                     onRetry={(id) => void workflow.retryUpload(id)}
                     onCancel={() => void workflow.cancel()}

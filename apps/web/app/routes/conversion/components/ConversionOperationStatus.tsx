@@ -10,7 +10,6 @@ import type {
     ConversionClientState,
 } from '../conversionController';
 import {
-    batchUploadProgress,
     canRetryUpload,
     completedDownloads,
     fileDisplayState,
@@ -40,7 +39,7 @@ export function ConversionOperationStatus({
     onCancel: () => void;
     onDownload: (result: ConversionOutput | string[]) => void;
 }) {
-    const progress = batchUploadProgress(uploads);
+    const finished = isTerminal(operation);
     const outputs = completedDownloads(operation);
     const disabled = !!errors.access;
     const stopped =
@@ -76,15 +75,6 @@ export function ConversionOperationStatus({
                         </p>
                     )}
             </div>
-            <p>
-                Upload transport: {displayBytes(progress.loaded)} sent
-                {progress.total === undefined
-                    ? ' (total unknown)'
-                    : ` of ${displayBytes(progress.total)}`}{' '}
-                across current attempts. Server accepted:{' '}
-                {operation.counts.uploaded} of {operation.counts.expected}{' '}
-                files.
-            </p>
             {operation.stopReason === 'conversion_timeout' && (
                 <p role="alert">
                     Processing time limit reached. Completed results remain
@@ -176,44 +166,47 @@ export function ConversionOperationStatus({
                     </li>
                 ))}
             </ul>
-            {outputs.length > 0 && (
-                <Button
-                    className="self-start"
-                    disabled={disabled || downloading}
-                    onClick={() =>
-                        onDownload(outputs.map((output) => output.meta.id))
-                    }
-                >
-                    <FaDownload
-                        className="size-4 shrink-0"
-                        aria-hidden="true"
-                    />
-                    Download completed images as ZIP
-                </Button>
-            )}
-            {!isTerminal(operation) && (
-                <Button
-                    disabled={
-                        disabled ||
-                        cancelling ||
-                        (!!operation.cancelRequestedAt && !errors.cancellation)
-                    }
-                    onClick={onCancel}
-                >
-                    {errors.cancellation
-                        ? 'Retry cancellation'
-                        : 'Cancel conversion'}
-                </Button>
-            )}
-            {onNewBatch && (
-                <Button
-                    variant="ghost"
-                    className="self-start px-2 underline-offset-4 hover:underline"
-                    onClick={onNewBatch}
-                >
-                    Start new batch
-                </Button>
-            )}
+            <div className="flex flex-wrap items-center gap-3">
+                {finished && outputs.length > 0 && (
+                    <Button
+                        className="self-start"
+                        disabled={disabled || downloading}
+                        onClick={() =>
+                            onDownload(outputs.map((output) => output.meta.id))
+                        }
+                    >
+                        <FaDownload
+                            className="size-4 shrink-0"
+                            aria-hidden="true"
+                        />
+                        Download completed images as ZIP
+                    </Button>
+                )}
+                {!isTerminal(operation) && (
+                    <Button
+                        disabled={
+                            disabled ||
+                            cancelling ||
+                            (!!operation.cancelRequestedAt &&
+                                !errors.cancellation)
+                        }
+                        onClick={onCancel}
+                    >
+                        {errors.cancellation
+                            ? 'Retry cancellation'
+                            : 'Cancel conversion'}
+                    </Button>
+                )}
+                {finished && onNewBatch && (
+                    <Button
+                        variant="ghost"
+                        className="self-start px-2 underline-offset-4 hover:underline"
+                        onClick={onNewBatch}
+                    >
+                        Start new batch
+                    </Button>
+                )}
+            </div>
         </section>
     );
 }
