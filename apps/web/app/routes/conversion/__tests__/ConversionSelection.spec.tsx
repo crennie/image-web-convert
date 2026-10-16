@@ -146,3 +146,37 @@ it('clears all errors without removing files and returns focus to browse', () =>
         screen.getByRole('list', { name: 'Selection errors' }),
     ).toHaveTextContent('bad.txt');
 });
+
+it('keeps keyboard focus predictable when dismissing middle and last errors', () => {
+    const { container } = render(<Harness />);
+    choose(
+        container,
+        ['first.txt', 'middle.txt', 'last.txt'].map(
+            (name) => new File(['bad'], name),
+        ),
+    );
+    const middle = screen.getByRole('button', {
+        name: /Dismiss error: middle.txt/,
+    });
+    middle.focus();
+    fireEvent.click(middle);
+    expect(
+        screen.getByRole('button', { name: /Dismiss error: last.txt/ }),
+    ).toHaveFocus();
+    expect(
+        screen.queryByRole('button', { name: /Dismiss error: middle.txt/ }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+        screen.getByRole('button', { name: /Dismiss error: last.txt/ }),
+    );
+    expect(
+        screen.getByRole('button', { name: /Dismiss error: first.txt/ }),
+    ).toHaveFocus();
+    fireEvent.click(
+        screen.getByRole('button', { name: /Dismiss error: first.txt/ }),
+    );
+    expect(screen.getByRole('button', { name: 'Choose images' })).toHaveFocus();
+    expect(
+        screen.queryByRole('button', { name: 'Clear all errors' }),
+    ).not.toBeInTheDocument();
+});

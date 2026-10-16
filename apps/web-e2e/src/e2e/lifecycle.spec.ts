@@ -42,7 +42,7 @@ test('cancels queued siblings while preserving completed and active-file results
         'Operation: cancelled',
     );
     await expect(page.getByRole('status')).toContainText(
-        '2 completed, 0 failed, 1 cancelled',
+        '2 completed, 1 cancelled',
     );
     await verifyZip(
         await download(

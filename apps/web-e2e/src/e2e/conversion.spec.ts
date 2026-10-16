@@ -17,9 +17,7 @@ test('converts the complete batch and downloads decoded images and ZIP contents'
     await expect(page.getByRole('status')).toContainText(
         'Operation: completed',
     );
-    await expect(page.getByRole('status')).toContainText(
-        '2 completed, 0 failed, 0 cancelled',
-    );
+    await expect(page.getByRole('status')).toContainText('2 completed.');
     await expect(page.getByRole('alert')).toHaveCount(0);
     await verifyImage(
         await download(

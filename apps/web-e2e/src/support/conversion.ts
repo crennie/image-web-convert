@@ -89,5 +89,5 @@ export async function verifyZip(bytes: Buffer, names: string[]) {
 export function imageButton(page: Page, name: string) {
     return page
         .getByRole('listitem', { name, exact: true })
-        .getByRole('button', { name: /^Download / });
+        .getByRole('button', { name: /^Download (?!.* from thumbnail$)/ });
 }
