@@ -12,6 +12,9 @@ export function ParticleBackground() {
 
         const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
         const theme = window.matchMedia('(prefers-color-scheme: dark)');
+        // Keep trail depth proportional to speed for a gentle sense of motion.
+        const forwardSpeed = 0.045;
+        const trailDuration = 0.12;
         let width = 0;
         let height = 0;
         let frame = 0;
@@ -29,7 +32,7 @@ export function ParticleBackground() {
             context.strokeStyle = context.fillStyle;
             for (let index = 0; index < particles.length; index++) {
                 let particle = particles[index];
-                particle.z -= delta * 0.075;
+                particle.z -= delta * forwardSpeed;
                 let x = width / 2 + (particle.x * focal) / particle.z;
                 let y = height * 0.44 + (particle.y * focal) / particle.z;
                 if (
@@ -50,19 +53,20 @@ export function ParticleBackground() {
                 context.arc(
                     x,
                     y,
-                    Math.min(2.3, 0.65 / particle.z),
+                    Math.min(1.3, 0.38 / particle.z),
                     0,
                     Math.PI * 2,
                 );
                 context.fill();
-                const previousDepth = particle.z + 0.012;
+                const previousDepth = particle.z + forwardSpeed * trailDuration;
+                context.globalAlpha *= 0.65;
                 context.beginPath();
                 context.moveTo(
                     width / 2 + (particle.x * focal) / previousDepth,
                     height * 0.44 + (particle.y * focal) / previousDepth,
                 );
                 context.lineTo(x, y);
-                context.lineWidth = 0.7;
+                context.lineWidth = 0.5;
                 context.stroke();
             }
             context.globalAlpha = 1;
