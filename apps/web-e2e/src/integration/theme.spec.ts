@@ -1,3 +1,4 @@
+import { firstImage } from '../fixtures/images';
 import { test, expect } from '../support/application';
 
 for (const colorScheme of ['light', 'dark'] as const) {
@@ -31,6 +32,10 @@ for (const colorScheme of ['light', 'dark'] as const) {
             ).toBeVisible();
             await expect(body).toHaveCSS('background-color', background);
             await expect(body).toHaveCSS('background-image', /radial-gradient/);
+            await expect(
+                page.getByRole('combobox', { name: 'Output format' }),
+            ).toHaveCount(0);
+            await page.locator('input[type=file]').setInputFiles(firstImage);
             const select = page.getByRole('combobox', {
                 name: 'Output format',
             });
@@ -44,7 +49,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
             await expect(select).toHaveValue('image/png');
             await expect(
                 page.getByRole('button', { name: 'Start conversion' }),
-            ).toBeDisabled();
+            ).toBeEnabled();
             await expect(
                 page.getByRole('button', {
                     name: 'Choose images',

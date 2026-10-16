@@ -108,7 +108,7 @@ export function useDropzone(opts: UseDropzoneProps = {}): UseDropzoneResponse {
 
     const handleDrop = useCallback(
         (e: React.DragEvent) => {
-            if (disabled) return;
+            if (disabled || !e.dataTransfer?.types?.includes('Files')) return;
             e.preventDefault();
             e.stopPropagation();
             dragDepth.current = 0;
@@ -149,6 +149,22 @@ export function useDropzone(opts: UseDropzoneProps = {}): UseDropzoneResponse {
         document.addEventListener('paste', onPaste);
         return () => document.removeEventListener('paste', onPaste);
     }, [enablePaste, disabled, onSelectFiles]);
+
+    // A drag can end outside the target or when the window loses focus.
+    useEffect(() => {
+        const reset = () => {
+            dragDepth.current = 0;
+            setDragActive(false);
+        };
+        window.addEventListener('drop', reset, true);
+        window.addEventListener('dragend', reset);
+        window.addEventListener('blur', reset);
+        return () => {
+            window.removeEventListener('drop', reset, true);
+            window.removeEventListener('dragend', reset);
+            window.removeEventListener('blur', reset);
+        };
+    }, []);
 
     // ---- Exposed props ----
     const rootProps: UseDropzoneResponse['rootProps'] = {
