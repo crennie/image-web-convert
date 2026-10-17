@@ -68,6 +68,13 @@ Each `given`, `when`, and `then` cell is an outcome at the product or API bounda
 | UC-029 | Browser     | Upload outcome is unknown                                     | The person retries                        | The browser checks the server snapshot first and sends bytes only if the slot still awaits upload.                | D1, D2         | E29, E30           | Direct  | covered  |
 | UC-030 | Person      | Uploads are in progress                                       | The browser reports progress              | Network bytes are distinct from server-accepted and converted file counts.                                        | D1, D5         | E31, E54           | Focused | covered  |
 
+### Image processing contracts
+
+| ID     | Actor       | Given                                                               | When                          | Then                                                                                                                                                | Sources | Evidence                     | Depth   | Coverage |
+| ------ | ----------- | ------------------------------------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------- | ------- | -------- |
+| UC-072 | Person      | An image has orientation, color profile, animation, or transparency | The API converts the image    | Output applies orientation, normalizes color, omits metadata, uses the first frame, and uses white for transparent JPEG pixels; corrupt HEIC fails. | D1, C   | E101, E102, E103, E104, E105 | Focused | covered  |
+| UC-073 | API process | Image bytes are unrecognized or exceed the configured pixel limit   | Conversion inspects the input | The file fails; oversized HEIC is rejected before raster decode and an at-limit PNG converts.                                                       | D1, C   | E106, E107, E108             | Focused | covered  |
+
 ### Retrieve or cancel results
 
 | ID     | Actor       | Given                                                     | When                                              | Then                                                                                                  | Sources        | Evidence      | Depth   | Coverage |
@@ -247,9 +254,22 @@ Each item names an exact test title and what its assertions establish. Browser i
 | E99  | In-process API             | `apps/api/src/__tests__/request-boundary.spec.ts` — `holds the legacy request lease until its response settles`                                                       | A legacy request acquires its session lease before the metadata read and releases it after the response.                          |
 | E100 | Conversion runtime         | `apps/api/src/services/__tests__/conversion-runtime.service.spec.ts` — `retains an expired session and drops readiness when deletion fails`                           | A failed removal preserves files and faults readiness.                                                                            |
 
+### Image processing evidence
+
+| Key  | Layer                     | Test                                                                                                                              | Assertion                                                                           |
+| ---- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| E101 | Image service integration | `apps/api/src/services/__tests__/image-real.spec.ts` — `drops source EXIF and applies orientation`                                | Real JPEG output has oriented dimensions and no EXIF.                               |
+| E102 | Image service integration | `apps/api/src/services/__tests__/image-real.spec.ts` — `flattens transparent pixels to white for JPEG`                            | Real JPEG output decodes to white where the PNG input was transparent.              |
+| E103 | Image service integration | `apps/api/src/services/__tests__/image-real.spec.ts` — `decodes the checked-in HEIC fixture and rejects its truncated form`       | Real HEIC converts and truncated HEIC fails explicitly.                             |
+| E104 | Image service integration | `apps/api/src/services/__tests__/image-real.spec.ts` — `uses the first animated frame or rejects animation by policy`             | Animated GIF yields one frame or fails under reject policy.                         |
+| E105 | Image service integration | `apps/api/src/services/__tests__/image-real.spec.ts` — `normalizes profiled input to sRGB and omits the source ICC profile`       | Profiled PNG output reports sRGB and omits ICC.                                     |
+| E106 | Image service integration | `apps/api/src/services/__tests__/image-real.spec.ts` — `enforces the pixel ceiling before encoding`                               | A 20 MP PNG succeeds exactly at the ceiling and fails with a one-pixel-lower limit. |
+| E107 | Image service unit        | `apps/api/src/services/__tests__/image.service.spec.ts` — `HEIC: rejects oversized headers before reading or decoding the raster` | Oversized HEIC headers fail before file read or raster decode.                      |
+| E108 | Image service integration | `apps/api/src/services/__tests__/image-real.spec.ts` — `rejects unrecognized magic bytes`                                         | Invalid magic bytes are rejected.                                                   |
+
 ## Coverage limits
 
-- All 71 in-scope cases have matching assertions. The API process test for UC-051 observes clean staging immediately after the production entrypoint reports readiness; it does not instrument the exact instant the listening socket opens.
+- All 73 in-scope cases have matching assertions. The API process test for UC-051 observes clean staging immediately after the production entrypoint reports readiness; it does not instrument the exact instant the listening socket opens.
 - UC-065–066 assert the configured-origin HTTP contract in a separately started API process; no deployed cross-origin browser environment was exercised.
 - UC-041 has direct API process evidence for a conversion lease. Its download lease remains covered by the focused runtime test.
 - Real browser E2E validates default WebP and selected JPEG, PNG, and AVIF downloads, plus partial, retry, and cancellation paths. Mocked browser integration assertions do not establish API behavior.

@@ -143,6 +143,14 @@ page and its upload hook have been removed; shared legacy UI components, cosmeti
 progress, and contracts remain. The active route reports actual network upload
 bytes and backend file states; it does not report a measured encoding percentage.
 
+Conversion uses the first frame of animated inputs, applies EXIF orientation,
+normalizes to sRGB, and omits source metadata from outputs. Transparent pixels
+become white when converting to JPEG. HEIC decoding errors fail the file rather
+than retrying through another decoder. The configured input pixel ceiling is
+checked before HEIC raster decode and during Sharp processing. HEIC native
+header inspection and raster decode are not hard isolated from the API process.
+HEIC inputs with alpha use a PNG intermediate so alpha survives non-JPEG output.
+
 ## Limits, deadlines, and storage
 
 Backend settings are authoritative. The session response exposes its effective
@@ -165,7 +173,7 @@ the browser's local time.
 | `CONVERSION_FILE_TIMEOUT_MS`                | 120000      | Cooperative per-file conversion deadline                                                                       |
 | `CONVERSION_SWEEP_INTERVAL_MS`              | 1000        | Background discovery/expiry sweep interval                                                                     |
 | `CONVERSION_SHUTDOWN_GRACE_MS`              | 10000       | Process shutdown grace period                                                                                  |
-| `CONVERSION_MAX_INPUT_PIXELS`               | 200000000   | Sharp input pixel ceiling                                                                                      |
+| `CONVERSION_MAX_INPUT_PIXELS`               | 20000000    | Input pixel ceiling, including HEIC header preflight                                                           |
 | `CONVERSION_MAX_DIMENSION`                  | 8192        | Maximum output dimension                                                                                       |
 | `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS`   | 100 / 60000 | General request budget per IP                                                                                  |
 | `TRUSTED_PROXY_IPS`                         | empty       | Comma-separated IP addresses of immediate trusted reverse proxies; forwarded IP headers are ignored by default |
@@ -205,10 +213,23 @@ Deadlines do not guarantee interruption of native code. Sharp's timeout covers
 libvips processing, excluding thread-pool waiting; the runtime also checks elapsed
 time when work settles. Timed-out conversions retain the worker slot and input
 until their invocation settles, and late results are discarded. HEIC preprocessing
-can allocate decoded pixels and synchronously encode before Sharp sees the image;
-Sharp's pixel ceiling and timeout do not bound that earlier memory/CPU use. Hard
+can allocate decoded pixels and synchronously encode after its dimension preflight;
+the pixel ceiling and Sharp timeout do not hard bound native memory/CPU use. Hard
 wall-clock termination would require separate process isolation, which this app
 does not implement.
+
+For the supported single-process self-host profile, reserve **2 GiB of RAM for
+the API process** and retain the 20 MP input default unless the host is measured
+again. `node tools/measure-image-budget.mjs` runs two fixed fixtures in separate
+child processes, each with a 30-second deadline; the parent kills only that
+child if it stalls. In two runs on Linux aarch64, Node 22.22.0 and Sharp
+0.35.5, the 12 MP HEIC fixture took 1.86–2.66 seconds and reached 377–381 MiB
+peak RSS; a generated 20 MP PNG took 0.26–0.32 seconds and reached 179–185 MiB.
+These are cold-process observations, not worst-case memory or latency
+guarantees. Other codecs, profiles, frame counts, and inputs can use more.
+Monitor RSS and keep uploads
+private to trusted users. **Untrusted public image uploads are unsupported**
+until PF-20 decides on process isolation or a narrower enforced input policy.
 
 Storage paths are centralized in `apps/api/src/services/storage.paths.ts`; session
 persistence and conversion storage share those helpers. `UPLOAD_DIR` defaults to

@@ -95,7 +95,7 @@ describe('conversion creation and snapshots', () => {
         ]);
         expect(operation.options.outputMime).toBe('image/webp');
         expect(operation.limits.maxFiles).toBe(20);
-        expect(operation.processingOptions.limitInputPixels).toBe(200_000_000);
+        expect(operation.processingOptions.limitInputPixels).toBe(20_000_000);
         expect(operation).toMatchObject({
             revision: 0,
             status: 'awaiting_uploads',

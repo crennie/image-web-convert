@@ -20,7 +20,7 @@ export type ProcessInput = {
 export type ProcessOutput = {
     buffer: Buffer;
     // outputMime: 'image/webp';
-    outputMime: OutputMimeType,
+    outputMime: OutputMimeType;
     info: {
         width: number;
         height: number;
@@ -58,22 +58,46 @@ export async function processImageToMimeType({
     const sniffedMime = ft?.mime;
     if (!sniffedMime || !ALLOWED_IMAGE_MIME.has(sniffedMime)) {
         throw new Error(
-            `Unsupported or unrecognized image type${sniffedMime ? `: ${sniffedMime}` : ''}`
+            `Unsupported or unrecognized image type${sniffedMime ? `: ${sniffedMime}` : ''}`,
         );
     }
 
     // 2) Convert HEIC to sharp-processable format
     let sharpInput: SharpSource = inputPath;
     if (ft.mime.includes('/heic') || ft.mime.includes('/heif')) {
-        const buf = await fs.readFile(inputPath);
-        // Convert buffer to UIntarray for heic convert
+        // Inspect container dimensions before heic-convert allocates a full RGBA
+        // raster. This is a preflight guard, not a hard bound on native decoder work.
+        let header;
         try {
-            //
-            const buffer = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) as unknown as ArrayBufferLike;
-            sharpInput = await convert({ buffer, format: 'JPEG', quality: 0.9 });
-        } catch {
-            // TODO: Add error logging in services
-            //req.log.error({ err });
+            header = await sharp(inputPath, {
+                animated: false,
+                limitInputPixels: opts.limitInputPixels,
+                failOn: 'error',
+            }).metadata();
+        } catch (cause) {
+            throw new Error('HEIC decoding failed', { cause });
+        }
+        if (
+            !header.width ||
+            !header.height ||
+            header.width * header.height > opts.limitInputPixels
+        ) {
+            throw new Error('Image dimensions exceed the input pixel limit');
+        }
+        const buf = await fs.readFile(inputPath);
+        const buffer = new Uint8Array(
+            buf.buffer,
+            buf.byteOffset,
+            buf.byteLength,
+        ) as unknown as ArrayBufferLike;
+        try {
+            sharpInput = await convert({
+                buffer,
+                format: header.hasAlpha ? 'PNG' : 'JPEG',
+                quality: 0.9,
+            });
+        } catch (cause) {
+            throw new Error('HEIC decoding failed', { cause });
         }
     }
 
@@ -86,13 +110,24 @@ export async function processImageToMimeType({
     });
 
     const meta = await baseSharp.metadata();
+    if (
+        !meta.width ||
+        !meta.height ||
+        meta.width * meta.height > opts.limitInputPixels
+    ) {
+        throw new Error('Image dimensions exceed the input pixel limit');
+    }
     const pages = meta.pages ?? 1;
     if (pages > 1 && opts.animatedPolicy === 'reject') {
         throw new Error('Animated images are not supported in this mode');
     }
 
     // 4) Build transform: orient -> sRGB -> resize if too large -> webp
-    let pipeline = sharp(sharpInput, { animated: false, limitInputPixels: opts.limitInputPixels })
+    let pipeline = sharp(sharpInput, {
+        animated: false,
+        limitInputPixels: opts.limitInputPixels,
+        failOn: 'error',
+    })
         .rotate() // apply EXIF orientation, then EXIF is dropped
         .toColourspace(opts.normalizeColorSpace);
 
@@ -122,7 +157,7 @@ export async function processImageToMimeType({
             effort: opts.effort,
         });
     } else if (outputMime === 'image/jpeg') {
-        pipeline = pipeline.jpeg({
+        pipeline = pipeline.flatten({ background: '#ffffff' }).jpeg({
             quality: opts.quality,
         });
     } else if (outputMime === 'image/png') {
@@ -133,7 +168,8 @@ export async function processImageToMimeType({
     }
 
     // 5) Encode
-    if (timeoutSeconds !== undefined) pipeline = pipeline.timeout({ seconds: timeoutSeconds });
+    if (timeoutSeconds !== undefined)
+        pipeline = pipeline.timeout({ seconds: timeoutSeconds });
     const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
 
     return {
