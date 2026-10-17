@@ -345,6 +345,24 @@ it('returns file_not_found when every requested ZIP member lacks a committed out
     expect(response.headers.get('content-disposition')).toBeNull();
 });
 
+it('rejects duplicate and excessive ZIP requests before resolving members', async () => {
+    const s = await session();
+    const op = await create(s, 1);
+    for (const body of [
+        { ids: [op.files[0].id, op.files[0].id] },
+        { ids: Array.from({ length: 33 }, (_, index) => `missing-${index}`) },
+        { ids: [op.files[0].id], archiveName: 'x'.repeat(129) },
+        { ids: ['bad\r\nheader'] },
+    ]) {
+        const response = await fetch(`${base(s)}/files/download`, {
+            method: 'POST',
+            headers: { ...headers(s), 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        await expectApiError(response, 400, 'invalid_request');
+    }
+});
+
 it('downloads all colliding filenames once, in requested order, with missing IDs reported', async () => {
     const s = await session();
     const op = await create(s, 3, ['a.png', 'a.png', 'a (2).png']);

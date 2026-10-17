@@ -25,6 +25,8 @@
                 "docs/architecture/static/data.md",
                 "docs/architecture/quality/requirements.md",
                 "apps/api/src/routes/sessions.routes.ts",
+                "apps/api/src/app.ts",
+                "apps/api/src/env.ts",
                 "libs/ui/src/lib/file-upload/hooks/useValidation.ts"
             ],
             "cases": [
@@ -252,6 +254,14 @@
                             "layer": "API process",
                             "environment": "Separately started local API process and temporary storage",
                             "asserts": "400/413 responses, clean storage, and subsequent valid conversion."
+                        },
+                        {
+                            "evidenceId": "E87",
+                            "file": "apps/api/src/__tests__/request-boundary.spec.ts",
+                            "name": "normalizes malformed and oversized JSON without reflecting input",
+                            "layer": "In-process API",
+                            "environment": "Real HTTP server with controlled authentication and storage seams",
+                            "asserts": "Malformed JSON gets 400 and oversized JSON gets 413, with safe JSON errors that do not reflect input."
                         }
                     ],
                     "coverage": "covered",
@@ -339,6 +349,62 @@
                             "layer": "API process",
                             "environment": "Separately started local API process and temporary storage",
                             "asserts": "Fourth session request returns 429; an existing session can still create an operation."
+                        },
+                        {
+                            "evidenceId": "E86",
+                            "file": "apps/api/src/__tests__/dependency-security.spec.ts",
+                            "name": "shares one limiter budget across IPv4 and equivalent mapped IPv6 spellings",
+                            "layer": "In-process API",
+                            "environment": "Real HTTP fixture with a test-only trusted proxy and the default express-rate-limit key generator",
+                            "asserts": "IPv4 and both mapped IPv6 spellings share a budget; exhaustion returns 429 with Retry-After; another IPv4 address retains its budget. Supplements the production session-route test; does not prove proxy trust policy."
+                        },
+                        {
+                            "evidenceId": "E88",
+                            "file": "apps/api/src/__tests__/admission-policy.spec.ts",
+                            "name": "keeps session and status budgets separate from general commands",
+                            "layer": "In-process API",
+                            "environment": "Real HTTP requests through the configured application middleware",
+                            "asserts": "Fourth session request and excess status polls get 429 with Retry-After; ordinary status requests retain their separate budget."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-068",
+                    "actor": "API process",
+                    "given": "A direct client or a configured immediate proxy sends forwarded address headers",
+                    "when": "The client exhausts its request budget",
+                    "then": "Only trusted proxy peers affect client identity, and excess requests are rejected before body parsing with a retry deadline.",
+                    "sources": [
+                        "README.md",
+                        "apps/api/src/app.ts",
+                        "apps/api/src/env.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E89",
+                            "file": "apps/api/src/__tests__/admission-policy.spec.ts",
+                            "name": "ignores forwarded identities from direct clients and exempts health/readiness",
+                            "layer": "In-process API",
+                            "environment": "Real HTTP requests through the configured application middleware",
+                            "asserts": "Direct forwarded headers cannot split the budget; 429 includes Retry-After; health and readiness remain available."
+                        },
+                        {
+                            "evidenceId": "E90",
+                            "file": "apps/api/src/__tests__/admission-policy.spec.ts",
+                            "name": "trusts only the configured immediate proxy and its nearest untrusted address",
+                            "layer": "In-process API",
+                            "environment": "Real HTTP requests through the configured application middleware",
+                            "asserts": "A forged earlier chain entry does not change the nearest untrusted client's budget."
+                        },
+                        {
+                            "evidenceId": "E91",
+                            "file": "apps/api/src/__tests__/admission-policy.spec.ts",
+                            "name": "rejects before JSON parsing and retains CORS on general 429 responses",
+                            "layer": "In-process API",
+                            "environment": "Real HTTP requests through the configured application middleware",
+                            "asserts": "Exhausted requests get 429 before malformed JSON parsing, with configured CORS origin and exposed Retry-After."
                         }
                     ],
                     "coverage": "covered",
@@ -962,6 +1028,8 @@
             "id": "retrieve-or-cancel-results",
             "sources": [
                 "README.md",
+                "libs/schemas/src/lib/api/api.ts",
+                "apps/api/src/services/files.service.ts",
                 "docs/architecture/dynamic/process-conversion.md",
                 "docs/architecture/quality/requirements.md",
                 "docs/architecture/decisions/ADR-002-commit-files-independently.md"
@@ -1096,6 +1164,46 @@
                             "layer": "In-process API",
                             "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
                             "asserts": "Vanished source causes failed response, not successful ZIP."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-069",
+                    "actor": "Browser",
+                    "given": "A ZIP request has repeated or excessive IDs, or archive capacity is full",
+                    "when": "It requests an archive",
+                    "then": "The API rejects malformed or saturated requests before resolving file members; stalled archive work expires and releases capacity.",
+                    "sources": [
+                        "README.md",
+                        "libs/schemas/src/lib/api/api.ts",
+                        "apps/api/src/services/files.service.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E92",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "rejects duplicate and excessive ZIP requests before resolving members",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Duplicate, excessive, control-character, and oversized-name requests receive JSON 400."
+                        },
+                        {
+                            "evidenceId": "E93",
+                            "file": "apps/api/src/controllers/__tests__/files.controller.spec.ts",
+                            "name": "rejects archive saturation before reading files",
+                            "layer": "Controller unit",
+                            "environment": "Mocked authenticated legacy controller",
+                            "asserts": "Saturation receives JSON 503 before metadata resolution."
+                        },
+                        {
+                            "evidenceId": "E94",
+                            "file": "apps/api/src/services/__tests__/files.service.spec.ts",
+                            "name": "aborts a stalled archive at its deadline",
+                            "layer": "Archive service unit",
+                            "environment": "Mocked archiver and fake clock",
+                            "asserts": "The 30-second deadline aborts stalled work and removes listeners."
                         }
                     ],
                     "coverage": "covered",
@@ -1246,6 +1354,7 @@
             "id": "expiry-restart-and-compatibility",
             "sources": [
                 "README.md",
+                "docs/architecture/static/data.md",
                 "docs/architecture/dynamic/recover-conversion.md",
                 "docs/architecture/quality/constraints.md",
                 "docs/architecture/quality/requirements.md",
@@ -1467,6 +1576,92 @@
                             "layer": "API process",
                             "environment": "Separately started local API process and temporary storage",
                             "asserts": "Sealed legacy metadata, file, and ZIP reads work while live; all three reject with session_expired afterward."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-070",
+                    "actor": "API process",
+                    "given": "A create-only or sealed legacy session expires",
+                    "when": "Startup or periodic cleanup runs",
+                    "then": "The session directory is reclaimed after active use settles; incomplete creation, symlinks, and unrelated directories are preserved.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/static/data.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E95",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "reclaims expired create-only and sealed legacy sessions on restart and repeated sweeps",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process temporary storage and deterministic clock",
+                            "asserts": "Expired create-only and sealed legacy directories are removed at startup; another sweep is idempotent."
+                        },
+                        {
+                            "evidenceId": "E96",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "defers expiry while a request owns a session and ignores incomplete creation",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process temporary storage and deterministic clock",
+                            "asserts": "A held lease and an incomplete new session prevent deletion until safe."
+                        },
+                        {
+                            "evidenceId": "E97",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "reports corrupt records once and preserves symlinks and unrelated directories",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process temporary storage and deterministic clock",
+                            "asserts": "Unrelated directories and symlinks remain outside cleanup."
+                        },
+                        {
+                            "evidenceId": "E99",
+                            "file": "apps/api/src/__tests__/request-boundary.spec.ts",
+                            "name": "holds the legacy request lease until its response settles",
+                            "layer": "In-process API",
+                            "environment": "Local HTTP server with a held metadata read",
+                            "asserts": "A legacy request acquires its session lease before the metadata read and releases it after the response."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-071",
+                    "actor": "API operator",
+                    "given": "A stored session record is corrupt or session storage fails",
+                    "when": "Retention scans or removes storage",
+                    "then": "Corrupt data is reported and retained for repair; a storage scan or removal failure drops readiness.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/recover-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E97",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "reports corrupt records once and preserves symlinks and unrelated directories",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process temporary storage and deterministic clock",
+                            "asserts": "Corrupt and stale recordless directories remain, are reported once per ID, and appear in diagnostics."
+                        },
+                        {
+                            "evidenceId": "E98",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "drops readiness when the upload root disappears during maintenance",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process temporary storage and deterministic clock",
+                            "asserts": "A storage scan failure faults the runtime and drops readiness."
+                        },
+                        {
+                            "evidenceId": "E100",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "retains an expired session and drops readiness when deletion fails",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process temporary storage with a failed removal",
+                            "asserts": "A failed removal preserves files and faults readiness."
                         }
                     ],
                     "coverage": "covered",

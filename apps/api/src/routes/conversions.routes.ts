@@ -7,6 +7,7 @@ import {
     cancel,
 } from '../controllers/conversions.controller';
 import { conversionHandler } from '../controllers/conversions.http';
+import { requireJson } from '../controllers/request.http';
 
 export default function createConversionsRouter(): Router {
     const router = Router({ mergeParams: true });
@@ -21,7 +22,7 @@ export default function createConversionsRouter(): Router {
             message: 'Too many status requests; retry shortly',
         },
     });
-    router.post('/', conversionHandler(create));
+    router.post('/', requireJson, conversionHandler(create));
     router.get('/:operationId', polling, conversionHandler(show));
     router.put('/:operationId/files/:fileId', conversionHandler(upload));
     router.post('/:operationId/cancel', conversionHandler(cancel));

@@ -1,5 +1,12 @@
 import { createPortal } from 'react-dom';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import {
+    useCallback,
+    useEffect,
+    useId,
+    useRef,
+    useState,
+    type ReactNode,
+} from 'react';
 import {
     FaCheckCircle,
     FaExclamationCircle,
@@ -20,23 +27,14 @@ export function StatusHelp({
     const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
         undefined,
     );
-    const hide = () => {
-        hideTimer.current = setTimeout(() => setOpen(false), 150);
-    };
-    useEffect(() => {
-        const dismiss = () => setOpen(false);
-        window.addEventListener('scroll', dismiss, true);
-        window.addEventListener('resize', dismiss);
-        return () => {
-            clearTimeout(hideTimer.current);
-            window.removeEventListener('scroll', dismiss, true);
-            window.removeEventListener('resize', dismiss);
-        };
-    }, []);
     const trigger = useRef<HTMLButtonElement>(null);
+    const hide = () => {
+        hideTimer.current = setTimeout(() => {
+            if (document.activeElement !== trigger.current) setOpen(false);
+        }, 150);
+    };
     const [position, setPosition] = useState({ top: 0, left: 0 });
-    const show = () => {
-        clearTimeout(hideTimer.current);
+    const updatePosition = useCallback(() => {
         const rect = trigger.current?.getBoundingClientRect();
         if (rect)
             setPosition({
@@ -46,6 +44,23 @@ export function StatusHelp({
                 ),
                 left: Math.max(8, Math.min(rect.left, window.innerWidth - 272)),
             });
+    }, []);
+    useEffect(() => {
+        const dismissOrReposition = () => {
+            if (document.activeElement === trigger.current) updatePosition();
+            else setOpen(false);
+        };
+        window.addEventListener('scroll', dismissOrReposition, true);
+        window.addEventListener('resize', dismissOrReposition);
+        return () => {
+            clearTimeout(hideTimer.current);
+            window.removeEventListener('scroll', dismissOrReposition, true);
+            window.removeEventListener('resize', dismissOrReposition);
+        };
+    }, [updatePosition]);
+    const show = () => {
+        clearTimeout(hideTimer.current);
+        updatePosition();
         setOpen(true);
     };
     const [open, setOpen] = useState(false);

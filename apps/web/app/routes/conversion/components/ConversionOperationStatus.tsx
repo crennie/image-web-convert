@@ -340,7 +340,7 @@ export function ConversionOperationStatus({
                     download… Your browser will save it when ready.
                 </p>
             )}
-            <div className="flex flex-wrap items-center justify-end gap-3">
+            <div className="flex flex-wrap items-start justify-end gap-3">
                 {finished && outputs.length > 0 && (
                     <Button
                         className="self-start"

@@ -61,7 +61,7 @@ function catalog(summary) {
     }
     const entries = new Map();
     for (const line of section.split('\n')) {
-        if (!/^\| E\d+ \|/u.test(line)) continue;
+        if (!/^\|\s*E\d+\s*\|/u.test(line)) continue;
         const row = cells(line);
         const reference = row[2]?.match(/`([^`]+)`\s*—\s*`([^`]+)`/u);
         if (

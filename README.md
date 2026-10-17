@@ -27,11 +27,13 @@ NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run lint
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run typecheck
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm test
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run build
-NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx run @image-web-convert/api-e2e:e2e
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false node tools/nx.mjs run @image-web-convert/api-e2e:e2e
 ```
 
 Nx Cloud may warn that this local workspace is unconnected; that does not
 prevent local commands from running.
+
+The npm scripts and `node tools/nx.mjs` launcher disable the Nx daemon and place plugin-worker sockets in a fresh owner-only directory under `tmp/`. Use this launcher for direct Nx commands while Nx 21 is retained; raw `npx nx` bypasses that local-user security mitigation. Plugin isolation remains enabled to keep build environments independent.
 
 ### API URL configuration
 
@@ -104,6 +106,13 @@ resolution fails the archive rather than silently dropping that entry. Archive
 errors before streaming are returned as HTTP errors; after headers are sent the
 response is closed. Client aborts stop pending archive work.
 
+ZIP requests accept 1–32 distinct IDs (each 1–128 ASCII letters, digits, `_`, or
+`-`) and an optional archive name of at most 128 characters. Invalid requests
+return HTTP 400. At most two archives run per API process; excess requests get
+HTTP 503 `archive_busy` before file lookup. Each stream has a 30-second deadline.
+Names in ZIP entries and download headers are bounded and sanitized; the HTTP
+header provides an ASCII fallback and a UTF-8 filename.
+
 The conversion endpoints are:
 
 | Method | Path                                                        | Purpose                                                                   |
@@ -143,28 +152,54 @@ file/count/aggregate-byte limits returns HTTP 413 `upload_limit_exceeded`.
 The active conversion screen displays the server-provided expiry deadline in
 the browser's local time.
 
-| Environment variable                      | Default     | Meaning                                         |
-| ----------------------------------------- | ----------- | ----------------------------------------------- |
-| `SESSION_TTL_MINUTES`                     | 15          | Fixed session lifetime                          |
-| `SESSION_MAX_FILES`                       | 20          | Files per manifest                              |
-| `SESSION_PER_FILE_BYTES`                  | 20000000    | Bytes per file                                  |
-| `SESSION_MAX_TOTAL_BYTES`                 | 500000000   | Total declared bytes per manifest               |
-| `CONVERSION_MAX_OPERATIONS`               | 3           | Concurrent nonterminal operations admitted      |
-| `CONVERSION_MAX_UPLOADS`                  | 2           | Concurrent upload transports across the process |
-| `CONVERSION_UPLOAD_IDLE_MS`               | 60000       | Upload inactivity deadline                      |
-| `CONVERSION_UPLOAD_TOTAL_MS`              | 300000      | Total upload deadline                           |
-| `CONVERSION_FILE_TIMEOUT_MS`              | 120000      | Cooperative per-file conversion deadline        |
-| `CONVERSION_SWEEP_INTERVAL_MS`            | 1000        | Background discovery/expiry sweep interval      |
-| `CONVERSION_SHUTDOWN_GRACE_MS`            | 10000       | Process shutdown grace period                   |
-| `CONVERSION_MAX_INPUT_PIXELS`             | 200000000   | Sharp input pixel ceiling                       |
-| `CONVERSION_MAX_DIMENSION`                | 8192        | Maximum output dimension                        |
-| `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` | 100 / 60000 | General request budget per IP                   |
+| Environment variable                        | Default     | Meaning                                                                                                        |
+| ------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------- |
+| `SESSION_TTL_MINUTES`                       | 15          | Fixed session lifetime                                                                                         |
+| `SESSION_MAX_FILES`                         | 20          | Files per manifest                                                                                             |
+| `SESSION_PER_FILE_BYTES`                    | 20000000    | Bytes per file                                                                                                 |
+| `SESSION_MAX_TOTAL_BYTES`                   | 500000000   | Total declared bytes per manifest                                                                              |
+| `CONVERSION_MAX_OPERATIONS`                 | 3           | Concurrent nonterminal operations admitted                                                                     |
+| `CONVERSION_MAX_UPLOADS`                    | 2           | Concurrent upload transports across the process                                                                |
+| `CONVERSION_UPLOAD_IDLE_MS`                 | 60000       | Upload inactivity deadline                                                                                     |
+| `CONVERSION_UPLOAD_TOTAL_MS`                | 300000      | Total upload deadline                                                                                          |
+| `CONVERSION_FILE_TIMEOUT_MS`                | 120000      | Cooperative per-file conversion deadline                                                                       |
+| `CONVERSION_SWEEP_INTERVAL_MS`              | 1000        | Background discovery/expiry sweep interval                                                                     |
+| `CONVERSION_SHUTDOWN_GRACE_MS`              | 10000       | Process shutdown grace period                                                                                  |
+| `CONVERSION_MAX_INPUT_PIXELS`               | 200000000   | Sharp input pixel ceiling                                                                                      |
+| `CONVERSION_MAX_DIMENSION`                  | 8192        | Maximum output dimension                                                                                       |
+| `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS`   | 100 / 60000 | General request budget per IP                                                                                  |
+| `TRUSTED_PROXY_IPS`                         | empty       | Comma-separated IP addresses of immediate trusted reverse proxies; forwarded IP headers are ignored by default |
+| `BODY_LIMIT_JSON` / `BODY_LIMIT_URLENCODED` | 2mb / 2mb   | Maximum parsed request body size; positive byte counts with optional `b`, `kb`, `mb`, or `gb` suffixes         |
 
 Session creation has a separate three-per-minute/IP limit. Operation status
 polling has a separate 240-per-minute/IP budget and does not consume the general
-command budget. Multipart staging limits the body to declared file bytes plus
+command budget. Session creation does consume the general budget. Health and
+readiness requests are exempt. All other requests use the general limiter before
+body parsing; a rejected request returns HTTP 429 with `Retry-After`. Configured
+cross-origin responses expose that header to browser code. CORS does not grant
+access or protect the API from nonbrowser clients. The limiters are process-local.
+
+Leave `TRUSTED_PROXY_IPS` empty when clients connect directly. Behind a reverse
+proxy, set it to the exact IP address of each proxy peer that can connect to the
+API, for example `TRUSTED_PROXY_IPS=127.0.0.1`. Do not use a hop count: requests
+that bypass the proxy must not be able to choose their own rate-limit identity.
+The trusted proxy must replace or append the real client address to
+`X-Forwarded-For`; the API uses the nearest untrusted address in that chain.
+Restrict direct access to the API from untrusted networks, and avoid listing an
+address shared with untrusted clients. Invalid proxy IPs and rate-limit values
+fail startup.
+
+Multipart staging limits the body to declared file bytes plus
 64 KiB of framing. The bounded multipart decoder buffers the body, so memory use
 scales with file size and upload concurrency.
+
+Operation creation and ZIP download requests require `Content-Type: application/json`;
+unsupported media types return HTTP 415. Malformed parsed bodies return HTTP 400
+`INVALID_BODY`, oversized bodies return HTTP 413 `PAYLOAD_TOO_LARGE`, and
+unsupported body encodings return HTTP 415 `UNSUPPORTED_BODY`. These parser
+errors use `{ "error": { "code", "message" } }`; operation validation retains
+its existing `{ "type", "message" }` response. URL-encoded input is size-limited
+but is not accepted for operation creation or ZIP downloads.
 
 Deadlines do not guarantee interruption of native code. Sharp's timeout covers
 libvips processing, excluding thread-pool waiting; the runtime also checks elapsed
@@ -193,9 +228,13 @@ operations before listening and reporting ready. Valid committed output survives
 a file interrupted without a valid commit becomes `processing_interrupted`, and
 valid remaining uploads can continue without browser polling. Invalid session
 records are isolated/reported; storage mutation failures stop scheduling/readiness.
-A background sweep expires operation sessions, but cleanup waits for active
-conversions and download leases before removing their files. Legacy-only session
-directories are not removed by the operation sweep; their access still expires.
+A background sweep reclaims expired operation, create-only, and sealed legacy
+sessions. Cleanup waits for active request, conversion, upload, and download
+leases before removing files. It ignores unrelated directories and symlinks.
+Malformed records and directories still missing a session record after five
+minutes are retained and reported once per process with their session ID in
+runtime diagnostics; an operator must repair or remove them.
+Filesystem scan or deletion failures stop readiness until process recovery.
 Shutdown stops accepting work and starting new files, drains active work within
 the grace period, and relies on restart recovery if the process must exit early.
 
@@ -238,8 +277,8 @@ npx playwright install chromium firefox webkit
 Run the same targets locally and in CI:
 
 ```sh
-NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx run @image-web-convert/web-e2e:e2e
-NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npx nx run @image-web-convert/web-e2e:browser-integration
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false node tools/nx.mjs run @image-web-convert/web-e2e:e2e
+NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false node tools/nx.mjs run @image-web-convert/web-e2e:browser-integration
 ```
 
 `e2e` covers complete and partial batches, decoded individual downloads in

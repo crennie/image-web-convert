@@ -161,5 +161,21 @@ describe('public API schemas', () => {
         expect(
             ApiDownloadFilesRequestSchema.safeParse({ ids: [] }).success,
         ).toBe(false);
+        for (const ids of [
+            ['a', 'a'],
+            Array.from({ length: 33 }, (_, index) => String(index)),
+            ['a'.repeat(129)],
+            ['bad\r\nheader'],
+        ]) {
+            expect(
+                ApiDownloadFilesRequestSchema.safeParse({ ids }).success,
+            ).toBe(false);
+        }
+        expect(
+            ApiDownloadFilesRequestSchema.safeParse({
+                ids: ['a'],
+                archiveName: 'x'.repeat(129),
+            }).success,
+        ).toBe(false);
     });
 });

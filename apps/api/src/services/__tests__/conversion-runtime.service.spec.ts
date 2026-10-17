@@ -542,6 +542,118 @@ describe('cancellation, deadlines, and cleanup ownership', () => {
         ).rejects.toMatchObject({ code: 'ENOENT' });
         await expect(fs.stat(legacy)).resolves.toBeDefined();
     });
+
+    it('reclaims expired create-only and sealed legacy sessions on restart and repeated sweeps', async () => {
+        await seedSession('empty-session');
+        await seedSession('sealed-session', {
+            sealedAt: initial.toISOString(),
+        });
+        await fs.writeFile(
+            path.join(root, 'sealed-session', 'old-image.webp'),
+            'old',
+        );
+        vi.setSystemTime(new Date(expiresAt));
+        const rt = runtime();
+        await rt.start();
+        await rt.sweep();
+        for (const sid of ['empty-session', 'sealed-session'])
+            await expect(fs.stat(path.join(root, sid))).rejects.toMatchObject({
+                code: 'ENOENT',
+            });
+        expect(rt.isReady()).toBe(true);
+    });
+
+    it('defers expiry while a request owns a session and ignores incomplete creation', async () => {
+        await seedSession('leased-session');
+        const rt = runtime();
+        await rt.start();
+        const release = rt.acquireSessionUse('leased-session');
+        await fs.mkdir(path.join(root, 'new-session'));
+        vi.setSystemTime(new Date(expiresAt));
+        await rt.sweep();
+        await expect(
+            fs.stat(path.join(root, 'leased-session')),
+        ).resolves.toBeDefined();
+        await expect(
+            fs.stat(path.join(root, 'new-session')),
+        ).resolves.toBeDefined();
+        await seedSession('new-session', {
+            expiresAt: '2026-09-09T12:30:00.000Z',
+        });
+        release();
+        await rt.sweep();
+        await expect(
+            fs.stat(path.join(root, 'leased-session')),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
+        await expect(
+            fs.stat(path.join(root, 'new-session')),
+        ).resolves.toBeDefined();
+    });
+
+    it('reports corrupt records once and preserves symlinks and unrelated directories', async () => {
+        const report = vi.fn();
+        await fs.mkdir(path.join(root, 'bad-session'), { recursive: true });
+        await fs.writeFile(sessionInfoPath('bad-session', root), '{broken');
+        await fs.mkdir(path.join(root, 'unrelated'));
+        const orphan = path.join(root, 'orphan-session');
+        await fs.mkdir(orphan);
+        const old = new Date(initial.getTime() - 600_000);
+        await fs.utimes(orphan, old, old);
+        await fs.mkdir(path.join(directory, 'outside'));
+        await fs.symlink(
+            path.join(directory, 'outside'),
+            path.join(root, 'linked-session'),
+        );
+        const rt = runtime({ onError: report });
+        await rt.start();
+        await rt.sweep();
+        expect(report).toHaveBeenCalledTimes(2);
+        expect(rt.diagnostics().invalidSessions).toContain('bad-session');
+        expect(rt.diagnostics().invalidSessions).toContain('orphan-session');
+        for (const name of [
+            'bad-session',
+            'orphan-session',
+            'unrelated',
+            'linked-session',
+        ])
+            await expect(
+                fs.lstat(path.join(root, name)),
+            ).resolves.toBeDefined();
+    });
+
+    it('drops readiness if the session root cannot be scanned', async () => {
+        await fs.mkdir(root, { recursive: true });
+        await fs.rm(root, { recursive: true });
+        await fs.writeFile(root, 'not a directory');
+        const rt = runtime();
+        await expect(rt.start()).rejects.toThrow();
+        expect(rt.isReady()).toBe(false);
+        await fs.unlink(root);
+    });
+
+    it('drops readiness when the upload root disappears during maintenance', async () => {
+        const rt = runtime();
+        await rt.start();
+        await fs.rename(root, path.join(directory, 'moved-uploads'));
+        await rt.sweep();
+        expect(rt.isReady()).toBe(false);
+        expect(rt.diagnostics().failed).toBe(true);
+    });
+
+    it('retains an expired session and drops readiness when deletion fails', async () => {
+        await seedSession('failed-delete');
+        const rt = runtime();
+        await rt.start();
+        vi.setSystemTime(new Date(expiresAt));
+        vi.spyOn(fs, 'rm').mockRejectedValueOnce(
+            Object.assign(new Error('disk unavailable'), { code: 'EACCES' }),
+        );
+        await rt.sweep();
+        expect(rt.isReady()).toBe(false);
+        await expect(
+            fs.stat(path.join(root, 'failed-delete')),
+        ).resolves.toBeDefined();
+    });
 });
 
 describe('admission and runtime lifecycle', () => {

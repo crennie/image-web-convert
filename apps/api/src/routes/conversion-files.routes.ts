@@ -14,6 +14,7 @@ import {
     archiveDownloadHeaders,
     writeZip,
     ArchiveClientAbortError,
+    acquireArchiveSlot,
 } from '../services/files.service';
 
 // New operations authorize committed files independently. A missing operation
@@ -123,32 +124,46 @@ operationRouter.post(
                 'invalid_request',
                 'Body must include { ids: string[] }',
             );
-        const { found, missing } = await resolveFilesByIds(
-            req.params.sid,
-            parsed.data.ids,
-            (_sid, id) => committed(req, res.locals.conversionOperationId, id),
-        );
-        if (!found.length)
-            throw new ConversionTransitionError(
-                'file_not_found',
-                'No requested outputs are completed',
-            );
-        if (missing.length) res.setHeader('X-Missing-Ids', missing.join(','));
-        const headers = archiveDownloadHeaders(
-            parsed.data.archiveName ?? 'images.zip',
-        );
-        res.setHeader('Content-Type', headers.contentType);
-        res.setHeader('Content-Disposition', headers.contentDisposition);
+        const releaseArchive = acquireArchiveSlot();
+        if (!releaseArchive) {
+            res.status(503).json({
+                type: 'archive_busy',
+                message: 'Too many active archive downloads',
+            });
+            return;
+        }
         try {
-            await writeZip(res, found);
-        } catch (error) {
-            if (!(error instanceof ArchiveClientAbortError)) {
-                if (!res.headersSent) {
-                    res.removeHeader('Content-Disposition');
-                    res.removeHeader('Content-Type');
+            const { found, missing } = await resolveFilesByIds(
+                req.params.sid,
+                parsed.data.ids,
+                (_sid, id) =>
+                    committed(req, res.locals.conversionOperationId, id),
+            );
+            if (!found.length)
+                throw new ConversionTransitionError(
+                    'file_not_found',
+                    'No requested outputs are completed',
+                );
+            if (missing.length)
+                res.setHeader('X-Missing-Ids', missing.join(','));
+            const headers = archiveDownloadHeaders(
+                parsed.data.archiveName ?? 'images.zip',
+            );
+            res.setHeader('Content-Type', headers.contentType);
+            res.setHeader('Content-Disposition', headers.contentDisposition);
+            try {
+                await writeZip(res, found);
+            } catch (error) {
+                if (!(error instanceof ArchiveClientAbortError)) {
+                    if (!res.headersSent) {
+                        res.removeHeader('Content-Disposition');
+                        res.removeHeader('Content-Type');
+                    }
+                    throw error;
                 }
-                throw error;
             }
+        } finally {
+            releaseArchive();
         }
     }),
 );

@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { readMeta } from '../services/storage.service';
 import {
     ArchiveClientAbortError,
+    acquireArchiveSlot,
     archiveDownloadHeaders,
     resolveFilesByIds,
     writeZip,
@@ -15,7 +16,7 @@ import {
 } from '@image-web-convert/schemas';
 
 // GET /sessions/:sid/files/:fileId  -> download/stream processed image (WebP)
-export async function show(req: Request, res: Response) {
+export async function show(req: Request, res: Response, next: NextFunction) {
     const { sid, fileId } = req.params;
     const validateResponse = await validateRequestWithToken(req, res);
     if (validateResponse.valid === false) {
@@ -46,7 +47,9 @@ export async function show(req: Request, res: Response) {
 
     res.setHeader('Content-Type', file.contentType);
     res.setHeader('Content-Disposition', file.contentDisposition);
-    return res.sendFile(file.absPath);
+    return res.sendFile(file.absPath, (error) => {
+        if (error) next(error);
+    });
 }
 
 // GET /sessions/:sid/files/:fileId/meta  -> metadata JSON (includes original + output info)
@@ -118,24 +121,36 @@ export async function downloadMany(
         }
         const { ids, archiveName } = downloadRequest.data;
 
-        const { found, missing } = await resolveFilesByIds(sid, ids);
-        if (found.length === 0) {
-            const response: ApiErrorFileNotFound = {
-                type: 'file_not_found',
-                message: 'None of the requested files were found',
-            };
-            res.status(404).json(response);
+        const releaseArchive = acquireArchiveSlot();
+        if (!releaseArchive) {
+            res.status(503).json({
+                type: 'archive_busy',
+                message: 'Too many active archive downloads',
+            });
             return;
         }
+        try {
+            const { found, missing } = await resolveFilesByIds(sid, ids);
+            if (found.length === 0) {
+                const response: ApiErrorFileNotFound = {
+                    type: 'file_not_found',
+                    message: 'None of the requested files were found',
+                };
+                res.status(404).json(response);
+                return;
+            }
 
-        if (missing.length) {
-            res.setHeader('X-Missing-Ids', missing.join(','));
+            if (missing.length) {
+                res.setHeader('X-Missing-Ids', missing.join(','));
+            }
+
+            const headers = archiveDownloadHeaders(archiveName || 'images.zip');
+            res.setHeader('Content-Type', headers.contentType);
+            res.setHeader('Content-Disposition', headers.contentDisposition);
+            await writeZip(res, found);
+        } finally {
+            releaseArchive();
         }
-
-        const headers = archiveDownloadHeaders(archiveName || 'images.zip');
-        res.setHeader('Content-Type', headers.contentType);
-        res.setHeader('Content-Disposition', headers.contentDisposition);
-        await writeZip(res, found);
     } catch (err) {
         if (err instanceof ArchiveClientAbortError || res.destroyed) return;
         if (res.headersSent) res.destroy();

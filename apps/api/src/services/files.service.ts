@@ -76,6 +76,28 @@ export class ArchiveClientAbortError extends Error {
     }
 }
 
+export class ArchiveLimitError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'ArchiveLimitError';
+    }
+}
+
+export const MAX_ACTIVE_ARCHIVES = 2;
+export const ARCHIVE_TIMEOUT_MS = 30_000;
+let activeArchives = 0;
+
+export function acquireArchiveSlot(): (() => void) | null {
+    if (activeArchives >= MAX_ACTIVE_ARCHIVES) return null;
+    activeArchives++;
+    let released = false;
+    return () => {
+        if (released) return;
+        released = true;
+        activeArchives--;
+    };
+}
+
 export function archiveDownloadHeaders(zipName: string) {
     const finalZip = sanitizeZipName(zipName);
     return {
@@ -94,7 +116,13 @@ export async function writeZip(
         let settled = false;
         let outputFinished = false;
         let finalized = false;
+        const deadline = setTimeout(
+            () => fail(new ArchiveLimitError('Archive stream timed out')),
+            ARCHIVE_TIMEOUT_MS,
+        );
+        deadline.unref();
         const cleanup = () => {
+            clearTimeout(deadline);
             output.off('finish', onFinish);
             output.off('close', onClose);
             output.off('error', fail);
@@ -156,14 +184,44 @@ export async function writeZip(
 /* ----------------------------- helpers ----------------------------- */
 function buildDownloadName(meta: ApiUploadMeta): string {
     const base = path.parse(meta.original.name).name || meta.id;
-    const safeBase = base.replace(/[/\\?%*:|"<>]/g, '_');
+    const safeBase = sanitizeFilename(base, 'image', 100);
     const extension = MIME_TO_EXT[meta.output.mime]?.[0];
     return `${safeBase}.${extension}`;
 }
 
 function buildContentDisposition(filename: string): string {
-    const fallback = filename.replace(/[/\\?%*:|"<>]/g, '_');
-    return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fallback)}`;
+    const safe = sanitizeFilename(filename, 'download');
+    const ascii = safe.replace(/[^\x20-\x7e]/g, '_');
+    const encoded = encodeURIComponent(safe).replace(
+        /[!'()*]/g,
+        (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
+    return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+function sanitizeFilename(
+    input: string,
+    fallback: string,
+    maxLength = 120,
+): string {
+    const cleaned = Array.from(input)
+        .map((character) => {
+            const codePoint = character.codePointAt(0) ?? 0;
+            return codePoint < 32 ||
+                codePoint === 127 ||
+                (codePoint >= 0xd800 && codePoint <= 0xdfff) ||
+                /\p{Cf}/u.test(character) ||
+                /[/\\?%*:|"<>]/.test(character)
+                ? '_'
+                : character;
+        })
+        .join('')
+        .replace(/^\.+|[. ]+$/g, '');
+    const bounded = Array.from(cleaned)
+        .slice(0, maxLength)
+        .join('')
+        .replace(/[. ]+$/g, '');
+    return bounded || fallback;
 }
 
 function uniquifyArchiveNames(entries: { archiveName: string }[]) {
@@ -190,6 +248,6 @@ function uniquifyArchiveNames(entries: { archiveName: string }[]) {
 
 function sanitizeZipName(input?: string): string {
     const raw = (input && input.trim()) || 'images.zip';
-    const safe = raw.replace(/[/\\?%*:|"<>]/g, '_');
+    const safe = sanitizeFilename(raw, 'images', 112);
     return safe.toLowerCase().endsWith('.zip') ? safe : `${safe}.zip`;
 }

@@ -1,15 +1,48 @@
 import { z } from 'zod';
+import { isIP } from 'node:net';
 import type { SessionImageConfig } from '@image-web-convert/schemas';
+
+const bodyLimit = z.string().refine((value) => {
+    const match = /^([1-9]\d*)(b|kb|mb|gb)?$/i.exec(value);
+    if (!match) return false;
+    const multiplier = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 }[
+        (match[2] ?? 'b').toLowerCase() as 'b' | 'kb' | 'mb' | 'gb'
+    ];
+    return Number.isSafeInteger(Number(match[1]) * multiplier);
+}, 'Expected a positive byte count (for example, 2mb)');
+
+const trustedProxyIps = z
+    .string()
+    .default('')
+    .transform((value, ctx) => {
+        if (value === '') return [];
+        const addresses = value.split(',').map((address) => address.trim());
+        if (addresses.some((address) => !isIP(address))) {
+            ctx.addIssue({
+                code: 'custom',
+                message: 'Expected comma-separated proxy IP addresses',
+            });
+            return z.NEVER;
+        }
+        return addresses;
+    });
 
 const EnvSchema = z.object({
     APP_VERSION: z.string().default('0.0.0'),
 
     PORT: z.coerce.number().int().positive().default(4201),
 
-    BODY_LIMIT_JSON: z.string().default('2mb'),
-    BODY_LIMIT_URLENCODED: z.string().default('2mb'),
-    RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+    BODY_LIMIT_JSON: bodyLimit.default('2mb'),
+    BODY_LIMIT_URLENCODED: bodyLimit.default('2mb'),
+    RATE_LIMIT_WINDOW_MS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .max(2_147_483_647)
+        .default(60_000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
+    // Only these immediate proxy peers may supply X-Forwarded-For.
+    TRUSTED_PROXY_IPS: trustedProxyIps,
 
     CONVERSION_MAX_OPERATIONS: z.coerce.number().int().positive().default(3),
     CONVERSION_MAX_UPLOADS: z.coerce.number().int().positive().default(2),

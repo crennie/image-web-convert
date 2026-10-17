@@ -22,7 +22,9 @@ export function browserConfig(suite: 'e2e' | 'integration', realApi: boolean) {
         retries: 0,
         timeout: 30_000,
         expect: { timeout: 10_000 },
-        globalTimeout: 300_000,
+        // The 66-case integration suite takes about 262 seconds alongside
+        // the real browser suite in CI; allow bounded scheduling headroom.
+        globalTimeout: suite === 'integration' ? 360_000 : 300_000,
         use: {
             realApi,
             actionTimeout: 10_000,

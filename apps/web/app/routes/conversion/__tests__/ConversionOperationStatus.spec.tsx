@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import type { ConversionFile } from '@image-web-convert/schemas';
 import type { UploadAttempt } from '../api/conversionUploadTransport';
@@ -407,10 +407,11 @@ it.each(['image', 'zip'] as const)(
     },
 );
 
-it('reveals status help on focus and dismisses it with Escape', () => {
+it('keeps focused status help open through scroll and pointer exit, then dismisses with Escape', async () => {
     render(<ConversionOperationStatus {...props()} />);
     const trigger = screen.getByRole('button', { name: 'Waiting to upload' });
     fireEvent.focus(trigger);
+    act(() => trigger.focus());
     expect(screen.getByRole('tooltip')).toHaveTextContent(
         'Keep this page open',
     );
@@ -418,6 +419,11 @@ it('reveals status help on focus and dismisses it with Escape', () => {
         'aria-describedby',
         screen.getByRole('tooltip').id,
     );
+    fireEvent.scroll(window);
+    expect(screen.getByRole('tooltip')).toBeVisible();
+    fireEvent.mouseLeave(trigger.parentElement!);
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    expect(screen.getByRole('tooltip')).toBeVisible();
     fireEvent.keyDown(trigger, { key: 'Escape' });
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
 });

@@ -95,6 +95,11 @@ export async function initTelemetry(
     const sdk = new NodeSDK({
         resource,
         traceExporter: exporter,
+        // SDK 0.223 enables OTLP metrics by default; 0.203 required an explicit
+        // exporter. Preserve that opt-in and avoid a new collector connection.
+        metricReaders: process.env.OTEL_METRICS_EXPORTER?.split(',').some(
+            (value) => value.trim(),
+        ) ? undefined : [],
         instrumentations,
     });
 

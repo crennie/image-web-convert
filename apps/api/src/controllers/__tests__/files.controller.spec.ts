@@ -11,7 +11,11 @@ vi.mock('../../services/auth.service', () => ({
 
 const resolveMock = vi.fn();
 const writeZipMock = vi.fn();
+const acquireArchiveSlotMock = vi.fn(
+    (): (() => void) | null => () => undefined,
+);
 vi.mock('../../services/files.service', () => ({
+    acquireArchiveSlot: () => acquireArchiveSlotMock(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolveFilesByIds: (...args: any[]) => resolveMock(...args),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -128,7 +132,7 @@ describe('files.controller.show', () => {
         const req = makeReq({ params: { sid: 'S', fileId: 'F' } });
         const res = makeRes();
 
-        await show(req, res);
+        await show(req, res, vi.fn());
 
         expect(res.status).toHaveBeenCalledWith(403);
         expect(res._json).toEqual({ status: 'error', message: 'forbidden' });
@@ -139,7 +143,7 @@ describe('files.controller.show', () => {
         const req = makeReq({ params: { sid: 'S', fileId: 'F' } });
         const res = makeRes();
 
-        await show(req, res);
+        await show(req, res, vi.fn());
 
         expect(res.status).toHaveBeenCalledWith(409);
         expect(res._json).toMatchObject({ type: 'session_not_ready' });
@@ -152,7 +156,7 @@ describe('files.controller.show', () => {
         const req = makeReq({ params: { sid: 'S', fileId: 'F' } });
         const res = makeRes();
 
-        await show(req, res);
+        await show(req, res, vi.fn());
 
         expect(res.status).toHaveBeenCalledWith(404);
         expect(res._json?.message).toMatch(/Requested file not found/i);
@@ -168,7 +172,7 @@ describe('files.controller.show', () => {
         const req = makeReq({ params: { sid: 'S', fileId: 'F' } });
         const res = makeRes();
 
-        await show(req, res);
+        await show(req, res, vi.fn());
 
         expect(res.setHeader).toHaveBeenCalledWith(
             'Content-Type',
@@ -178,7 +182,10 @@ describe('files.controller.show', () => {
             'Content-Disposition',
             expect.stringContaining('F.webp'),
         );
-        expect(res.sendFile).toHaveBeenCalledWith('/abs/F.webp');
+        expect(res.sendFile).toHaveBeenCalledWith(
+            '/abs/F.webp',
+            expect.any(Function),
+        );
     });
 });
 
@@ -245,6 +252,21 @@ describe('files.controller.meta', () => {
 describe('files.controller.downloadMany', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        acquireArchiveSlotMock.mockImplementation(() => () => undefined);
+    });
+
+    it('rejects archive saturation before reading files', async () => {
+        validateMock.mockResolvedValueOnce(okValidated('sealed'));
+        acquireArchiveSlotMock.mockReturnValueOnce(null);
+        const res = makeRes();
+        await downloadMany(
+            makeReq({ params: { sid: 'S' }, body: { ids: ['a'] } }),
+            res,
+            vi.fn(),
+        );
+        expect(res.status).toHaveBeenCalledWith(503);
+        expect(res._json).toMatchObject({ type: 'archive_busy' });
+        expect(resolveMock).not.toHaveBeenCalled();
     });
 
     it('returns auth error when validation fails', async () => {

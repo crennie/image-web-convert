@@ -56,7 +56,7 @@ jobs:
             # Prepend any command with "nx-cloud record --" to record its logs to Nx Cloud
             # - run: npx nx-cloud record -- echo Hello World
             # When you enable task distribution, run the e2e-ci task instead of e2e
-            - run: npx nx run-many -t lint test build typecheck e2e browser-integration --cloud=false --no-cloud
+            - run: npm run ci:hook
             - name: Retain browser test diagnostics
               if: failure()
               uses: actions/upload-artifact@v4
@@ -68,5 +68,5 @@ jobs:
                   if-no-files-found: ignore
                   retention-days: 7
             # Nx Cloud recommends fixes for failures to help you get CI green faster. Learn more: https://nx.dev/ci/features/self-healing-ci
-            - run: npx nx fix-ci
+            - run: node tools/nx.mjs fix-ci
               if: always()
