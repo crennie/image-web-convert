@@ -594,6 +594,7 @@ it('rejects expired-session requests without receiving bytes', async () => {
     const info = await readSessionInfo(session.sid);
     await writeSessionInfo(session.sid, {
         ...info,
+        createdAt: new Date(-1).toISOString(),
         expiresAt: new Date(0).toISOString(),
     });
     expect((await upload(session, op)).status).toBe(403);

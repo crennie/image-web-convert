@@ -69,9 +69,11 @@ it('automatically converts real PNG, HEIC and AVIF outputs with bounded dimensio
                 sessionInfoPath(sid, root),
                 JSON.stringify({
                     id: sid,
+                    createdAt: new Date().toISOString(),
                     expiresAt: new Date(Date.now() + 900000).toISOString(),
                     sealedAt: null,
                     counts: { files: 0, totalBytes: 0 },
+                    tokenHash: 'a'.repeat(64),
                 }),
             );
             const { operation } = await runtime.createOperation(sid, {

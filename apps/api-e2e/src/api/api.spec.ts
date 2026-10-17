@@ -614,6 +614,7 @@ it('rejects an expired test session through real authentication without creating
         infoPath,
         JSON.stringify({
             ...info,
+            createdAt: new Date(Date.now() - 2000).toISOString(),
             expiresAt: new Date(Date.now() - 1000).toISOString(),
         }),
     );
@@ -1047,6 +1048,8 @@ it('still downloads existing sealed legacy sessions individually and as ZIPs', a
         infoPath,
         JSON.stringify({
             ...sealed,
+            createdAt: new Date(Date.now() - 3000).toISOString(),
+            sealedAt: new Date(Date.now() - 2000).toISOString(),
             expiresAt: new Date(Date.now() - 1000).toISOString(),
         }),
     );

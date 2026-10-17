@@ -3,6 +3,10 @@ import path from 'node:path';
 import { ConversionIdSchema } from '@image-web-convert/schemas';
 import { ConversionStorageError } from './conversion-storage.service';
 import { sessionInfoPath } from './storage.paths';
+import {
+    InvalidSessionRecordError,
+    parseSessionInfo,
+} from './sessions.service';
 
 function missing(error: unknown): boolean {
     return (
@@ -13,12 +17,7 @@ function missing(error: unknown): boolean {
     );
 }
 
-export class InvalidSessionRecordError extends Error {
-    constructor(cause: unknown) {
-        super('Invalid persisted session record', { cause });
-        this.name = 'InvalidSessionRecordError';
-    }
-}
+export { InvalidSessionRecordError } from './sessions.service';
 
 /** Only directories with a matching, valid session record are owned by retention.
  * A conversion marker delegates deletion to conversion storage's claim checks. */
@@ -84,26 +83,10 @@ export function createSessionRetention(root: string, now: () => Date) {
             } catch (error) {
                 throw new InvalidSessionRecordError(error);
             }
-            if (
-                !info ||
-                typeof info !== 'object' ||
-                !('id' in info) ||
-                info.id !== sid ||
-                !('expiresAt' in info) ||
-                typeof info.expiresAt !== 'string' ||
-                !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(
-                    info.expiresAt,
-                ) ||
-                !Number.isFinite(Date.parse(info.expiresAt)) ||
-                !('createdAt' in info) ||
-                typeof info.createdAt !== 'string' ||
-                !Number.isFinite(Date.parse(info.createdAt)) ||
-                !('tokenHash' in info) ||
-                typeof info.tokenHash !== 'string' ||
-                !info.tokenHash
-            )
-                throw new InvalidSessionRecordError('Invalid session fields');
-            return Date.parse(info.expiresAt) <= now().getTime();
+            return (
+                Date.parse(parseSessionInfo(info, sid).expiresAt) <=
+                now().getTime()
+            );
         } catch (error) {
             if (missing(error)) return false; // Creation may be between mkdir and record write.
             if (error instanceof InvalidSessionRecordError) throw error;

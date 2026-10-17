@@ -5,7 +5,7 @@
 - Discovery completed: 2026-10-16; baseline commit `ec20ff482267d8fa2569fa85a7d1955a337ff806`.
 - Scope: personal, self-hosted, single persistent API process with exclusive local storage. Public anonymous hosting is a separate release gate, not an implicit requirement to add accounts, a database, a queue, SaaS monitoring, or distributed workers.
 - Discovery and PF-01 changed only documentation. PF-02 updates exposed dependency families, adds boundary regressions, and preserves telemetry/build behavior; see its checkpoint for current evidence.
-- Task states: `pending`, `in_progress`, `blocked`, `done`, `deferred`. PF-01, PF-01A, PF-02, PF-03, PF-04, PF-05, PF-06, and PF-07 are **done**; all other tasks are **pending**. Discovery is **done**, with explicitly recorded verification gaps. Priorities: **P0** release blocker/security exposure; **P1** required finalization; **P2** bounded cleanup/documentation; **PUBLIC** required before untrusted public exposure.
+- Task states: `pending`, `in_progress`, `blocked`, `done`, `deferred`. PF-01, PF-01A, PF-02, PF-03, PF-04, PF-05, PF-06, and PF-07 are **done**; PF-08 is **in_progress**; all other tasks are **pending**. Discovery is **done**, with explicitly recorded verification gaps. Priorities: **P0** release blocker/security exposure; **P1** required finalization; **P2** bounded cleanup/documentation; **PUBLIC** required before untrusted public exposure.
 - In subsequent sessions, select the highest-priority ready task (listed order breaks priority ties), mark it in progress here, inspect only changed evidence, implement one reviewable slice, run its tests, and record commit, commands, outcomes, residual risks, and status. Do not mark a task done merely because a test file exists. Refresh registry/security results at implementation time; do not repeat the entire assessment.
 - Preserve the architecture's HTTP adapter → runtime → transitions/storage/encoder boundaries, immutable manifests, independent commits, process-local claims/leases, and controlled-process test seams. Keep legacy download compatibility until an explicit retirement decision.
 
@@ -145,7 +145,7 @@ Every task is independently reviewable. Dependencies refer to completed tasks; s
 - **Acceptance:** output format/dimensions/metadata/first-frame/color/alpha behavior documented and verified; supported self-host memory budget measured; conservative defaults justified. A public-host policy either contains hard decode failures or explicitly disallows unsafe input paths; process isolation requires scope decision PF-20.
 - **Required tests:** real HEIC and corrupt HEIC, wrong magic/MIME, EXIF orientation/GPS stripping, ICC, transparent JPEG policy, animation, near-limit pixels/dimensions, cancellation/timeouts retaining worker ownership. Bounded subprocess stress records peak RSS and kills only its own fixture process.
 
-### PF-08 — Validate persistence and contain filesystem access (P1, pending)
+### PF-08 — Validate persistence and contain filesystem access (P1, in_progress)
 
 - **Scope/why:** F08; schema-validate session/legacy metadata, safe expiry semantics, distinguish ENOENT from corruption/permission/storage failures, verify path containment and filesystem permissions.
 - **Depends:** PF-03.
@@ -451,6 +451,14 @@ Residual boundary: malformed or recordless directories require operator repair o
 The bounded `node tools/measure-image-budget.mjs` runner uses two fixed fixtures in separate subprocesses with a 30-second kill deadline per child. Two Linux aarch64/Node 22.22.0/Sharp 0.35.5 runs observed peak RSS of **377–381 MiB** for a 12 MP HEIC and **179–185 MiB** for a 20 MP PNG; corresponding conversion times were **1.86–2.66 s** and **0.26–0.32 s**. README recommends reserving 2 GiB for the single API process, retaining the 20 MP default, and monitoring RSS. These measurements are not worst-case guarantees. Untrusted public uploads remain unsupported until PF-20 resolves hard decoder isolation or an enforced narrower policy; native code still runs in the API process.
 
 Validation: full API suite **243/243 passed**; separately started API suite **26/26 passed**, including its production build; API lint and typecheck passed; and the inventory checker reports **73/73 covered**. Typecheck initially failed when run concurrently with an upstream schema build that replaced generated declarations; it passed when rerun after the build. Changed-file Prettier passed except the previously unformatted `image.service.spec.ts` (its formatting failure predates this task); `git diff --check` passed. Committed locally for export; no remote write was made.
+
+### PF-08 session-record checkpoint (2026-10-17)
+
+**Status: in progress.** Session reads and retention now share strict persisted-record validation: matching safe ID, canonical valid timestamps in chronological order, nonnegative integer counts, and a 64-character SHA-256 token hash. Invalid expiry fails closed. Authentication maps only ENOENT to 404; corrupt or unreadable records return a generic 503 storage error and emit an operator diagnostic without exposing record contents. New session directories and files are created with owner-only modes. Existing expired-session fixtures were updated to keep valid chronology. UC-074/E109–E110 maps the new behavior.
+
+Validation: API suite **249/249 passed** after the implementation; focused incremental session/auth tests **8/8 passed** after the final assertions; separately started API suite **26/26 passed**, including production build and legacy downloads. API typecheck and lint, use-case inventory **74/74 covered**, and `git diff --check` passed. An initial API run failed because an expiry fixture placed expiry before creation; the first process run found two more such fixtures. All were corrected and the subsequent runs passed. An attempted Vitest `--runInBand` flag was unsupported; the normal project test command was used. Local commit: `PF-08: validate persisted session records`. No remote write was made.
+
+Remaining PF-08 work: validate legacy file metadata and stored names, contain traversal and symlinks at download entrypoints, audit modes on conversion artifacts and existing directories, classify read/write/rename/short-write faults and readiness, and prove isolation and partial-commit recovery at the actual process boundary. The current schema check does not itself protect against a local operator that can replace files after validation.
 
 ## Dated dependency inventory (2026-10-16)
 

@@ -4,6 +4,7 @@ import {
     create,
     isSessionExpired,
     readSessionInfo,
+    InvalidSessionRecordError,
     writeSessionInfo,
 } from '../sessions.service';
 import { sessionDir, sessionInfoPath } from '../storage.paths';
@@ -21,7 +22,7 @@ const h = vi.hoisted(() => {
         ttlMinutes: 45,
         fixedSid: 'sid-1234567890abcdef1234567890abcdef',
         token: 'token-abc',
-        tokenHash: 'hash-abc',
+        tokenHash: 'a'.repeat(64),
         fixedNow: new Date('2025-09-17T15:00:00.000Z'),
     };
 });
@@ -78,6 +79,10 @@ describe('session.service create()', () => {
         const infoPath = sessionInfoPath(h.fixedSid);
         const stat = await fs.stat(infoPath);
         expect(stat.isFile()).toBe(true);
+        expect(stat.mode & 0o777).toBe(0o600);
+        expect((await fs.stat(sessionDir(h.fixedSid))).mode & 0o777).toBe(
+            0o700,
+        );
 
         const parsed = JSON.parse(await fs.readFile(infoPath, 'utf8'));
         expect(parsed).toMatchObject({
@@ -126,7 +131,7 @@ describe('writeSessionInfo / readSessionInfo', () => {
             expiresAt: new Date(h.fixedNow.getTime() + 5000).toISOString(),
             sealedAt: null,
             counts: { files: 2, totalBytes: 1234 },
-            tokenHash: 'hash-xyz',
+            tokenHash: 'b'.repeat(64),
         };
 
         await fs.mkdir(sessionDir(sid), { recursive: true });
@@ -137,5 +142,30 @@ describe('writeSessionInfo / readSessionInfo', () => {
 
         const roundTrip = await readSessionInfo(sid);
         expect(roundTrip).toEqual(info);
+    });
+
+    it.each([
+        { expiresAt: 'not-a-date' },
+        { tokenHash: 'invalid' },
+        { id: '../other' },
+        { counts: { files: -1, totalBytes: 0 } },
+    ])('rejects malformed persisted records', async (change) => {
+        const sid = 'malformed';
+        await fs.mkdir(sessionDir(sid), { recursive: true });
+        await fs.writeFile(
+            sessionInfoPath(sid),
+            JSON.stringify({
+                id: sid,
+                createdAt: '2025-09-17T15:00:00.000Z',
+                expiresAt: '2025-09-17T16:00:00.000Z',
+                sealedAt: null,
+                counts: { files: 0, totalBytes: 0 },
+                tokenHash: 'a'.repeat(64),
+                ...change,
+            }),
+        );
+        await expect(readSessionInfo(sid)).rejects.toBeInstanceOf(
+            InvalidSessionRecordError,
+        );
     });
 });
