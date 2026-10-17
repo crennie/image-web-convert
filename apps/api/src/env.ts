@@ -80,7 +80,7 @@ const EnvSchema = z.object({
         .number()
         .int()
         .positive()
-        .default(200_000_000),
+        .default(20_000_000),
     CONVERSION_MAX_DIMENSION: z.coerce.number().int().positive().default(8192),
 
     SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(15),

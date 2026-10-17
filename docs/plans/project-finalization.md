@@ -5,7 +5,7 @@
 - Discovery completed: 2026-10-16; baseline commit `ec20ff482267d8fa2569fa85a7d1955a337ff806`.
 - Scope: personal, self-hosted, single persistent API process with exclusive local storage. Public anonymous hosting is a separate release gate, not an implicit requirement to add accounts, a database, a queue, SaaS monitoring, or distributed workers.
 - Discovery and PF-01 changed only documentation. PF-02 updates exposed dependency families, adds boundary regressions, and preserves telemetry/build behavior; see its checkpoint for current evidence.
-- Task states: `pending`, `in_progress`, `blocked`, `done`, `deferred`. PF-01, PF-01A, PF-02, PF-03, PF-04, PF-05, and PF-06 are **done**; all other tasks are **pending**. Discovery is **done**, with explicitly recorded verification gaps. Priorities: **P0** release blocker/security exposure; **P1** required finalization; **P2** bounded cleanup/documentation; **PUBLIC** required before untrusted public exposure.
+- Task states: `pending`, `in_progress`, `blocked`, `done`, `deferred`. PF-01, PF-01A, PF-02, PF-03, PF-04, PF-05, PF-06, and PF-07 are **done**; all other tasks are **pending**. Discovery is **done**, with explicitly recorded verification gaps. Priorities: **P0** release blocker/security exposure; **P1** required finalization; **P2** bounded cleanup/documentation; **PUBLIC** required before untrusted public exposure.
 - In subsequent sessions, select the highest-priority ready task (listed order breaks priority ties), mark it in progress here, inspect only changed evidence, implement one reviewable slice, run its tests, and record commit, commands, outcomes, residual risks, and status. Do not mark a task done merely because a test file exists. Refresh registry/security results at implementation time; do not repeat the entire assessment.
 - Preserve the architecture's HTTP adapter → runtime → transitions/storage/encoder boundaries, immutable manifests, independent commits, process-local claims/leases, and controlled-process test seams. Keep legacy download compatibility until an explicit retirement decision.
 
@@ -48,7 +48,7 @@ Attack scenarios to verify: cross-session operation/slot/file access; encoded/ma
 
 ## Tests and evidence gaps
 
-`npm run check:use-cases` validates **71 cases, all mapped covered** after PF-06. This is a behavior/evidence-map result, not 100% code coverage or a fresh execution verdict. Reuse `docs/testing/use-case-inventory-method.md`; extend JSON and readable inventory together for new contracts.
+`npm run check:use-cases` validates **73 cases, all mapped covered** through PF-07. This is a behavior/evidence-map result, not 100% code coverage or a fresh execution verdict. Reuse `docs/testing/use-case-inventory-method.md`; extend JSON and readable inventory together for new contracts.
 
 Existing protection includes creation idempotency/conflicts, auth/expiry, byte budgets, malformed uploads, contention and disconnects, deadlines, FIFO, independent commits, cancellation, abrupt/graceful recovery, partial ZIP/name ordering, real decoded WebP/JPEG/PNG/AVIF downloads and browser navigation. Avoid duplicating these happy paths merely to inflate test counts.
 
@@ -138,7 +138,7 @@ Every task is independently reviewable. Dependencies refer to completed tasks; s
 - **Acceptance:** abandoned session creation does not cause indefinite growth; active uploads/conversions/downloads retain lease safety; cleanup validates root/IDs and never deletes live/unrelated directories. Corrupt retention policy is bounded or operator-actionable.
 - **Required tests:** create-only expiry, legacy expiry, cleanup/create race, active download/conversion deferral, corrupt record, symlink/non-session directory, cleanup failure/readiness, restart and repeated sweep idempotence.
 
-### PF-07 — Image resource and privacy regression matrix (P1; hard isolation PUBLIC decision, pending)
+### PF-07 — Image resource and privacy regression matrix (P1; hard isolation PUBLIC decision, done)
 
 - **Scope/why:** F07; measure HEIC/Sharp peak memory and latency, fail HEIC decode explicitly, validate effective limits, add small real fixtures for image contracts. Do not attempt dangerous unbounded bombs in the main test runner.
 - **Depends:** PF-02, PF-03.
@@ -443,6 +443,14 @@ Residual boundary: the two-archive budget is per API process, matching the singl
 Validation: full API suite **234/234 passed**; separately started API suite **26/26 passed**, with production build as a prerequisite; API lint and typecheck passed. The inventory checker reports **71/71 covered** with UC-070–071/E95–E100 for expiry, leases, isolation, and storage faults. Focused tests cover restart and repeated-sweep idempotence, create/cleanup overlap, corrupt and stale recordless directories, symlinks, and failed deletion. The first full API run found test fixtures missing the newly required lease method; those fixtures were updated. The first process run exposed a generic 500 for a blocked conversion session at the new lease guard; it now preserves the existing `503 storage_error` contract, and the final process run passed. Changed-file Prettier and `git diff --check` passed. No commit or remote write was made; pre-existing PF-01A–PF-05 working-tree changes remain.
 
 Residual boundary: malformed or recordless directories require operator repair or removal and are deliberately not deleted automatically. Session authentication and legacy metadata validation, path containment, and private filesystem modes remain PF-08. This single-process lease model is not a distributed storage protocol and does not establish public-host readiness.
+
+### PF-07 closeout (2026-10-17)
+
+**Status: done for self-host; hard isolation remains a PF-20 public gate.** HEIC header dimensions are checked against the effective pixel ceiling before file buffering and `heic-convert` raster decode; a rejected decoder no longer falls back to Sharp. The default ceiling is 20 MP instead of 200 MP. Sharp encoding now fails on decoder errors, and both metadata and encoding stages enforce the pixel ceiling. HEIC with alpha uses a PNG intermediate. JPEG output explicitly flattens transparency to white. Real fixtures cover valid/truncated HEIC, invalid magic, a 20 MP at-limit PNG, EXIF orientation and removal, ICC removal/sRGB output, transparent JPEG, and first-frame/reject animation policy. Existing runtime tests assert timeout, cancellation, late-result discard, and retained worker ownership; the real HEIC smoke test records event-loop delay. UC-072–073/E101–E108 map the new contracts.
+
+The bounded `node tools/measure-image-budget.mjs` runner uses two fixed fixtures in separate subprocesses with a 30-second kill deadline per child. Two Linux aarch64/Node 22.22.0/Sharp 0.35.5 runs observed peak RSS of **377–381 MiB** for a 12 MP HEIC and **179–185 MiB** for a 20 MP PNG; corresponding conversion times were **1.86–2.66 s** and **0.26–0.32 s**. README recommends reserving 2 GiB for the single API process, retaining the 20 MP default, and monitoring RSS. These measurements are not worst-case guarantees. Untrusted public uploads remain unsupported until PF-20 resolves hard decoder isolation or an enforced narrower policy; native code still runs in the API process.
+
+Validation: full API suite **243/243 passed**; separately started API suite **26/26 passed**, including its production build; API lint and typecheck passed; and the inventory checker reports **73/73 covered**. Typecheck initially failed when run concurrently with an upstream schema build that replaced generated declarations; it passed when rerun after the build. Changed-file Prettier passed except the previously unformatted `image.service.spec.ts` (its formatting failure predates this task); `git diff --check` passed. Committed locally for export; no remote write was made.
 
 ## Dated dependency inventory (2026-10-16)
 

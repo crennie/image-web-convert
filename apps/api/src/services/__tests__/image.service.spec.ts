@@ -69,13 +69,14 @@ function makeSharpChain() {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function setupSharp(meta: any, bufferResult: { data: Buffer; info: { width: number; height: number } }) {
+function setupSharp(meta: any, bufferResult: { data: Buffer; info: { width: number; height: number } }, preflight = false) {
     const metaChain = makeSharpChain();
     metaChain.metadata.mockResolvedValue(meta);
 
     const pipeChain = makeSharpChain();
     pipeChain.toBuffer.mockResolvedValue(bufferResult);
 
+    if (preflight) mockedSharp.mockImplementationOnce(() => metaChain);
     mockedSharp
         // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
         .mockImplementationOnce((_src: any, _opts: any) => metaChain) // baseSharp for metadata
@@ -131,7 +132,7 @@ describe("processImageToMimeType (unit)", () => {
 
         const meta = { width: 500, height: 300, hasAlpha: false, pages: 1 };
         const out = { data: Buffer.from([9, 9, 9]), info: { width: 400, height: 240 } };
-        const { metaChain, pipeChain } = setupSharp(meta, out);
+        const { metaChain, pipeChain } = setupSharp(meta, out, true);
 
         const result = await processImageToMimeType({ outputMime: 'image/webp',inputPath });
 
@@ -142,20 +143,26 @@ describe("processImageToMimeType (unit)", () => {
             expect.objectContaining({ format: "JPEG", quality: 0.9 })
         );
 
-        // sharp was called twice, both with the converted buffer
+        // Sharp inspects the HEIC header before heic-convert runs.
         expect(mockedSharp).toHaveBeenNthCalledWith(
             1,
+            inputPath,
+            expect.objectContaining({ limitInputPixels: 268435456, failOn: 'error' })
+        );
+        // Then Sharp inspects and encodes the converted buffer.
+        expect(mockedSharp).toHaveBeenNthCalledWith(
+            2,
             convertedAb,
             expect.objectContaining({ animated: false, failOn: "error", limitInputPixels: 268435456 })
         );
         expect(mockedSharp).toHaveBeenNthCalledWith(
-            2,
+            3,
             convertedAb,
             expect.objectContaining({ animated: false, limitInputPixels: 268435456 })
         );
 
         // pipeline calls
-        expect(metaChain.metadata).toHaveBeenCalledTimes(1);
+        expect(metaChain.metadata).toHaveBeenCalledTimes(2);
         expect(pipeChain.rotate).toHaveBeenCalledTimes(1);
         expect(pipeChain.toColourspace).toHaveBeenCalledWith("srgb");
         // default maxDimension=4096 -> resize called
@@ -189,32 +196,47 @@ describe("processImageToMimeType (unit)", () => {
         });
     });
 
-    it("HEIC: if convert throws, continues with original inputPath", async () => {
+    it("HEIC: if convert throws, fails without retrying the original input", async () => {
         const inputPath = "./unit_test.heic";
         mockedFT.mockResolvedValueOnce({ mime: "image/heic", ext: '.heic' });
         mockedReadFile.mockResolvedValueOnce(Buffer.from([7, 7, 7]));
         mockedHeicConvert.mockRejectedValueOnce(new Error("convert fail"));
 
-        const meta = { width: 100, height: 50, hasAlpha: true, pages: 1 };
-        const out = { data: Buffer.from([1, 2]), info: { width: 90, height: 45 } };
-        setupSharp(meta, out);
+        const header = makeSharpChain();
+        header.metadata.mockResolvedValue({ width: 100, height: 50 });
+        mockedSharp.mockImplementationOnce(() => header);
 
-        const result = await processImageToMimeType({ outputMime: 'image/webp',inputPath });
+        await expect(processImageToMimeType({ outputMime: 'image/webp',inputPath }))
+            .rejects.toThrow('HEIC decoding failed');
+        expect(mockedSharp).toHaveBeenCalledTimes(1);
+    });
 
-        // sharp was called with the original path both times
-        expect(mockedSharp).toHaveBeenNthCalledWith(
-            1,
-            inputPath,
-            expect.objectContaining({ animated: false, failOn: "error" })
+    it('HEIC: preserves alpha in the intermediate image', async () => {
+        mockedFT.mockResolvedValueOnce({ mime: 'image/heic', ext: '.heic' });
+        mockedReadFile.mockResolvedValueOnce(Buffer.from([1, 2, 3]));
+        mockedHeicConvert.mockResolvedValueOnce(new ArrayBuffer(4));
+        setupSharp(
+            { width: 2, height: 2, hasAlpha: true, pages: 1 },
+            { data: Buffer.from([1]), info: { width: 2, height: 2 } },
+            true,
         );
-        expect(mockedSharp).toHaveBeenNthCalledWith(
-            2,
-            inputPath,
-            expect.objectContaining({ animated: false })
+        await processImageToMimeType({ inputPath: './alpha.heic', outputMime: 'image/webp' });
+        expect(mockedHeicConvert).toHaveBeenCalledWith(
+            expect.objectContaining({ format: 'PNG' }),
         );
+    });
 
-        expect(result.info.width).toBe(90);
-        expect(result.inputMeta.mime).toBe("image/heic");
+    it('HEIC: rejects oversized headers before reading or decoding the raster', async () => {
+        mockedFT.mockResolvedValueOnce({ mime: 'image/heic', ext: '.heic' });
+        const header = makeSharpChain();
+        header.metadata.mockResolvedValue({ width: 5000, height: 5000 });
+        mockedSharp.mockImplementationOnce(() => header);
+        await expect(processImageToMimeType({
+            inputPath: './large.heic', outputMime: 'image/webp',
+            options: { limitInputPixels: 20_000_000 },
+        })).rejects.toThrow('Image dimensions exceed the input pixel limit');
+        expect(mockedReadFile).not.toHaveBeenCalled();
+        expect(mockedHeicConvert).not.toHaveBeenCalled();
     });
 
     it("PNG (non-HEIC): does not call heic-convert and processes straight through", async () => {

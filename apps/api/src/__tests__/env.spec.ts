@@ -14,7 +14,7 @@ describe('API environment configuration', () => {
             fileTimeoutMs: 120000,
             sweepIntervalMs: 1000,
             shutdownGraceMs: 10000,
-            maxInputPixels: 200000000,
+            maxInputPixels: 20000000,
             maxDimension: 8192,
         });
         expect(
