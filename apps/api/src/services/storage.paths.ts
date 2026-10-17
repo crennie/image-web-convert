@@ -24,15 +24,15 @@ export function sessionInfoPath(sid: string, root = UPLOAD_DIR): string {
     return path.join(sessionDir(sid, root), 'session.info.json');
 }
 
-export function sessionMetaPath(sid: string, fileId: string): string {
-    return path.join(sessionDir(sid), `${fileId}.json`);
-}
-
 export function pathForStored(sid: string, storedName: string): string {
+    ConversionIdSchema.parse(sid);
+    if (!/^[A-Za-z0-9_-]+\.(?:webp|jpe?g|png|avif)$/.test(storedName)) {
+        throw new Error('Invalid stored image name');
+    }
     return path.join(sessionDir(sid), storedName);
 }
 
-/** Paths for new operations only; keep legacy storage contracts unchanged. */
+/** Paths for current conversion operations. */
 export function conversionStoragePaths(sid: string, root = UPLOAD_DIR) {
     ConversionIdSchema.parse(sid);
     const directory = path.resolve(root, sid);

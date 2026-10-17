@@ -120,6 +120,53 @@ async function absent(target: string) {
 }
 
 describe('durable conversion records', () => {
+    it('keeps conversion directories and artifacts private, including reused directories', async () => {
+        for (const directory of [
+            root,
+            locations.directory,
+            locations.inputs,
+            locations.staging,
+            locations.receipts,
+        ]) {
+            await fs.mkdir(directory, { recursive: true });
+            await fs.chmod(directory, 0o755);
+        }
+        await create(1);
+        for (const directory of [
+            root,
+            locations.directory,
+            locations.inputs,
+            locations.staging,
+            locations.receipts,
+        ]) {
+            expect((await fs.stat(directory)).mode & 0o777).toBe(0o700);
+        }
+        expect((await fs.stat(locations.info)).mode & 0o777).toBe(0o600);
+
+        const source = await requestFile();
+        await fs.chmod(source, 0o644);
+        await store.acceptUpload(sid, oid, 'file-0', source);
+        expect((await fs.stat(locations.input('file-0'))).mode & 0o777).toBe(
+            0o600,
+        );
+        await start();
+        await store.commitOutput(sid, oid, 'file-0', processed());
+        for (const file of [
+            locations.info,
+            locations.output('file-0', 'image/webp'),
+            locations.meta('file-0'),
+            locations.receipt('file-0'),
+        ]) {
+            expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
+        }
+
+        await fs.chmod(locations.directory, 0o755);
+        await fs.chmod(locations.receipts, 0o755);
+        await store.recoverAfterRestart(sid);
+        expect((await fs.stat(locations.directory)).mode & 0o777).toBe(0o700);
+        expect((await fs.stat(locations.receipts)).mode & 0o777).toBe(0o700);
+    });
+
     it('round-trips an operation across independent instances without persisting counts', async () => {
         const created = await create();
         const reloaded = await createConversionStorage({ root }).read(sid, oid);

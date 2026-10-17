@@ -999,7 +999,7 @@ it('returns 404 for retired uploads without consuming the session or staging a c
     await diskStatus(s, 'completed');
 });
 
-it('still downloads existing sealed legacy sessions individually and as ZIPs', async () => {
+it('does not serve sealed legacy sidecars after the read fallback is retired', async () => {
     const source = await session();
     const operation = await create(source, 1);
     expect((await upload(source, operation)).status).toBe(200);
@@ -1026,46 +1026,19 @@ it('still downloads existing sealed legacy sessions individually and as ZIPs', a
         counts: { files: 1, totalBytes: png.length },
     };
     await fs.writeFile(infoPath, JSON.stringify(sealed));
-    const legacyMetadata = await fetch(
-        `${base(legacy)}/files/${meta.id}/meta`,
-        {
-            headers: headers(legacy),
-        },
-    );
-    expect(legacyMetadata.status).toBe(200);
-    expect(UploadMetaSchema.parse(await legacyMetadata.json())).toEqual(meta);
-    expect(await output(legacy, operation)).toEqual(bytes);
-    const zip = await fetch(`${base(legacy)}/files/download`, {
-        method: 'POST',
-        headers: { ...headers(legacy), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: [meta.id] }),
-    });
-    expect(zip.status).toBe(200);
-    const entries = zipEntries(Buffer.from(await zip.arrayBuffer()));
-    expect([...entries.keys()]).toEqual(['0.webp']);
-    expect(entries.get('0.webp')).toEqual(bytes);
-    await fs.writeFile(
-        infoPath,
-        JSON.stringify({
-            ...sealed,
-            createdAt: new Date(Date.now() - 3000).toISOString(),
-            sealedAt: new Date(Date.now() - 2000).toISOString(),
-            expiresAt: new Date(Date.now() - 1000).toISOString(),
-        }),
-    );
     await expectApiError(
         await fetch(`${base(legacy)}/files/${meta.id}`, {
             headers: headers(legacy),
         }),
-        403,
-        'session_expired',
+        404,
+        'operation_not_found',
     );
     await expectApiError(
         await fetch(`${base(legacy)}/files/${meta.id}/meta`, {
             headers: headers(legacy),
         }),
-        403,
-        'session_expired',
+        404,
+        'operation_not_found',
     );
     await expectApiError(
         await fetch(`${base(legacy)}/files/download`, {
@@ -1073,7 +1046,78 @@ it('still downloads existing sealed legacy sessions individually and as ZIPs', a
             headers: { ...headers(legacy), 'Content-Type': 'application/json' },
             body: JSON.stringify({ ids: [meta.id] }),
         }),
-        403,
-        'session_expired',
+        404,
+        'operation_not_found',
     );
+});
+
+it('rejects symlinked session and committed files at download entrypoints', async () => {
+    const s = await session();
+    const operation = await create(s, 1);
+    expect((await upload(s, operation)).status).toBe(200);
+    await diskStatus(s, 'completed');
+    const id = operation.files[0].id;
+    const directory = path.join(api.storage, s.sid);
+    const metaResponse = await fetch(`${base(s)}/files/${id}/meta`, {
+        headers: headers(s),
+    });
+    expect(metaResponse.status).toBe(200);
+    const meta = UploadMetaSchema.parse(await metaResponse.json());
+    const imageUrl = `${base(s)}/files/${id}`;
+    const metaUrl = `${imageUrl}/meta`;
+    const assertStorageError = async (url: string) => {
+        await expectApiError(
+            await fetch(url, { headers: headers(s) }),
+            503,
+            'storage_error',
+        );
+    };
+    const withSymlink = async (target: string, check: () => Promise<void>) => {
+        const backup = `${target}.original`;
+        await fs.rename(target, backup);
+        try {
+            await fs.symlink(backup, target);
+            await check();
+        } finally {
+            await fs.unlink(target);
+            await fs.rename(backup, target);
+        }
+    };
+
+    await withSymlink(path.join(directory, 'session.info.json'), () =>
+        assertStorageError(metaUrl),
+    );
+    await withSymlink(path.join(directory, 'conversion.info.json'), () =>
+        assertStorageError(metaUrl),
+    );
+    await withSymlink(path.join(directory, '.conversion-commits'), () =>
+        assertStorageError(metaUrl),
+    );
+    await withSymlink(
+        path.join(directory, '.conversion-commits', `${id}.json`),
+        () => assertStorageError(metaUrl),
+    );
+    await withSymlink(path.join(directory, `${id}.json`), () =>
+        assertStorageError(metaUrl),
+    );
+    await withSymlink(
+        path.join(directory, meta.output.storedName),
+        async () => {
+            await assertStorageError(imageUrl);
+            await expectApiError(
+                await fetch(`${base(s)}/files/download`, {
+                    method: 'POST',
+                    headers: {
+                        ...headers(s),
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ ids: [id] }),
+                }),
+                503,
+                'storage_error',
+            );
+        },
+    );
+    await withSymlink(directory, () => assertStorageError(metaUrl));
+    expect(await output(s, operation)).toBeInstanceOf(Buffer);
 });

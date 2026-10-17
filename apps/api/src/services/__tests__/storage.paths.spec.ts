@@ -49,11 +49,19 @@ describe('storage path primitives', () => {
         expect(paths.sessionInfoPath('session-id')).toBe(
             path.join(uploadDir, 'session-id', 'session.info.json'),
         );
-        expect(paths.sessionMetaPath('session-id', 'file-id')).toBe(
-            path.join(uploadDir, 'session-id', 'file-id.json'),
-        );
         expect(paths.pathForStored('session-id', 'file-id.webp')).toBe(
             path.join(uploadDir, 'session-id', 'file-id.webp'),
         );
+    });
+
+    it('rejects traversal in metadata and stored image paths', async () => {
+        const paths = await import('../storage.paths');
+        expect(() =>
+            paths.pathForStored('session-id', '../other.webp'),
+        ).toThrow();
+        expect(() =>
+            paths.pathForStored('session-id', 'subdir/file.webp'),
+        ).toThrow();
+        expect(() => paths.pathForStored('../other', 'file.webp')).toThrow();
     });
 });

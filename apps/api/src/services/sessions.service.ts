@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { secureId } from '@image-web-convert/node-shared';
 import { generateAccessToken } from '../auth/authUtils';
 import type { SessionImageConfig } from '@image-web-convert/schemas';
@@ -92,7 +93,16 @@ export async function create(): Promise<CreateSessionResponse> {
     };
 
     // Write session.info.json
-    await fs.mkdir(sessionDir(sid), { recursive: true, mode: 0o700 });
+    const directory = sessionDir(sid);
+    const root = path.dirname(directory);
+    await fs.mkdir(root, { recursive: true, mode: 0o700 });
+    if (!(await fs.lstat(root)).isDirectory())
+        throw new InvalidSessionRecordError('Invalid upload root');
+    await fs.chmod(root, 0o700);
+    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+    if (!(await fs.lstat(directory)).isDirectory())
+        throw new InvalidSessionRecordError('Invalid session directory');
+    await fs.chmod(directory, 0o700);
     await writeSessionInfo(sid, info);
 
     return { sid, expiresAt: info.expiresAt, accessToken: token, imageConfig };
@@ -104,6 +114,12 @@ export async function readSessionInfo(
     sid: string,
     root?: string,
 ): Promise<SessionInfo> {
+    const directory = await fs.lstat(sessionDir(sid, root));
+    if (!directory.isDirectory())
+        throw new InvalidSessionRecordError('Invalid session directory');
+    const record = await fs.lstat(sessionInfoPath(sid, root));
+    if (!record.isFile())
+        throw new InvalidSessionRecordError('Invalid session record file');
     const raw = await fs.readFile(sessionInfoPath(sid, root), 'utf8');
     try {
         return parseSessionInfo(JSON.parse(raw), sid);
@@ -121,6 +137,7 @@ export async function writeSessionInfo(
         encoding: 'utf8',
         mode: 0o600,
     });
+    await fs.chmod(sessionInfoPath(sid), 0o600);
 }
 
 export function isSessionExpired(info: SessionInfo, now = new Date()): boolean {

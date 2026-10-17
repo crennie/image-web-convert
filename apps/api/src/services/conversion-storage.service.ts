@@ -79,6 +79,14 @@ async function removeIfPresent(target: string): Promise<void> {
     }
 }
 
+async function ensurePrivateDirectory(directory: string): Promise<void> {
+    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+    const stat = await fs.lstat(directory);
+    if (!stat.isDirectory())
+        throw new ConversionStorageError('Invalid storage directory');
+    await fs.chmod(directory, 0o700);
+}
+
 async function fingerprint(target: string): Promise<Fingerprint> {
     const stat = await fs.lstat(target);
     if (!stat.isFile())
@@ -117,6 +125,7 @@ async function atomicJson(target: string, value: unknown): Promise<void> {
     try {
         await fs.writeFile(temporary, JSON.stringify(value, null, 2), {
             flag: 'wx',
+            mode: 0o600,
         });
         await syncFile(temporary);
         await fs.rename(temporary, target);
@@ -161,6 +170,12 @@ export function createConversionStorage(
         if (operationId) ConversionIdSchema.parse(operationId);
         let raw: string;
         try {
+            const directory = await fs.lstat(location.directory);
+            if (!directory.isDirectory())
+                throw new ConversionStorageError('Invalid session directory');
+            const info = await fs.lstat(location.info);
+            if (!info.isFile())
+                throw new ConversionStorageError('Invalid operation record');
             raw = await fs.readFile(location.info, 'utf8');
         } catch (error) {
             if (missing(error))
@@ -168,6 +183,7 @@ export function createConversionStorage(
                     'operation_not_found',
                     'Operation not found',
                 );
+            if (error instanceof ConversionStorageError) throw error;
             throw new ConversionStorageError('Unable to read operation', error);
         }
         let record: StoredConversion;
@@ -260,13 +276,14 @@ export function createConversionStorage(
             } catch (error) {
                 if (!missing(error)) throw error;
             }
-            await fs.mkdir(location.directory, { recursive: true });
+            await ensurePrivateDirectory(root);
+            await ensurePrivateDirectory(location.directory);
             for (const directory of [
                 location.inputs,
                 location.staging,
                 location.receipts,
             ]) {
-                await fs.mkdir(directory, { recursive: true });
+                await ensurePrivateDirectory(directory);
             }
             await syncDirectory(location.directory);
             return write(record);
@@ -383,6 +400,7 @@ export function createConversionStorage(
                 );
             acceptConversionUpload(initial.operation, fileId, stat.size, now());
             await fs.copyFile(tempPath, stage, fs.constants.COPYFILE_EXCL);
+            await fs.chmod(stage, 0o600);
             await syncFile(stage);
             const input = await fingerprint(stage);
             return await serialized(location.info, async () => {
@@ -486,7 +504,10 @@ export function createConversionStorage(
             const output = makeOutput(initial.operation, fileId, processed);
             // Validate slot/MIME/metadata before touching final artifact paths.
             finishConversionFile(initial.operation, fileId, { output }, now());
-            await fs.writeFile(stage, processed.buffer, { flag: 'wx' });
+            await fs.writeFile(stage, processed.buffer, {
+                flag: 'wx',
+                mode: 0o600,
+            });
             await syncFile(stage);
             const digest = await fingerprint(stage);
             const committed = await serialized(location.info, async () => {
@@ -556,10 +577,20 @@ export function createConversionStorage(
         const location = paths(operation.sessionId);
         let raw: string;
         try {
+            const receipts = await fs.lstat(location.receipts);
+            if (!receipts.isDirectory())
+                throw new ConversionStorageError('Invalid commit directory');
+            const receipt = await fs.lstat(location.receipt(fileId));
+            if (!receipt.isFile())
+                throw new ConversionStorageError('Invalid commit receipt');
             raw = await fs.readFile(location.receipt(fileId), 'utf8');
         } catch (error) {
             if (missing(error)) return null;
-            throw error;
+            if (error instanceof ConversionStorageError) throw error;
+            throw new ConversionStorageError(
+                'Unable to read commit receipt',
+                error,
+            );
         }
         try {
             const commit = ConversionCommitSchema.parse(JSON.parse(raw));
@@ -579,6 +610,9 @@ export function createConversionStorage(
                 commit.fingerprint.bytes !== commit.output.meta.output.sizeBytes
             )
                 throw new Error('Commit association mismatch');
+            const metaFile = await fs.lstat(location.meta(fileId));
+            if (!metaFile.isFile())
+                throw new Error('Invalid output metadata file');
             const meta = UploadMetaSchema.parse(
                 JSON.parse(await fs.readFile(location.meta(fileId), 'utf8')),
             );
@@ -599,8 +633,7 @@ export function createConversionStorage(
         }
     }
 
-    /** Only committed state plus verified artifacts are eligible for downloads.
-     * Legacy controllers will adopt this gate in phase 4. */
+    /** Only committed state plus verified artifacts are eligible for downloads. */
     async function completedOutput(
         sid: string,
         operationId: string,
@@ -634,6 +667,13 @@ export function createConversionStorage(
     async function recoverAfterRestart(sid: string): Promise<StoredConversion> {
         const location = paths(sid);
         return serialized(location.info, async () => {
+            for (const directory of [
+                location.directory,
+                location.inputs,
+                location.staging,
+                location.receipts,
+            ])
+                await ensurePrivateDirectory(directory);
             let record = await read(sid);
             const commits: ConversionCommit[] = [];
             for (const file of record.operation.files) {

@@ -9,6 +9,7 @@ import {
     conversionRuntime,
 } from '../controllers/conversions.http';
 import { ConversionTransitionError } from '../services/conversions.service';
+import { requireJson } from '../controllers/request.http';
 import {
     resolveFilesByIds,
     archiveDownloadHeaders,
@@ -17,24 +18,14 @@ import {
     acquireArchiveSlot,
 } from '../services/files.service';
 
-// New operations authorize committed files independently. A missing operation
-// falls through to the unchanged legacy sealed-session download controllers.
+// File routes serve only outputs committed by the current conversion operation.
 const router: Router = Router({ mergeParams: true });
+router.post('/download', requireJson);
 router.use(
     conversionHandler(async (req, res, next) => {
         if (!(await authorizeConversion(req, res))) return;
         const runtime = conversionRuntime(req);
-        let record;
-        try {
-            record = await runtime.read(req.params.sid);
-        } catch (error) {
-            if (
-                error instanceof ConversionTransitionError &&
-                error.type === 'operation_not_found'
-            )
-                return next();
-            throw error;
-        }
+        const record = await runtime.read(req.params.sid);
         const release = runtime.acquireSessionUse(req.params.sid);
         res.once('close', release);
         res.once('finish', release);
@@ -43,7 +34,7 @@ router.use(
     }),
 );
 const operationRouter = Router({ mergeParams: true });
-// Only run these handlers when the operation middleware selected the new flow.
+// The middleware above authenticates and selects the current operation.
 router.use((req, res, next) =>
     res.locals.conversionOperationId ? operationRouter(req, res, next) : next(),
 );

@@ -137,10 +137,12 @@ recovery, and refreshing/reopening a tab is not a resume feature.
 
 The synchronous `POST /api/sessions/:sid/uploads` endpoint is retired and returns
 404 without staging or converting files. Its backend upload modules have been
-removed. Existing sealed legacy sessions still support authenticated metadata,
-file, and ZIP reads until their original expiry. The unmounted legacy conversion
-page and its upload hook have been removed; shared legacy UI components, cosmetic
-progress, and contracts remain. The active route reports actual network upload
+removed. The old sealed-session metadata, file, and ZIP read fallback is also
+retired; file URLs serve only outputs committed by a current conversion operation.
+Existing legacy files remain on disk until session expiry cleanup; code retirement
+does not delete them immediately. The unmounted legacy conversion page and its
+upload hook have been removed; shared legacy UI components, cosmetic progress,
+and contracts remain. The active route reports actual network upload
 bytes and backend file states; it does not report a measured encoding percentage.
 
 Conversion uses the first frame of animated inputs, applies EXIF orientation,
@@ -319,8 +321,7 @@ recovery, processing without status GETs or exit cancellation, upload disconnect
 concurrent operation creation, per-slot contention with independent-session progress,
 ZIP name/order collisions, malformed requests, authorization, expiry cleanup, effective
 limits, byte mismatches, idle and total upload deadlines, decode failures with
-partial downloads, endpoint retirement, and sealed
-legacy downloads.
+partial downloads and endpoint retirement, including rejected legacy reads.
 Restart recovery always uses the normal production entrypoint. Nx builds the test executable as a prerequisite.
 The API `e2e` target delegates to its uncached `test` target, which also runs via
 `npm test`; browser E2E must be invoked separately or through `npm run ci:hook`.
