@@ -3,25 +3,23 @@ import { createServer, type Server } from 'node:http';
 import { errorTranslator } from '@image-web-convert/observability';
 import { createApp } from '../app';
 import { loadEnv } from '../env';
-import { ConversionTransitionError } from '../services/conversions.service';
 import type { ConversionRuntime } from '../services/conversion-runtime.service';
 
 const auth = vi.hoisted(() => vi.fn());
-const metadata = vi.hoisted(() => vi.fn());
+const readOperation = vi.hoisted(() => vi.fn());
+const completedOutput = vi.hoisted(() => vi.fn());
 const resolved = vi.hoisted(() => vi.fn());
+const acquireArchiveSlot = vi.hoisted(() => vi.fn());
 const leaseRelease = vi.hoisted(() => vi.fn());
 const acquireLease = vi.hoisted(() => vi.fn(() => leaseRelease));
 
 vi.mock('../services/auth.service', () => ({
     validateRequestWithToken: auth,
 }));
-vi.mock('../services/storage.service', async (importOriginal) => ({
-    ...(await importOriginal<typeof import('../services/storage.service')>()),
-    readMeta: metadata,
-}));
 vi.mock('../services/files.service', async (importOriginal) => ({
     ...(await importOriginal<typeof import('../services/files.service')>()),
     resolveFilesByIds: resolved,
+    acquireArchiveSlot,
 }));
 
 let server: Server;
@@ -44,16 +42,14 @@ beforeEach(async () => {
     vi.stubEnv('BODY_LIMIT_URLENCODED', '32b');
     vi.stubEnv('RATE_LIMIT_MAX', '1000');
     auth.mockResolvedValue({ valid: true, info: { sealedAt: '2025-01-01' } });
-    metadata.mockResolvedValue({ id: 'file' });
+    readOperation.mockResolvedValue({ operation: { id: 'operation' } });
+    completedOutput.mockResolvedValue({ meta: { id: 'file' } });
     resolved.mockResolvedValue({ found: [], missing: ['file'] });
+    acquireArchiveSlot.mockImplementation(() => () => undefined);
     const runtime = {
         acquireSessionUse: acquireLease,
-        read: async () => {
-            throw new ConversionTransitionError(
-                'operation_not_found',
-                'absent',
-            );
-        },
+        read: readOperation,
+        completedOutput,
     } as unknown as ConversionRuntime;
     await listen(await createApp({ conversions: runtime }));
 });
@@ -122,25 +118,39 @@ it('applies the configured URL-encoded limit and rejects malformed forms', async
     expect(manifestType.status).toBe(415);
 });
 
-it('forwards rejected legacy metadata reads to the JSON boundary', async () => {
-    metadata.mockRejectedValueOnce(new Error('private storage path'));
+it('does not expose rejected conversion metadata reads', async () => {
+    completedOutput.mockRejectedValueOnce(new Error('private storage path'));
     const response = await fetch(base + '/api/sessions/sid/files/file/meta');
     expect(response.status).toBe(500);
     const body = await response.text();
-    expect(body).toContain('Internal Server Error');
+    expect(body).toContain('Conversion storage is unavailable');
     expect(body).not.toContain('private storage path');
 });
 
-it('holds the legacy request lease until its response settles', async () => {
-    let finish!: (value: { id: string }) => void;
-    metadata.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+it('holds the request lease until a conversion metadata response settles', async () => {
+    let finish!: (value: { meta: { id: string } }) => void;
+    completedOutput.mockReturnValueOnce(
+        new Promise((resolve) => (finish = resolve)),
+    );
     const response = fetch(base + '/api/sessions/sid/files/file/meta');
-    await vi.waitFor(() => expect(metadata).toHaveBeenCalled());
+    await vi.waitFor(() => expect(completedOutput).toHaveBeenCalled());
     expect(acquireLease).toHaveBeenCalledWith('sid');
     expect(leaseRelease).not.toHaveBeenCalled();
-    finish({ id: 'file' });
+    finish({ meta: { id: 'file' } });
     expect((await response).status).toBe(200);
     await vi.waitFor(() => expect(leaseRelease).toHaveBeenCalled());
+});
+
+it('rejects archive saturation before resolving current operation files', async () => {
+    acquireArchiveSlot.mockReturnValueOnce(null);
+    const response = await post(
+        'application/json',
+        JSON.stringify({ ids: ['file'] }),
+        '/api/sessions/sid/files/download',
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ type: 'archive_busy' });
+    expect(resolved).not.toHaveBeenCalled();
 });
 
 it('handles sendFile failure before headers and terminates after headers', async () => {
@@ -156,7 +166,7 @@ it('handles sendFile failure before headers and terminates after headers', async
     });
     const missing = await fetch(base + '/api/sessions/sid/files/file');
     expect(missing.status).toBe(500);
-    expect(await missing.json()).toMatchObject({ error: { code: 'INTERNAL' } });
+    expect(await missing.json()).toMatchObject({ type: 'storage_error' });
 
     const app = express();
     app.get('/stream', (_req, res, next) => {

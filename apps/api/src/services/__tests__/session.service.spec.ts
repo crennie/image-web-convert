@@ -83,6 +83,7 @@ describe('session.service create()', () => {
         expect((await fs.stat(sessionDir(h.fixedSid))).mode & 0o777).toBe(
             0o700,
         );
+        expect((await fs.stat(h.uploadDir)).mode & 0o777).toBe(0o700);
 
         const parsed = JSON.parse(await fs.readFile(infoPath, 'utf8'));
         expect(parsed).toMatchObject({

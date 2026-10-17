@@ -3,7 +3,7 @@
     "scope": "Current /conversion browser workflow, public session/conversion/file API, and API lifecycle behavior affecting conversion and retrieval. Includes browser, separately started API, and focused in-process environments.",
     "testMappingStatus": "reviewed",
     "excluded": [
-        "Old synchronous upload flow as active behavior; only retired-route compatibility remains in scope.",
+        "Old synchronous upload flow as active behavior; its retired upload and read routes are covered only as 404 boundaries.",
         "Implementation plans, infrastructure setup, generic UI primitives, telemetry, and future distributed processing."
     ],
     "documentedLimitations": [
@@ -1162,7 +1162,9 @@
                 "apps/api/src/services/files.service.ts",
                 "docs/architecture/dynamic/process-conversion.md",
                 "docs/architecture/quality/requirements.md",
-                "docs/architecture/decisions/ADR-002-commit-files-independently.md"
+                "docs/architecture/decisions/ADR-002-commit-files-independently.md",
+                "docs/plans/project-finalization.md",
+                "apps/api/src/services/conversion-storage.service.ts"
             ],
             "cases": [
                 {
@@ -1321,11 +1323,11 @@
                         },
                         {
                             "evidenceId": "E93",
-                            "file": "apps/api/src/controllers/__tests__/files.controller.spec.ts",
-                            "name": "rejects archive saturation before reading files",
-                            "layer": "Controller unit",
-                            "environment": "Mocked authenticated legacy controller",
-                            "asserts": "Saturation receives JSON 503 before metadata resolution."
+                            "file": "apps/api/src/__tests__/request-boundary.spec.ts",
+                            "name": "rejects archive saturation before resolving current operation files",
+                            "layer": "In-process API",
+                            "environment": "In-process current operation with saturated archive slot",
+                            "asserts": "Current operation ZIP returns 503 before file resolution."
                         },
                         {
                             "evidenceId": "E94",
@@ -1473,6 +1475,30 @@
                             "layer": "API process",
                             "environment": "Separately started local API process and temporary storage",
                             "asserts": "Foreign bearer gets 401 on status, cancel, metadata, image, and ZIP; owner operation stays active and owner download works."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-075",
+                    "actor": "Browser",
+                    "given": "A current operation has a symlinked session record or committed output artifact",
+                    "when": "It requests metadata, an image, or a ZIP",
+                    "then": "The API rejects the path with a storage error and does not serve a symlink target.",
+                    "sources": [
+                        "docs/plans/project-finalization.md",
+                        "apps/api/src/services/conversion-storage.service.ts",
+                        "apps/api/src/services/files.service.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E111",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "rejects symlinked session and committed files at download entrypoints",
+                            "layer": "API process",
+                            "environment": "Separately started production API and isolated filesystem",
+                            "asserts": "Symlinked session, operation, receipt, metadata, and output paths return 503; restored regular output remains downloadable."
                         }
                     ],
                     "coverage": "covered",
@@ -1691,9 +1717,9 @@
                 {
                     "id": "UC-048",
                     "actor": "Person",
-                    "given": "An existing sealed legacy session has output",
+                    "given": "A sealed session from the retired synchronous upload flow has stored output",
                     "when": "They request its metadata, file, or ZIP",
-                    "then": "Authenticated legacy metadata and downloads remain available until session expiry.",
+                    "then": "Its old metadata, file, and ZIP reads return 404; current operation downloads remain available.",
                     "sources": [
                         "README.md",
                         "docs/architecture/quality/constraints.md"
@@ -1702,10 +1728,10 @@
                         {
                             "evidenceId": "E47",
                             "file": "apps/api-e2e/src/api/api.spec.ts",
-                            "name": "still downloads existing sealed legacy sessions individually and as ZIPs",
+                            "name": "does not serve sealed legacy sidecars after the read fallback is retired",
                             "layer": "API process",
                             "environment": "Separately started local API process and temporary storage",
-                            "asserts": "Sealed legacy metadata, file, and ZIP reads work while live; all three reject with session_expired afterward."
+                            "asserts": "Old sealed-session metadata, image, and ZIP routes return operation_not_found despite valid stored sidecars."
                         }
                     ],
                     "coverage": "covered",
@@ -1749,10 +1775,10 @@
                         {
                             "evidenceId": "E99",
                             "file": "apps/api/src/__tests__/request-boundary.spec.ts",
-                            "name": "holds the legacy request lease until its response settles",
+                            "name": "holds the request lease until a conversion metadata response settles",
                             "layer": "In-process API",
                             "environment": "Local HTTP server with a held metadata read",
-                            "asserts": "A legacy request acquires its session lease before the metadata read and releases it after the response."
+                            "asserts": "A conversion metadata request holds the session lease until its response settles."
                         }
                     ],
                     "coverage": "covered",

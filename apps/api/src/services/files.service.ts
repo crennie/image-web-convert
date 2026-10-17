@@ -2,12 +2,13 @@ import path from 'node:path';
 import fs from 'node:fs';
 import archiver from 'archiver';
 import type { Writable } from 'node:stream';
-import { readMeta } from './storage.service';
 import { pathForStored } from './storage.paths';
+import { ConversionStorageError } from './conversion-storage.service';
 import {
     ApiUploadMeta,
     MIME_TO_EXT,
     OutputMimeType,
+    UploadMetaSchema,
 } from '@image-web-convert/schemas';
 import { normalizeAbsolutePath } from '@image-web-convert/node-shared';
 
@@ -29,24 +30,38 @@ interface ResolvedFilesResponse {
 export async function resolveFilesByIds(
     sid: string,
     ids: string[],
-    metadataReader: typeof readMeta = readMeta,
+    metadataReader: (sid: string, id: string) => Promise<ApiUploadMeta | null>,
 ): Promise<ResolvedFilesResponse> {
     const found: ResolvedDownload[] = [];
     const missing: string[] = [];
 
     for (const id of ids) {
-        const meta = await metadataReader(sid, id);
-        if (!meta) {
+        const rawMeta = await metadataReader(sid, id);
+        if (!rawMeta) {
             missing.push(id);
             continue;
         }
+        const meta = parseFileMetadata(rawMeta, id);
         // Path must be absolute when sending in response
         const absPath = normalizeAbsolutePath(
             pathForStored(sid, meta.output.storedName),
         );
-        if (!fs.existsSync(absPath)) {
-            missing.push(id);
-            continue;
+        try {
+            const stat = fs.lstatSync(absPath);
+            if (!stat.isFile())
+                throw new ConversionStorageError('Invalid output file');
+        } catch (error) {
+            if (
+                error &&
+                typeof error === 'object' &&
+                'code' in error &&
+                error.code === 'ENOENT'
+            ) {
+                missing.push(id);
+                continue;
+            }
+            if (error instanceof ConversionStorageError) throw error;
+            throw new ConversionStorageError('Unable to inspect output', error);
         }
 
         const downloadName = buildDownloadName(meta);
@@ -67,6 +82,18 @@ export async function resolveFilesByIds(
     uniquifyArchiveNames(found);
 
     return { found, missing };
+}
+
+function parseFileMetadata(value: unknown, fileId: string): ApiUploadMeta {
+    const meta = UploadMetaSchema.parse(value);
+    if (
+        meta.id !== fileId ||
+        meta.output.storedName !==
+            `${fileId}.${MIME_TO_EXT[meta.output.mime][0]}`
+    ) {
+        throw new Error('File metadata association mismatch');
+    }
+    return meta;
 }
 
 export class ArchiveClientAbortError extends Error {

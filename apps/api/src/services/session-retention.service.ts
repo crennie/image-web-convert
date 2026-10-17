@@ -23,10 +23,11 @@ export { InvalidSessionRecordError } from './sessions.service';
  * A conversion marker delegates deletion to conversion storage's claim checks. */
 export function createSessionRetention(root: string, now: () => Date) {
     async function ensureRoot(): Promise<void> {
-        await fs.mkdir(root, { recursive: true });
+        await fs.mkdir(root, { recursive: true, mode: 0o700 });
         const stat = await fs.lstat(root);
         if (!stat.isDirectory())
             throw new ConversionStorageError('Upload root is not a directory');
+        await fs.chmod(root, 0o700);
     }
 
     async function candidates(): Promise<string[]> {

@@ -24,17 +24,16 @@ vi.mock('@image-web-convert/node-shared', async (importOriginal) => {
     };
 });
 
-// 2) Mock storage metadata and path helpers
+// 2) Supply committed metadata and mock the path helper
 const readMetaMock = vi.fn();
 const pathForStoredMock = vi.fn();
-vi.mock('../storage.service', () => ({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    readMeta: (...args: any[]) => readMetaMock(...args),
-}));
 vi.mock('../storage.paths', () => ({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     pathForStored: (...args: any[]) => pathForStoredMock(...args),
 }));
+
+const resolve = (sid: string, ids: string[]) =>
+    resolveFilesByIds(sid, ids, readMetaMock);
 
 // 3) Mock archiver (default export is a function that returns an archive instance)
 const archiveApi = Object.assign(new EventEmitter(), {
@@ -69,6 +68,7 @@ const makeMeta = (
         sizeBytes: 456,
         width: 100,
         height: 100,
+        hasAlpha: false,
         colorSpace: 'srgb',
     },
     exifStripped: true,
@@ -79,7 +79,9 @@ const makeMeta = (
 describe('resolveFilesByIds', () => {
     beforeEach(() => {
         vi.resetAllMocks();
-        vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+        vi.spyOn(fs, 'lstatSync').mockReturnValue({
+            isFile: () => true,
+        } as fs.Stats);
     });
 
     it('returns found with all computed fields and missing for absent ids', async () => {
@@ -98,11 +100,17 @@ describe('resolveFilesByIds', () => {
         );
 
         // For extra safety, mark one existing file as missing on disk
-        (fs.existsSync as unknown as MockInstance).mockImplementation(
-            (p: string) => !String(p).includes('a2.webp'),
+        (fs.lstatSync as unknown as MockInstance).mockImplementation(
+            (p: string) => {
+                if (String(p).includes('a2.webp'))
+                    throw Object.assign(new Error('missing'), {
+                        code: 'ENOENT',
+                    });
+                return { isFile: () => true };
+            },
         );
 
-        const res = await resolveFilesByIds(sid, ids);
+        const res = await resolve(sid, ids);
 
         // Missing includes both "missing" (no meta) and "a2" (meta present but file missing)
         expect(res.missing.sort()).toEqual(['a2', 'missing'].sort());
@@ -133,9 +141,11 @@ describe('resolveFilesByIds', () => {
         pathForStoredMock.mockImplementation(
             (_sid: string, stored: string) => `/abs/${stored}`,
         );
-        (fs.existsSync as unknown as MockInstance).mockReturnValue(true);
+        (fs.lstatSync as unknown as MockInstance).mockReturnValue({
+            isFile: () => true,
+        });
 
-        const { found } = await resolveFilesByIds(sid, ids);
+        const { found } = await resolve(sid, ids);
         expect(found.map((f) => f.archiveName)).toEqual([
             'image.webp', // 1st occurrence
             'image (2).webp', // 2nd
@@ -150,13 +160,7 @@ describe('resolveFilesByIds', () => {
         pathForStoredMock.mockImplementation(
             (_sid: string, stored: string) => `/abs/${stored}`,
         );
-        const { found } = await resolveFilesByIds('SID', [
-            '0',
-            '1',
-            '2',
-            '3',
-            '4',
-        ]);
+        const { found } = await resolve('SID', ['0', '1', '2', '3', '4']);
         expect(found.map((file) => file.archiveName)).toEqual([
             'a.webp',
             'a (3).webp',
@@ -169,7 +173,7 @@ describe('resolveFilesByIds', () => {
     it('sanitizes control and traversal characters and keeps Unicode headers valid', async () => {
         readMetaMock.mockResolvedValue(makeMeta('a', '..\\evil\r\n\0😀.jpg'));
         pathForStoredMock.mockReturnValue('/abs/a.webp');
-        const { found } = await resolveFilesByIds('SID', ['a']);
+        const { found } = await resolve('SID', ['a']);
         expect(found[0].archiveName).not.toMatch(/[\\/\r\n\0]/);
         expect(found[0].contentDisposition).toContain('filename*=UTF-8');
         expect(found[0].contentDisposition).not.toMatch(/[\r\n\0]/);
