@@ -6,6 +6,8 @@ import type { ResolvedDownload } from '../files.service';
 import {
     archiveDownloadHeaders,
     ArchiveClientAbortError,
+    ArchiveLimitError,
+    acquireArchiveSlot,
     resolveFilesByIds,
     writeZip,
 } from '../files.service';
@@ -164,6 +166,32 @@ describe('resolveFilesByIds', () => {
         ]);
         expect(found.map((file) => file.id)).toEqual(['0', '1', '2', '3', '4']);
     });
+    it('sanitizes control and traversal characters and keeps Unicode headers valid', async () => {
+        readMetaMock.mockResolvedValue(makeMeta('a', '..\\evil\r\n\0😀.jpg'));
+        pathForStoredMock.mockReturnValue('/abs/a.webp');
+        const { found } = await resolveFilesByIds('SID', ['a']);
+        expect(found[0].archiveName).not.toMatch(/[\\/\r\n\0]/);
+        expect(found[0].contentDisposition).toContain('filename*=UTF-8');
+        expect(found[0].contentDisposition).not.toMatch(/[\r\n\0]/);
+        expect(() => archiveDownloadHeaders('bad\r\n\0😀')).not.toThrow();
+        expect(
+            archiveDownloadHeaders('bad\r\n\0😀').contentDisposition,
+        ).not.toMatch(/[\r\n\0]/);
+    });
+});
+
+it('limits simultaneous archives and releases slots idempotently', () => {
+    const first = acquireArchiveSlot();
+    const second = acquireArchiveSlot();
+    expect(first).toBeTypeOf('function');
+    expect(second).toBeTypeOf('function');
+    expect(acquireArchiveSlot()).toBeNull();
+    first?.();
+    first?.();
+    const third = acquireArchiveSlot();
+    expect(third).toBeTypeOf('function');
+    second?.();
+    third?.();
 });
 
 describe('writeZip', () => {
@@ -305,11 +333,30 @@ describe('writeZip', () => {
         clean(stream);
     });
 
+    it('aborts a stalled archive at its deadline', async () => {
+        vi.useFakeTimers();
+        try {
+            const stream = output();
+            archiveApi.finalize.mockReturnValue(
+                new Promise<void>(() => undefined),
+            );
+            const pending = writeZip(stream, [entry()]);
+            const assertion =
+                expect(pending).rejects.toBeInstanceOf(ArchiveLimitError);
+            await vi.advanceTimersByTimeAsync(30_000);
+            await assertion;
+            expect(archiveApi.abort).toHaveBeenCalledOnce();
+            clean(stream);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('builds sanitized Unicode HTTP headers separately', () => {
         const headers = archiveDownloadHeaders('My*Bundle é');
         expect(headers.contentType).toBe('application/zip');
         expect(headers.contentDisposition).toContain(
-            'filename="My_Bundle é.zip"',
+            'filename="My_Bundle _.zip"',
         );
         expect(headers.contentDisposition).toContain(
             "filename*=UTF-8''My_Bundle%20%C3%A9.zip",

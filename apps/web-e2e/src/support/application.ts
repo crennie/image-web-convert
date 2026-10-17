@@ -45,7 +45,9 @@ async function startApplication(
     async function stop() {
         const results = await Promise.allSettled([
             ...(gateway?.listening ? [close(gateway)] : []),
-            ...(web ? [web.stop()] : []),
+            // The SSR process has no durable state; its graceful stop adds
+            // about five seconds of shutdown time to each browser test.
+            ...(web ? [web.stop(true)] : []),
             ...(api ? [api.stop()] : []),
         ]);
         await rm(storage, { recursive: true, force: true });

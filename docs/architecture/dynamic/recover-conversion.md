@@ -23,4 +23,4 @@ sequenceDiagram
     Main->>Main: Listen; report ready
 ```
 
-Valid committed output survives restart. A processing file without valid commit evidence becomes `processing_interrupted`; later accepted files can still run if the operation is eligible. Missing or corrupt accepted input becomes a file storage failure. Invalid session records are isolated and reported; a storage mutation fault stops scheduling/readiness. Cleanup of expired operation data waits for active leases. This recovery is owned by one API process and must finish before it serves conversion requests.
+Valid committed output survives restart. A processing file without valid commit evidence becomes `processing_interrupted`; later accepted files can still run if the operation is eligible. Missing or corrupt accepted input becomes a file storage failure. Invalid session records are isolated and reported; a storage mutation or cleanup fault stops scheduling/readiness. Cleanup of expired operation, create-only, and legacy data waits for active leases. This recovery is owned by one API process and must finish before it serves conversion requests.

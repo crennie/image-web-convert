@@ -71,8 +71,15 @@ export const ApiUploadsRequestSchema = z.object({
 export type ApiUploadsRequest = z.infer<typeof ApiUploadsRequestSchema>;
 
 export const ApiDownloadFilesRequestSchema = z.object({
-    ids: z.array(z.string().min(1)).min(1),
-    archiveName: z.string().min(1).optional(),
+    ids: z
+        .array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/))
+        .min(1)
+        .max(32)
+        .refine(
+            (ids) => new Set(ids).size === ids.length,
+            'Duplicate file IDs are not allowed',
+        ),
+    archiveName: z.string().min(1).max(128).optional(),
 });
 export type ApiDownloadFilesRequest = z.infer<
     typeof ApiDownloadFilesRequestSchema

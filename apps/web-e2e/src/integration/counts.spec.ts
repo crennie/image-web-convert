@@ -227,7 +227,11 @@ for (const outcome of outcomes) {
             },
         );
         await page.goto('/conversion');
-        await page.getByLabel('Choose images', { exact: true }).setInputFiles(
+        const chooser = page.waitForEvent('filechooser');
+        await page.getByRole('button', { name: 'Choose images' }).click();
+        await (
+            await chooser
+        ).setFiles(
             Array.from({ length: 4 }, (_, i) => ({
                 ...firstImage,
                 name: `image-${i}.png`,

@@ -394,13 +394,24 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     const restart = page.getByRole('button', { name: 'Start new batch' });
     await expect(zip).toBeEnabled();
     await expect(restart).toBeEnabled();
+    // Font loading and the final operation render can move both buttons.
+    // Compare their settled positions while retaining the strict alignment limit.
+    await expect
+        .poll(async () => {
+            const [zipBounds, restartBounds] = await Promise.all([
+                zip.boundingBox(),
+                restart.boundingBox(),
+            ]);
+            if (!zipBounds || !restartBounds) return Number.POSITIVE_INFINITY;
+            return Math.abs(zipBounds.y - restartBounds.y);
+        })
+        .toBeLessThan(2);
     const zipBox = await zip.boundingBox().then(requiredBounds);
     const restartBox = await restart.boundingBox().then(requiredBounds);
     const panelBox = await page
         .getByRole('region', { name: 'Conversion operation' })
         .boundingBox()
         .then(requiredBounds);
-    expect(Math.abs(zipBox.y - restartBox.y)).toBeLessThan(2);
     expect(zipBox.width).toBeLessThan(panelBox.width / 2);
     expect(restartBox.x + restartBox.width).toBeGreaterThan(
         panelBox.x + panelBox.width * 0.9,
@@ -411,6 +422,7 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     await files.click();
     await expect(row).toBeVisible();
     const help = row.getByRole('button', { name: 'completed', exact: true });
+    await help.scrollIntoViewIfNeeded();
     await help.focus();
     await expect(page.getByRole('tooltip')).toBeVisible();
     await help.press('Escape');

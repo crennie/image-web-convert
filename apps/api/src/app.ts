@@ -37,7 +37,10 @@ export async function createApp(deps: AppDeps = {}): Promise<express.Express> {
     }
 
     // 1) Process-level
-    app.set('trust proxy', 1);
+    app.set(
+        'trust proxy',
+        env.TRUSTED_PROXY_IPS.length ? env.TRUSTED_PROXY_IPS : false,
+    );
     app.disable('x-powered-by');
 
     // 2) Security defaults
@@ -69,7 +72,6 @@ export async function createApp(deps: AppDeps = {}): Promise<express.Express> {
         }),
     );
 
-    app.use(express.urlencoded({ extended: true }));
     app.use(hpp());
 
     // 3) CORS (restrictive by default)
@@ -86,19 +88,8 @@ export async function createApp(deps: AppDeps = {}): Promise<express.Express> {
         }),
     );
 
-    // 4) Body parsers with strict limits
-    app.use(express.json({ limit: env.BODY_LIMIT_JSON }));
-    app.use(
-        express.urlencoded({
-            extended: false,
-            limit: env.BODY_LIMIT_URLENCODED,
-        }),
-    );
-
-    // 5) Compression
-    app.use(compression());
-
-    // 6) Rate limit (skip health endpoints)
+    // 4) Admit requests before parsing bodies. CORS remains ahead of the
+    // limiter so rejected browser requests expose Retry-After as well.
     const limiter = rateLimit({
         windowMs: env.RATE_LIMIT_WINDOW_MS,
         max: env.RATE_LIMIT_MAX,
@@ -113,6 +104,18 @@ export async function createApp(deps: AppDeps = {}): Promise<express.Express> {
                 )),
     });
     app.use(limiter);
+
+    // 5) Body parsers with strict limits
+    app.use(express.json({ limit: env.BODY_LIMIT_JSON }));
+    app.use(
+        express.urlencoded({
+            extended: false,
+            limit: env.BODY_LIMIT_URLENCODED,
+        }),
+    );
+
+    // 6) Compression
+    app.use(compression());
 
     // --------- API (Session/File Upload/Download) Handler ----
     app.use('/api', createApiRouter());
@@ -145,8 +148,7 @@ export async function createApp(deps: AppDeps = {}): Promise<express.Express> {
         res.status(404).json({ code: 'NOT_FOUND', message: 'Route not found' });
     });
 
-    //app.use(errorHandler);
-    app.use(errorTranslator);
+    app.use(errorTranslator());
 
     return app;
 }

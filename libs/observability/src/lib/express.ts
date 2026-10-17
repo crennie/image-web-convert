@@ -58,7 +58,7 @@ export function requestContext() {
     return function requestContextMiddleware(
         req: Request,
         res: Response,
-        next: NextFunction
+        next: NextFunction,
     ) {
         // pino-http sets req.id
         const requestId = req.id as string | undefined;
@@ -76,15 +76,30 @@ export function requestContext() {
  * (Express will forward here on next(err)).
  */
 export function errorTranslator(): ErrorRequestHandler {
-    return function (err, _req, res) {
-        // _next) {
+    return function (err, _req, res, next) {
+        if (res.destroyed) return;
+        if (res.headersSent) {
+            next(err);
+            return;
+        }
         // Defer to pino-http to actually log the error line; we just shape the JSON.
-        const status = typeof err?.status === 'number' ? err.status : 500;
-        const code = err?.code ?? 'INTERNAL';
+        const status = [400, 413, 415].includes(err?.status) ? err.status : 500;
+        const code =
+            status === 413
+                ? 'PAYLOAD_TOO_LARGE'
+                : status === 415
+                  ? 'UNSUPPORTED_BODY'
+                  : status === 400
+                    ? 'INVALID_BODY'
+                    : 'INTERNAL';
         const message =
-            status === 500
-                ? 'Internal Server Error'
-                : err?.message ?? String(err);
+            status === 413
+                ? 'Request body is too large'
+                : status === 415
+                  ? 'Request body encoding is unsupported'
+                  : status === 400
+                    ? 'Invalid request body'
+                    : 'Internal Server Error';
 
         const { trace_id } = getTraceCorrelation();
 

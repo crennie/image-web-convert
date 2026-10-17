@@ -19,6 +19,10 @@ import {
     createConversionStorage,
     ConversionStorageError,
 } from './conversion-storage.service';
+import {
+    createSessionRetention,
+    InvalidSessionRecordError,
+} from './session-retention.service';
 import type { StoredConversion } from './conversion-storage.schema';
 import { conversionStoragePaths, UPLOAD_DIR } from './storage.paths';
 import { DEFAULT_IMG_OPTS } from './image.config';
@@ -70,12 +74,14 @@ export function createConversionRuntime(
     const store =
         options.store ??
         createConversionStorage({ root, now: () => clock.now() });
+    const retention = createSessionRetention(root, () => clock.now());
     const convert = options.convert ?? processImageToMimeType;
     const report =
         options.onError ??
         ((error, sid) =>
             console.error('Conversion runtime error', sid ?? '', error));
     const blockedSessions = new Set<string>();
+    const invalidSessions = new Set<string>();
     const leases = new Map<string, number>();
     const deleting = new Set<string>();
     const uploads = new Set<string>();
@@ -380,6 +386,33 @@ export function createConversionRuntime(
                     await store.pruneSettledInputs(sid);
                 }
             }
+            const operationSessions = new Set(await store.listSessions());
+            for (const sid of await retention.candidates()) {
+                if (closing || fault) break;
+                if (
+                    operationSessions.has(sid) ||
+                    blockedSessions.has(sid) ||
+                    deleting.has(sid)
+                )
+                    continue;
+                try {
+                    const expired = await retention.expired(sid);
+                    invalidSessions.delete(sid);
+                    if (!expired || leases.has(sid)) continue;
+                    deleting.add(sid);
+                    try {
+                        await retention.removeExpired(sid);
+                    } finally {
+                        deleting.delete(sid);
+                    }
+                    invalidSessions.delete(sid);
+                } catch (error) {
+                    if (error instanceof InvalidSessionRecordError) {
+                        if (!invalidSessions.has(sid)) report(error, sid);
+                        invalidSessions.add(sid);
+                    } else throw error;
+                }
+            }
             wake();
         })()
             .catch((error) => halt(error))
@@ -411,6 +444,7 @@ export function createConversionRuntime(
             ownsRoot = true;
             initializing = true;
             try {
+                await retention.ensureRoot();
                 for (const sid of await store.listSessions()) {
                     try {
                         await store.recoverAfterRestart(sid);
@@ -714,6 +748,7 @@ export function createConversionRuntime(
         diagnostics: () => ({
             active: active ? { ...active } : null,
             blockedSessions: [...blockedSessions],
+            invalidSessions: [...invalidSessions],
             failed: Boolean(fault),
         }),
     };
