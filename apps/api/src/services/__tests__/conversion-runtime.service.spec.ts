@@ -113,7 +113,7 @@ async function seedSession(sid: string, overrides: object = {}) {
             id: sid,
             expiresAt,
             createdAt: initial.toISOString(),
-            tokenHash: 'test',
+            tokenHash: 'a'.repeat(64),
             sealedAt: null,
             counts: { files: 0, totalBytes: 0 },
             ...overrides,

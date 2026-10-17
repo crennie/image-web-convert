@@ -27,6 +27,9 @@
                 "apps/api/src/routes/sessions.routes.ts",
                 "apps/api/src/app.ts",
                 "apps/api/src/env.ts",
+                "docs/plans/project-finalization.md",
+                "apps/api/src/services/sessions.service.ts",
+                "apps/api/src/services/auth.service.ts",
                 "libs/ui/src/lib/file-upload/hooks/useValidation.ts"
             ],
             "cases": [
@@ -152,6 +155,38 @@
                             "layer": "Application service",
                             "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
                             "asserts": "Session persistence and returned expiry/token."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-074",
+                    "actor": "Browser",
+                    "given": "A persisted session record is malformed or unreadable",
+                    "when": "It sends an authenticated session request",
+                    "then": "The API rejects the request with a storage error rather than granting access or reporting a missing session.",
+                    "sources": [
+                        "docs/plans/project-finalization.md",
+                        "apps/api/src/services/sessions.service.ts",
+                        "apps/api/src/services/auth.service.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E109",
+                            "file": "apps/api/src/services/__tests__/session.service.spec.ts",
+                            "name": "rejects malformed persisted records",
+                            "layer": "Session service",
+                            "environment": "In-process persisted JSON fixtures",
+                            "asserts": "Invalid expiry, token hash, ID, and counts fail session record parsing."
+                        },
+                        {
+                            "evidenceId": "E110",
+                            "file": "apps/api/src/services/__tests__/auth.service.spec.ts",
+                            "name": "returns 503 for %s while reading a session",
+                            "layer": "Auth service",
+                            "environment": "In-process simulated EACCES, ENOSPC, and corrupt record",
+                            "asserts": "Unreadable and corrupt session records produce storage_error 503."
                         }
                     ],
                     "coverage": "covered",
