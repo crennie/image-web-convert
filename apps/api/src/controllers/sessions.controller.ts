@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { create, SessionStorageError } from '../services/sessions.service';
 import { ApiCreateSessionResponse } from '@image-web-convert/schemas';
+import { safeErrorSummary } from '@image-web-convert/observability';
 
 export async function createSession(
     req: Request,
@@ -18,7 +19,10 @@ export async function createSession(
         res.status(201).json(response);
     } catch (err) {
         if (err instanceof SessionStorageError) {
-            console.error('Session creation storage failure', err);
+            console.error(
+                'Session creation storage failure',
+                safeErrorSummary(err),
+            );
             req.app?.locals.onStorageFault?.(err);
             res.status(503).json({
                 type: 'storage_error',

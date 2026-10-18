@@ -1,4 +1,7 @@
-import { initTelemetry } from '@image-web-convert/observability';
+import {
+    initTelemetry,
+    safeErrorSummary,
+} from '@image-web-convert/observability';
 
 (async () => {
     const { loadEnv } = await import('./env.js');
@@ -50,7 +53,10 @@ import { initTelemetry } from '@image-web-convert/observability';
                     process.exit(result.drained && !fatal ? 0 : 1);
                 })
                 .catch((err) => {
-                    console.error('Error during shutdown:', err);
+                    console.error(
+                        'Error during shutdown:',
+                        safeErrorSummary(err),
+                    );
                     process.exit(1);
                 });
         };
@@ -67,7 +73,7 @@ import { initTelemetry } from '@image-web-convert/observability';
     }
 
     main().catch((err) => {
-        console.error('Fatal startup error:', err);
+        console.error('Fatal startup error:', safeErrorSummary(err));
         process.exit(1);
     });
 })();

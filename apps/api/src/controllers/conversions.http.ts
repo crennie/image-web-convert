@@ -7,6 +7,7 @@ import {
 } from '../services/conversion-storage.service';
 import type { ConversionRuntime } from '../services/conversion-runtime.service';
 import { validateRequestWithToken } from '../services/auth.service';
+import { safeErrorSummary } from '@image-web-convert/observability';
 
 export function conversionRuntime(req: Request): ConversionRuntime {
     return req.app.locals.conversions;
@@ -36,7 +37,7 @@ export function sendConversionError(res: Response, error: unknown) {
             .status(status)
             .json({ type: error.type, message: error.message });
     }
-    console.error('Conversion request failed', error);
+    console.error('Conversion request failed', safeErrorSummary(error));
     return res
         .status(
             error instanceof ConversionStorageError || storageIoFailure

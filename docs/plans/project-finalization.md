@@ -700,6 +700,12 @@ Validation: focused API/root suites **40/40 passed**; built SSR security and rea
 
 Validation: `npm ci --legacy-peer-deps --ignore-scripts` completed from the lockfile (npm reported 129 audit findings; no dependency files changed). Observability **6/6** and API **308/308** tests, their build/typecheck/lint targets, focused telemetry-enabled API process test **1/1**, API-E2E lint, changed-file Prettier, and use-case inventory passed. The first typecheck exposed Zod enum-default typing in the config fix; this was corrected before the passing rerun. Remaining PF-10 work: token-safe error/log capture, SDK repeated-init/shutdown and unavailable-exporter behavior, and process shutdown with an exporter that stalls. Local commit: `Start PF-10 observability hardening`. No remote write was made.
 
+### PF-10 log privacy checkpoint (2026-10-18)
+
+**Status: in progress.** The HTTP logger now records bounded request identity and method, response status, and a fixed error category; it omits raw URLs, query strings, headers, cookies, error messages, and stacks. The API's session, conversion, runtime, startup, and shutdown fault logs use the same safe error summary, with a short allowlist of filesystem errno codes for diagnosis. Existing fault callbacks still receive the original error for classification and shutdown. A captured logger test exercises bearer, cookie, URL, and error-message markers; controller tests assert that the logged argument is sanitized. The use-case inventory still explicitly excludes telemetry and remains at **94/94 covered**.
+
+Validation: observability **8/8** and API **308/308** tests passed; observability/API typechecks and lint passed, with lint rerun after a parallel test cleanup caused a temporary-directory traversal race. The first captured-log test exposed pino-http's wrapped error serializer and passed after adapting the summary to serialized objects. Remaining PF-10 work: repeated SDK initialization/shutdown, unavailable or stalled exporter behavior, and process shutdown under a stalled exporter. Local commit: `Protect PF-10 operational logs`. No remote write was made.
+
 ## Dated dependency inventory (2026-10-16)
 
 Registry metadata was queried with `npm outdated --package-lock-only --json`; full and `--omit=dev` audits used `npm audit --package-lock-only --ignore-scripts --json`. Audit exits were 1 because findings exist. Counts refer to affected package entries, including parent propagation, not unique CVEs or demonstrated exploits.
