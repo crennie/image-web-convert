@@ -1,6 +1,17 @@
+import { transferableAbortController } from 'node:util';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, Link, RouterProvider } from 'react-router';
 import { BatchNavigationGuard } from '../components/BatchNavigationGuard';
+
+// React Router uses Node's native Request in this jsdom test. Its signal must
+// come from the same realm as Request when navigation resumes.
+beforeAll(() => {
+    vi.stubGlobal('AbortController', transferableAbortController().constructor);
+});
+
+afterAll(() => {
+    vi.unstubAllGlobals();
+});
 
 it.each([true, false])(
     'confirms route navigation for active=%s and only leaves after confirmation',

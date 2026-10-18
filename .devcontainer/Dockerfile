@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG NODE_VERSION=22.22.0
+ARG NODE_VERSION=24.22.0
 ARG AGENT_BASE_IMAGE=local-agentic-dev/codex-agent:dev
 
 FROM node:${NODE_VERSION}-trixie AS node-runtime
