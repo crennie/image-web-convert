@@ -341,6 +341,72 @@ it('preserves completed downloads and ZIP members during processing and cancella
     expect((await cancel(session, op)).status).toBe(200);
 });
 
+it('keeps authenticated responses private and authorizes conditional, HEAD, and range downloads', async () => {
+    const session = await createSession();
+    const op = await operation(session, 1);
+    expect((await upload(session, op)).status).toBe(200);
+    await runtime.whenIdle();
+    const file = `${url}/api/sessions/${session.sid}/files/${op.files[0].id}`;
+    const authorized = headers(session);
+    const initial = await fetch(file, { headers: authorized });
+    expect(initial.status).toBe(200);
+    expect(initial.headers.get('cache-control')).toBe('private, no-store');
+    const etag = initial.headers.get('etag');
+    if (!etag) throw new Error('Expected download ETag');
+    await initial.arrayBuffer();
+    const cases = [
+        { method: 'GET', headers: { 'If-None-Match': etag } },
+        { method: 'HEAD', headers: {} },
+        { method: 'GET', headers: { Range: 'bytes=0-3' } },
+    ];
+    for (const request of cases) {
+        const response = await fetch(file, {
+            method: request.method,
+            headers: { ...authorized, ...request.headers },
+        });
+        expect([200, 206, 304]).toContain(response.status);
+        expect(response.headers.get('cache-control')).toBe('private, no-store');
+        await response.arrayBuffer();
+        const denied = await fetch(file, {
+            method: request.method,
+            headers: request.headers,
+        });
+        expect(denied.status).toBe(401);
+        expect(denied.headers.get('cache-control')).toBe('private, no-store');
+        await denied.arrayBuffer();
+    }
+    for (const target of [
+        `${url}${base(session)}/${op.id}`,
+        `${file}/meta`,
+        `${url}/api/sessions/${session.sid}/files/download`,
+    ]) {
+        const response = await fetch(target, {
+            method: target.endsWith('/download') ? 'POST' : 'GET',
+            headers: {
+                ...authorized,
+                ...(target.endsWith('/download')
+                    ? { 'Content-Type': 'application/json' }
+                    : {}),
+            },
+            ...(target.endsWith('/download')
+                ? { body: JSON.stringify({ ids: [op.files[0].id] }) }
+                : {}),
+        });
+        expect(response.status).toBe(200);
+        expect(response.headers.get('cache-control')).toBe('private, no-store');
+        await response.arrayBuffer();
+    }
+    const recordPath = path.join(root, session.sid, 'session.info.json');
+    const record = JSON.parse(await fs.readFile(recordPath, 'utf8'));
+    record.expiresAt = new Date().toISOString();
+    await fs.writeFile(recordPath, JSON.stringify(record));
+    const expired = await fetch(file, {
+        headers: { ...authorized, 'If-None-Match': etag },
+    });
+    expect([403, 404]).toContain(expired.status);
+    expect(expired.headers.get('cache-control')).toBe('private, no-store');
+});
+
 it('cancels before upload and rejects stale slots', async () => {
     const session = await createSession();
     const op = await operation(session);

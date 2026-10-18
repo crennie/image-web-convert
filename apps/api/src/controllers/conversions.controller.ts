@@ -28,7 +28,6 @@ export async function show(req: Request, res: Response) {
             req.params.sid,
             req.params.operationId,
         );
-        res.setHeader('Cache-Control', 'no-store');
         res.json(conversionSnapshot(record.operation));
     } finally {
         release();

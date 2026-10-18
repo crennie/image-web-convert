@@ -90,6 +90,13 @@ export async function createApp(deps: AppDeps = {}): Promise<express.Express> {
         }),
     );
 
+    // Protect session capabilities and private output even when admission,
+    // parsing, or authorization rejects a request before a route runs.
+    app.use('/api', (_req, res, next) => {
+        res.setHeader('Cache-Control', 'private, no-store');
+        next();
+    });
+
     // 4) Admit requests before parsing bodies. CORS remains ahead of the
     // limiter so rejected browser requests expose Retry-After as well.
     const limiter = rateLimit({

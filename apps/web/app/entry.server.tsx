@@ -5,6 +5,7 @@
  */
 
 import { PassThrough } from 'node:stream';
+import { randomBytes } from 'node:crypto';
 
 import type { AppLoadContext, EntryContext } from 'react-router';
 import { createReadableStreamFromReadable } from '@react-router/node';
@@ -20,8 +21,27 @@ export default function handleRequest(
     responseStatusCode: number,
     responseHeaders: Headers,
     routerContext: EntryContext,
-    loadContext: AppLoadContext
+    loadContext: AppLoadContext,
 ) {
+    const nonce = randomBytes(16).toString('base64');
+    responseHeaders.set(
+        'Content-Security-Policy',
+        [
+            "default-src 'none'",
+            `script-src 'self' 'nonce-${nonce}'`,
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' blob: data:",
+            "connect-src 'self'",
+            "font-src 'self'",
+            "base-uri 'none'",
+            "form-action 'none'",
+            "frame-ancestors 'none'",
+            "object-src 'none'",
+        ].join('; '),
+    );
+    responseHeaders.set('X-Frame-Options', 'DENY');
+    responseHeaders.set('Referrer-Policy', 'no-referrer');
+    responseHeaders.set('X-Content-Type-Options', 'nosniff');
     return new Promise((resolve, reject) => {
         let shellRendered = false;
         const userAgent = request.headers.get('user-agent');
@@ -34,8 +54,13 @@ export default function handleRequest(
                 : 'onShellReady';
 
         const { pipe, abort } = renderToPipeableStream(
-            <ServerRouter context={routerContext} url={request.url} />,
+            <ServerRouter
+                context={routerContext}
+                url={request.url}
+                nonce={nonce}
+            />,
             {
+                nonce,
                 [readyOption]() {
                     shellRendered = true;
                     const body = new PassThrough();
@@ -47,7 +72,7 @@ export default function handleRequest(
                         new Response(stream, {
                             headers: responseHeaders,
                             status: responseStatusCode,
-                        })
+                        }),
                     );
 
                     pipe(body);
@@ -64,7 +89,7 @@ export default function handleRequest(
                         console.error(error);
                     }
                 },
-            }
+            },
         );
 
         // Abort the rendering stream after the `streamTimeout` so it has time to

@@ -42,6 +42,15 @@ same-origin path to the API process at `http://localhost:4201`. This keeps the
 browser-facing URL consistent with a production deployment where a reverse
 proxy or application platform routes `/api` to the Express service.
 
+Production SSR documents set a per-response script nonce, restrict scripts and
+connections to this origin, permit local images and browser blob previews, and
+deny framing. The SSR response also sets `Referrer-Policy: no-referrer` and
+`X-Content-Type-Options: nosniff`. Serve the built React Router app without
+stripping these headers; apply equivalent framing and referrer policy at any
+outer proxy that generates its own HTML errors. The API sets
+`Cache-Control: private, no-store` on `/api` responses before request parsing,
+so authenticated JSON, images, archives, and errors share the same cache policy.
+
 Set `API_PROXY_TARGET` when the local API process is available at a different
 origin. Set `VITE_API_URL` at frontend build time only when a deployment exposes
 the API at a different browser-facing base URL; cross-origin deployments must

@@ -85,6 +85,40 @@ it('normalizes malformed and oversized JSON without reflecting input', async () 
     });
 });
 
+it('keeps private cache policy on errors and only permits the configured preflight origin', async () => {
+    const malformed = await post('application/json', '{');
+    expect(malformed.status).toBe(400);
+    expect(malformed.headers.get('cache-control')).toBe('private, no-store');
+
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    vi.stubEnv('CORS_ORIGIN', 'https://convert.example');
+    const runtime = {
+        acquireSessionUse: acquireLease,
+        read: readOperation,
+        completedOutput,
+    } as unknown as ConversionRuntime;
+    await listen(await createApp({ conversions: runtime, onStorageFault }));
+    for (const origin of ['https://convert.example', 'https://other.example']) {
+        const response = await fetch(base + '/api/sessions', {
+            method: 'OPTIONS',
+            headers: {
+                Origin: origin,
+                'Access-Control-Request-Method': 'POST',
+                'Access-Control-Request-Headers': 'authorization,content-type',
+            },
+        });
+        expect(response.status).toBe(204);
+        expect(response.headers.get('access-control-allow-origin')).toBe(
+            'https://convert.example',
+        );
+        if (origin !== 'https://convert.example')
+            expect(
+                response.headers.get('access-control-allow-origin'),
+            ).not.toBe(origin);
+        expect(response.headers.get('cache-control')).toBeNull();
+    }
+});
+
 it('applies the configured URL-encoded limit and rejects malformed forms', async () => {
     const oversized = await post(
         'application/x-www-form-urlencoded',
