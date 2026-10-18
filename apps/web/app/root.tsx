@@ -38,6 +38,12 @@ export const links: LinksFunction = () => [
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
+    // HydratedRouter does not retain ServerRouter's nonce in its framework
+    // context, so pass the SSR document nonce to its inline script components.
+    const nonce =
+        typeof document === 'undefined'
+            ? undefined
+            : document.querySelector<HTMLScriptElement>('script[nonce]')?.nonce;
     return (
         <html lang="en">
             <head>
@@ -55,8 +61,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <Nav className="h-[65px]" />
                     <SessionProvider>{children}</SessionProvider>
                 </div>
-                <ScrollRestoration />
-                <Scripts />
+                <ScrollRestoration nonce={nonce} />
+                <Scripts nonce={nonce} />
             </body>
         </html>
     );

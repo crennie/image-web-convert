@@ -2519,8 +2519,14 @@
             ]
         },
         {
-            "id": "ssr-privacy",
-            "sources": ["apps/web/app/root.tsx", "apps/web/styles.css"],
+            "id": "response-privacy",
+            "sources": [
+                "apps/web/app/root.tsx",
+                "apps/web/app/entry.server.tsx",
+                "apps/web/styles.css",
+                "apps/api/src/app.ts",
+                "apps/api/src/routes/conversion-files.routes.ts"
+            ],
             "cases": [
                 {
                     "id": "UC-092",
@@ -2553,6 +2559,68 @@
                             "layer": "Built browser integration",
                             "environment": "Built SSR site in Chromium, Firefox, and WebKit",
                             "asserts": "A 404 page hides the missing path and neither page requests Google Fonts."
+                        },
+                        {
+                            "evidenceId": "E176",
+                            "file": "apps/web-e2e/src/e2e/ssr-error.spec.ts",
+                            "name": "built production SSR hides a rendering failure in an HTTP 500 document",
+                            "layer": "Built SSR HTTP integration",
+                            "environment": "Production build with an injected route rendering failure and a local HTTP server",
+                            "asserts": "An HTTP 500 document includes generic error copy and CSP without exposing the private error path or token."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-093",
+                    "actor": "Browser",
+                    "given": "A production SSR document loads",
+                    "when": "Scripts hydrate and a file is selected",
+                    "then": "Document security headers allow the app to hydrate without CSP violations and prevent framing or referrer disclosure.",
+                    "sources": [
+                        "apps/web/app/entry.server.tsx",
+                        "apps/web/app/root.tsx"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E173",
+                            "file": "apps/web-e2e/src/e2e/ssr-security.spec.ts",
+                            "name": "built SSR handles hostile URLs without script execution and keeps hydration usable",
+                            "layer": "Built browser integration",
+                            "environment": "Built SSR in Chromium, Firefox, and WebKit",
+                            "asserts": "A normal conversion page hydrates without CSP console violations, document headers restrict scripts/framing/referrers, and a hostile URL does not execute injected script."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-094",
+                    "actor": "Session holder",
+                    "given": "A completed private output exists",
+                    "when": "A client requests metadata, image, archive, or a conditional/range response",
+                    "then": "Every API response is private and not stored; missing or expired bearer access cannot retrieve a cached output.",
+                    "sources": [
+                        "apps/api/src/app.ts",
+                        "apps/api/src/routes/conversion-files.routes.ts"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E174",
+                            "file": "apps/api/src/__tests__/conversions-api.spec.ts",
+                            "name": "keeps authenticated responses private and authorizes conditional, HEAD, and range downloads",
+                            "layer": "In-process API",
+                            "environment": "Real HTTP server and temporary conversion storage",
+                            "asserts": "JSON, image, archive, conditional, HEAD, range, denied, and expired responses carry private/no-store and auth precedes conditional access."
+                        },
+                        {
+                            "evidenceId": "E175",
+                            "file": "apps/api/src/__tests__/request-boundary.spec.ts",
+                            "name": "keeps private cache policy on errors and only permits the configured preflight origin",
+                            "layer": "In-process API",
+                            "environment": "Real Express parser and CORS middleware",
+                            "asserts": "Parser errors carry private/no-store, and preflight allows only the configured browser origin."
                         }
                     ],
                     "coverage": "covered",

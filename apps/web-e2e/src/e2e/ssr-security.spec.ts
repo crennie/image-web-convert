@@ -3,9 +3,47 @@ import { image } from '../support/conversion';
 
 test('built SSR handles hostile URLs without script execution and keeps hydration usable', async ({
     page,
+    context,
 }) => {
+    const cleanPage = await context.newPage();
+    const cspViolations: string[] = [];
+    cleanPage.on('console', (message) => {
+        if (
+            message.type() === 'error' &&
+            /Content Security Policy|CSP|Refused to/.test(message.text())
+        )
+            cspViolations.push(
+                `${message.location().url}:${message.location().lineNumber} ${message.text()}`,
+            );
+    });
+    await cleanPage.goto('/conversion');
+    await expect(
+        cleanPage.getByRole('heading', { name: /convert/i }).first(),
+    ).toBeVisible();
+    await cleanPage
+        .locator('input[type="file"]')
+        .setInputFiles(await image('clean.png'));
+    await expect(
+        cleanPage.getByRole('button', {
+            name: 'Start conversion',
+            exact: true,
+        }),
+    ).toBeEnabled();
+    expect(cspViolations).toEqual([]);
+    await cleanPage.close();
+
     const attack = '</script><script>window.__ssrInjected = true</script>';
-    await page.goto(`/conversion?key=${encodeURIComponent(attack)}`);
+    const document = await page.goto(
+        `/conversion?key=${encodeURIComponent(attack)}`,
+    );
+    expect(document?.headers()['content-security-policy']).toContain(
+        "script-src 'self' 'nonce-",
+    );
+    expect(document?.headers()['content-security-policy']).toContain(
+        "img-src 'self' blob: data:",
+    );
+    expect(document?.headers()['x-frame-options']).toBe('DENY');
+    expect(document?.headers()['referrer-policy']).toBe('no-referrer');
     await expect(
         page.getByRole('heading', { name: /convert/i }).first(),
     ).toBeVisible();
@@ -21,6 +59,9 @@ test('built SSR handles hostile URLs without script execution and keeps hydratio
         `/missing-${encodeURIComponent(attack)}`,
     );
     expect(missing.status()).toBe(404);
+    expect(missing.headers()['content-security-policy']).toContain(
+        'frame-ancestors',
+    );
     expect(await missing.text()).not.toContain('<script>window.__ssrInjected');
 
     // Bound the probe itself: many manifest paths, no recursive/unbounded bomb.
