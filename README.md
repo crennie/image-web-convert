@@ -8,7 +8,9 @@ See the [architecture documentation](docs/architecture/README.md) for system bou
 
 ## Setup and development
 
-Use Node.js 22 with npm 10 (the validated local version). Install the locked
+Use Node.js 24.22.0 with its bundled npm 11.19.1 (the validated versions).
+Linux ARM64 is the validated host platform; other platforms still need a clean
+native-codec and filesystem check. Install the locked
 dependencies and start the frontend and API with:
 
 ```sh

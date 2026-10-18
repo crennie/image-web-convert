@@ -68,7 +68,13 @@ import {
                 });
         };
 
-        shutdownOnFault = () => shutdown('Storage fault', true);
+        shutdownOnFault = () => {
+            // A request may still be writing its 503 response when it reports
+            // the fault. Drop readiness now, then close the server after that
+            // handler has had a turn to finish the response.
+            app.locals.setReady?.(false);
+            setImmediate(() => shutdown('Storage fault', true));
+        };
         server.listen(env.PORT, () => {
             // mark ready once we are listening
             app.locals.setReady?.(true);

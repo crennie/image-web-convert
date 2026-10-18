@@ -3,7 +3,7 @@
     "version": "0.0.0",
     "license": "MIT",
     "engines": {
-        "node": ">=22 <23"
+        "node": ">=24 <25"
     },
     "scripts": {
         "dev": "node tools/nx.mjs run-many --targets=dev,serve -p web api",
