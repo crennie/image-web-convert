@@ -5,7 +5,7 @@
 - Discovery completed: 2026-10-16; baseline commit `ec20ff482267d8fa2569fa85a7d1955a337ff806`.
 - Scope: personal, self-hosted, single persistent API process with exclusive local storage. Public anonymous hosting is a separate release gate, not an implicit requirement to add accounts, a database, a queue, SaaS monitoring, or distributed workers.
 - Discovery and PF-01 changed only documentation. PF-02 updates exposed dependency families, adds boundary regressions, and preserves telemetry/build behavior; see its checkpoint for current evidence.
-- Task states: `pending`, `in_progress`, `blocked`, `done`, `deferred`. PF-01, PF-01A, PF-02, PF-03, PF-04, PF-05, PF-06, and PF-07 are **done**; PF-08 is **in_progress**; PF-20 is **deferred** for this private self-host release; all other tasks are **pending**. Discovery is **done**, with explicitly recorded verification gaps. Priorities: **P0** release blocker/security exposure; **P1** required finalization; **P2** bounded cleanup/documentation; **PUBLIC** required before untrusted public exposure.
+- Task states: `pending`, `in_progress`, `blocked`, `done`, `deferred`. PF-01, PF-01A, PF-02, PF-03, PF-04, PF-05, PF-06, PF-07, and PF-08 are **done**; PF-09 is **in_progress**; PF-20 is **deferred** for this private self-host release; all other tasks are **pending**. Discovery is **done**, with explicitly recorded verification gaps. Priorities: **P0** release blocker/security exposure; **P1** required finalization; **P2** bounded cleanup/documentation; **PUBLIC** required before untrusted public exposure.
 - In subsequent sessions, select the highest-priority ready task (listed order breaks priority ties), mark it in progress here, inspect only changed evidence, implement one reviewable slice, run its tests, and record commit, commands, outcomes, residual risks, and status. Do not mark a task done merely because a test file exists. Refresh registry/security results at implementation time; do not repeat the entire assessment.
 - Preserve the architecture's HTTP adapter → runtime → transitions/storage/encoder boundaries, immutable manifests, independent commits, process-local claims/leases, and controlled-process test seams. The maintainer decided to retire sealed legacy-session reads; preserve current operation downloads at the shared file URLs.
 
@@ -145,14 +145,14 @@ Every task is independently reviewable. Dependencies refer to completed tasks; s
 - **Acceptance:** output format/dimensions/metadata/first-frame/color/alpha behavior documented and verified; supported self-host memory budget measured; conservative defaults justified. A public-host policy either contains hard decode failures or explicitly disallows unsafe input paths; process isolation requires scope decision PF-20.
 - **Required tests:** real HEIC and corrupt HEIC, wrong magic/MIME, EXIF orientation/GPS stripping, ICC, transparent JPEG policy, animation, near-limit pixels/dimensions, cancellation/timeouts retaining worker ownership. Bounded subprocess stress records peak RSS and kills only its own fixture process.
 
-### PF-08 — Validate persistence and contain filesystem access (P1, in_progress)
+### PF-08 — Validate persistence and contain filesystem access (P1, done)
 
 - **Scope/why:** F08; schema-validate active session and conversion records, safe expiry semantics, distinguish ENOENT from corruption/permission/storage failures, verify path containment and filesystem permissions. Retire old sealed-session reads and the now unused legacy sidecar reader under the maintainer decision below.
 - **Depends:** PF-03.
 - **Acceptance:** malformed records fail closed; file metadata cannot resolve outside its session; consistent private directory/file policy; storage errors are observable and use appropriate status/readiness; preserve receipt/fingerprint durability and current operation downloads. Remove old sealed-session reads without deleting stored files.
 - **Required tests:** invalid dates/token hashes/IDs/stored names, traversal and symlinks at current operation download entrypoints, EACCES/ENOSPC/short-write/rename failure, startup corruption isolation, partial-commit recovery, separate sessions cannot read each other's outputs, and old sealed-session requests no longer resolving. Do not claim OS privilege escalation defense against a fully compromised operator.
 
-### PF-09 — Protect SSR and private responses (P1, pending)
+### PF-09 — Protect SSR and private responses (P1, in_progress)
 
 - **Scope/why:** F09; production-safe root error UI, document/implement frontend security headers at serving boundary, private authenticated response caching, and remove browser requests to Google Fonts.
 - **Depends:** PF-02, PF-03.
@@ -651,6 +651,38 @@ Remaining PF-08 work: inspect unlabelled filesystem failures in upload acceptanc
 Validation: focused conversion-storage suite **70/70 passed**, full API suite **289/289 passed** from `apps/api`, API production build/typecheck/lint, use-case inventory **91/91 covered**, changed-file formatting, and `git diff --check` passed. The first lint run overlapped temporary-directory removal by the full test suite and failed with `ENOENT`; after those tests completed, lint exposed `no-unsafe-finally` in the first cleanup version. Cleanup was refactored to settle both results and report errors after releasing the claim; focused/full tests and lint then passed. No dependency or lockfile changes. Local commit: `PF-08: classify storage faults across conversion lifecycle`. No remote write was made.
 
 Remaining PF-08 work: classify unlabelled filesystem errors in atomic snapshot writes without confusing malformed data with storage I/O, and test a simultaneous receipt-publication and staging-cleanup fault if useful. A missing request source during staging still enters the storage-fault path; decide whether a proven client disconnect should be handled as an upload transition before altering that behavior.
+
+### PF-08 atomic snapshot fault checkpoint (2026-10-18)
+
+**Status: in progress.** Atomic snapshot staging, rename, directory sync, and temporary-file cleanup now classify unlabelled filesystem failures as storage I/O; invalid path types retain per-session storage classification. An incomplete verified write is a storage I/O failure. Focused tests show that an unacknowledged rename leaves the previous snapshot intact, while cleanup failure after publication leaves a readable committed record. A failed upload snapshot still retains its input for restart recovery.
+
+Validation: focused conversion-storage suite **72/72 passed**, full API suite **291/291 passed**, API production build/typecheck/lint, use-case inventory **91/91 covered**, changed-file Prettier, and `git diff --check` passed. The first test attempt could not start because dependencies were absent; `npm ci --legacy-peer-deps --ignore-scripts` installed the existing lockfile. No dependency or lockfile changes. Local commit: `PF-08: classify atomic snapshot write faults`. No remote write was made.
+
+Remaining PF-08 work: audit simultaneous receipt-publication and staging-cleanup failures and decide whether a proven client disconnect during upload staging should be classified as a transition. The fault tests inject unlabelled errors in-process; they do not reproduce an unlabelled OS fault in a separate production process.
+
+### PF-08 request-source and dual-fault checkpoint (2026-10-18)
+
+**Status: in progress.** Upload acceptance checks that a request is still active before reading its temporary source. If the source disappears during inspection, a confirmed inactive request remains a retryable upload transition; a missing source for an active request remains a storage I/O fault. Output commit now preserves a receipt-publication I/O fault when staging cleanup fails too, while still allowing a cleanup I/O fault to surface when the primary error was not I/O. Recovery removes unpublished output and staging after the dual fault. UC-090/E167 and UC-091/E165–E166 record the new evidence.
+
+Validation: focused conversion-storage suite **75/75 passed**, full API suite **294/294 passed**, API production build/typecheck/lint, and use-case inventory **91/91 covered** passed. The first focused run failed on an incorrect test assertion about error cause depth; it passed after correcting that assertion. Changed-file formatting and `git diff --check` passed. No dependency or lockfile changes. This slice was included in the PF-08/PF-09 local commit below; no remote write was made.
+
+Remaining PF-08 work: review whether other request-source loss points need the same confirmed-disconnect distinction and whether a process-level fault test adds evidence beyond existing receipt and upload recovery tests. The new dual-fault case injects failures in-process; it does not reproduce two simultaneous OS faults in a separate production process.
+
+### PF-08 closeout (2026-10-18)
+
+**Status: done.** A request source can disappear during `copyFile` after the first source check. The upload now rechecks that source on a copy `ENOENT`: only a confirmed missing source with an inactive request becomes a retryable upload transition. A copy `ENOENT` with the source still present remains storage I/O even if the request became inactive. UC-091/E168–E169 records both boundaries. The PF-08 acceptance set is covered by the prior session validation, path and private-mode tests, fault classification, current download checks, and process restart/recovery tests. Sealed legacy reads remain retired without deleting stored files.
+
+Validation: focused conversion-storage suite **77/77 passed**, full API suite **296/296 passed**, separately started production API suite **36/36 passed**, API production build/typecheck/lint, use-case inventory **91/91 covered**, changed-file Prettier, and `git diff --check` passed. No dependency or lockfile changes. This closeout was included in the PF-08/PF-09 local commit below; no remote write was made.
+
+Residual boundary: the single-process storage contract does not defend against a local actor concurrently replacing inspected files, and injected faults cannot prove every filesystem timing or crash-durability outcome. Public hosting, SSR response privacy, and optional telemetry remain assigned to later tasks. PF-09 is the next ready P1 task.
+
+### PF-09 root-error and font checkpoint (2026-10-18)
+
+**Status: in progress.** The root error boundary now renders generic 404 or failure copy without displaying route data, status text, error messages, or stacks. The document no longer links to Google Fonts; CSS uses a system font stack. The built SSR 404 page was exercised in Chromium, Firefox, and WebKit, including a check for Google Fonts requests, and the existing light/dark narrow/wide typography checks still pass. A targeted wording review found no browser-facing privacy or font claim requiring a copy change. UC-092/E170–E172 records this slice.
+
+Validation: focused root suite **4/4 passed**, full web suite **110/110 passed**, focused built-browser theme suite **15/15 passed** across three browsers, web production build/typecheck/lint, web E2E lint, use-case inventory **92/92 covered**, changed-file Prettier, and `git diff --check` passed. The first typecheck found a missing `loaderData` field in a test fixture; it passed after correction. Web lint still reports its existing non-null assertion warning in an unrelated test. No dependency or lockfile changes. Local commit: `Complete PF-08 and start PF-09 privacy hardening`. No remote write was made.
+
+Remaining PF-09 work: set and verify production SSR security headers with Router hydration and blob previews, apply a common private/no-store policy to authenticated API responses, and exercise conditional GET/HEAD/range and expired bearer behavior. A built production 500 response still needs direct error-body verification; this slice's built-browser test covers 404 and the component tests cover generic rendering errors.
 
 ## Dated dependency inventory (2026-10-16)
 

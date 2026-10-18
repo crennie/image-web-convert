@@ -1,43 +1,56 @@
-import { render, screen } from "@testing-library/react";
-import { ErrorBoundary, meta, links } from "./root";
+import { render, screen } from '@testing-library/react';
+import { ErrorBoundary, meta, links } from './root';
 
-describe("root.tsx (smoke)", () => {
-    it("meta() returns a title descriptor", () => {
-        // Minimal MetaArgs for react-router
+describe('root.tsx', () => {
+    it('provides a page title', () => {
         const args = {
             data: undefined,
+            loaderData: {},
             params: {},
-            location: { pathname: "/", search: "", hash: "", state: null, key: "test" },
+            location: {
+                pathname: '/',
+                search: '',
+                hash: '',
+                state: null,
+                key: 'test',
+            },
             matches: [],
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any;
+        } as Parameters<typeof meta>[0];
 
-        const m = meta(args) ?? [];
-        expect(Array.isArray(m)).toBe(true);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        expect(m.some((d: any) => d.title === "Image Web Converter")).toBe(true);
-    });
-
-    it("links() includes preconnect and stylesheet entries", () => {
-        const l = links() ?? [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        expect(l.some((x: any) => x.rel === "preconnect" && /fonts\.googleapis\.com/.test(x.href))).toBe(
-            true
-        );
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        expect(l.some((x: any) => x.rel === "stylesheet" && /fonts\.googleapis\.com/.test(x.href))).toBe(
-            true
+        expect(meta(args)).toEqual(
+            expect.arrayContaining([{ title: 'Image Web Converter' }]),
         );
     });
 
-    it("ErrorBoundary renders generic Error details", () => {
+    it('loads only same-origin icon links', () => {
+        expect(links()).toEqual([
+            { rel: 'icon', href: '/favicon.ico', sizes: '16x16 32x32 48x48' },
+            { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
+        ]);
+    });
+
+    it('hides application error details', () => {
+        const error = new Error('private token and path');
+        error.stack = 'private stack';
+        render(<ErrorBoundary error={error} />);
+        expect(screen.getByRole('alert')).toHaveTextContent(
+            'Something went wrong',
+        );
+        expect(screen.queryByText(/private/)).not.toBeInTheDocument();
+    });
+
+    it('hides route error data on a missing page', () => {
         render(
-            // Passing only fields the component uses:
-            <ErrorBoundary error={new Error("boom")} resetErrorBoundary={() => {
-                //
-            }} />
+            <ErrorBoundary
+                error={{
+                    status: 404,
+                    statusText: 'private status text',
+                    data: 'private route data',
+                    internal: false,
+                }}
+            />,
         );
-        expect(screen.getByText("Error")).toBeInTheDocument();
-        expect(screen.getByText("boom")).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent('Page not found');
+        expect(screen.queryByText(/private/)).not.toBeInTheDocument();
     });
 });

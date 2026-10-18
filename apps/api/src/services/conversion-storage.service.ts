@@ -289,7 +289,7 @@ async function writeExact(
         actual.bytes !== content.length ||
         actual.sha256 !== createHash('sha256').update(content).digest('hex')
     )
-        throw new ConversionStorageError('Incomplete stored file write');
+        throw new ConversionStorageIoError('Incomplete stored file write');
     return actual;
 }
 
@@ -306,15 +306,31 @@ function storageFailure(error: unknown, message: string): never {
  * acknowledgement: callers must reread/recover, never roll back other files. */
 async function atomicJson(target: string, value: unknown): Promise<void> {
     const temporary = `${target}.${secureId()}.tmp`;
+    const content = Buffer.from(JSON.stringify(value, null, 2));
+    const snapshotFilesystem = async <T>(
+        action: () => Promise<T>,
+    ): Promise<T> => {
+        try {
+            return await action();
+        } catch (error) {
+            if (error instanceof ConversionStorageError) throw error;
+            if (invalidStoragePath(error))
+                throw new ConversionStorageError(
+                    'Invalid snapshot path',
+                    error,
+                );
+            throw new ConversionStorageIoError(
+                'Unable to persist snapshot',
+                error,
+            );
+        }
+    };
     try {
-        await writeExact(
-            temporary,
-            Buffer.from(JSON.stringify(value, null, 2)),
-        );
-        await fs.rename(temporary, target);
-        await syncDirectory(path.dirname(target));
+        await snapshotFilesystem(() => writeExact(temporary, content));
+        await snapshotFilesystem(() => fs.rename(temporary, target));
+        await snapshotFilesystem(() => syncDirectory(path.dirname(target)));
     } finally {
-        await removeIfPresent(temporary);
+        await snapshotFilesystem(() => removeIfPresent(temporary));
     }
 }
 
@@ -614,10 +630,24 @@ export function createConversionStorage(
                     now(),
                 );
                 if ('uploadedAt' in slot && slot.uploadedAt) return initial;
-                const stat = await acceptFilesystem(
-                    () => fs.lstat(tempPath),
-                    'Unable to inspect upload source',
-                );
+                assertRequestActive();
+                let stat;
+                try {
+                    stat = await acceptFilesystem(
+                        () => fs.lstat(tempPath),
+                        'Unable to inspect upload source',
+                    );
+                } catch (error) {
+                    // The middleware may remove its temporary file on disconnect.
+                    // Only a confirmed inactive request changes this to an upload
+                    // transition; a missing source for an active request is I/O.
+                    if (
+                        error instanceof ConversionStorageIoError &&
+                        missing(error.cause)
+                    )
+                        assertRequestActive();
+                    throw error;
+                }
                 if (!stat.isFile())
                     throw new ConversionStorageError(
                         'Upload source must be a regular file',
@@ -628,15 +658,29 @@ export function createConversionStorage(
                     stat.size,
                     now(),
                 );
-                await acceptFilesystem(
-                    () =>
-                        fs.copyFile(
-                            tempPath,
-                            stage,
-                            fs.constants.COPYFILE_EXCL,
-                        ),
-                    'Unable to stage upload',
-                );
+                try {
+                    await acceptFilesystem(
+                        () =>
+                            fs.copyFile(
+                                tempPath,
+                                stage,
+                                fs.constants.COPYFILE_EXCL,
+                            ),
+                        'Unable to stage upload',
+                    );
+                } catch (error) {
+                    if (
+                        error instanceof ConversionStorageIoError &&
+                        missing(error.cause)
+                    ) {
+                        try {
+                            await fs.lstat(tempPath);
+                        } catch (sourceError) {
+                            if (missing(sourceError)) assertRequestActive();
+                        }
+                    }
+                    throw error;
+                }
                 await acceptFilesystem(
                     () => fs.chmod(stage, 0o600),
                     'Unable to secure upload staging',
@@ -769,6 +813,7 @@ export function createConversionStorage(
             );
         outputClaims.add(key);
         const stage = location.staged(secureId());
+        let primaryFailure: unknown;
         try {
             const initial = await mutationBase(sid, operationId);
             const output = makeOutput(initial.operation, fileId, processed);
@@ -833,6 +878,7 @@ export function createConversionStorage(
             );
             return committed;
         } catch (error) {
+            primaryFailure = error;
             return storageFailure(error, 'Unable to commit output');
         } finally {
             outputClaims.delete(key);
@@ -842,7 +888,11 @@ export function createConversionStorage(
                     'Unable to clean output staging',
                 );
             } catch (error) {
-                storageFailure(error, 'Unable to clean output staging');
+                if (
+                    primaryFailure === undefined ||
+                    !isStorageIoFailure(primaryFailure)
+                )
+                    storageFailure(error, 'Unable to clean output staging');
             }
         }
     }

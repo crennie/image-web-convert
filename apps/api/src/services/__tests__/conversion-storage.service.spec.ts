@@ -330,11 +330,51 @@ describe('durable conversion records', () => {
                 return writeFile(target, data, options);
             },
         );
-        await expect(create(1)).rejects.toThrow('Unable to persist operation');
+        const failure = await create(1).then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(failure).toMatchObject({
+            message:
+                'Unable to persist operation; reread or recover before continuing',
+        });
+        expect(isStorageIoFailure(failure)).toBe(true);
         await absent(locations.info);
         expect(await fs.readdir(locations.directory)).not.toContain(
             'conversion.info.json',
         );
+    });
+
+    it('tags an unlabelled snapshot rename failure while keeping the old record', async () => {
+        await create(1);
+        const original = await fs.readFile(locations.info, 'utf8');
+        const rename = fs.rename.bind(fs);
+        vi.spyOn(fs, 'rename').mockImplementation(async (source, target) => {
+            if (target === locations.info)
+                throw new Error('Unlabelled disk failure');
+            return rename(source, target);
+        });
+        const failure = await upload('file-0').then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(await fs.readFile(locations.info, 'utf8')).toBe(original);
+    });
+
+    it('tags an unlabelled snapshot cleanup failure after publication', async () => {
+        const unlink = fs.unlink.bind(fs);
+        vi.spyOn(fs, 'unlink').mockImplementation(async (target) => {
+            if (String(target).startsWith(`${locations.info}.`))
+                throw new Error('Unlabelled disk failure');
+            return unlink(target);
+        });
+        const failure = await create(1).then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect((await store.read(sid)).operation.id).toBe(oid);
     });
 
     it.each(['version', 'association', 'lifecycle', 'input'])(
@@ -584,6 +624,119 @@ describe('staged upload ownership', () => {
         );
         await absent(source);
         await absent(locations.input('file-0'));
+    });
+
+    it('treats a missing request source as cancellation only when the request became inactive', async () => {
+        await create(1);
+        const source = await requestFile();
+        const lstat = fs.lstat.bind(fs);
+        let active = true;
+        vi.spyOn(fs, 'lstat').mockImplementation(async (target) => {
+            if (target === source) {
+                active = false;
+                throw Object.assign(new Error('Source removed'), {
+                    code: 'ENOENT',
+                });
+            }
+            return lstat(target);
+        });
+        const failure = await store
+            .acceptUpload(sid, oid, 'file-0', source, () => {
+                if (!active)
+                    throw new ConversionTransitionError(
+                        'upload_error',
+                        'Request cancelled',
+                    );
+            })
+            .then(
+                () => null,
+                (error: unknown) => error,
+            );
+        expect(failure).toMatchObject({ type: 'upload_error' });
+        expect(isStorageIoFailure(failure)).toBe(false);
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'awaiting_upload',
+        );
+        await absent(source);
+    });
+
+    it('treats a missing source for an active request as storage I/O', async () => {
+        await create(1);
+        const source = await requestFile();
+        await fs.unlink(source);
+        const failure = await store
+            .acceptUpload(sid, oid, 'file-0', source, () => undefined)
+            .then(
+                () => null,
+                (error: unknown) => error,
+            );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'awaiting_upload',
+        );
+    });
+
+    it('treats a source lost during copy as cancellation when the request is inactive', async () => {
+        await create(1);
+        const source = await requestFile();
+        let active = true;
+        vi.spyOn(fs, 'copyFile').mockImplementationOnce(async () => {
+            await fs.unlink(source);
+            active = false;
+            throw Object.assign(new Error('Source removed'), {
+                code: 'ENOENT',
+            });
+        });
+        const failure = await store
+            .acceptUpload(sid, oid, 'file-0', source, () => {
+                if (!active)
+                    throw new ConversionTransitionError(
+                        'upload_error',
+                        'Request cancelled',
+                    );
+            })
+            .then(
+                () => null,
+                (error: unknown) => error,
+            );
+        expect(failure).toMatchObject({ type: 'upload_error' });
+        expect(isStorageIoFailure(failure)).toBe(false);
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'awaiting_upload',
+        );
+        expect(await fs.readdir(locations.staging)).toEqual([]);
+    });
+
+    it('keeps a copy ENOENT as storage I/O when its request source still exists', async () => {
+        await create(1);
+        const source = await requestFile();
+        let active = true;
+        vi.spyOn(fs, 'copyFile').mockImplementationOnce(async () => {
+            active = false;
+            throw Object.assign(new Error('Staging path missing'), {
+                code: 'ENOENT',
+            });
+        });
+        const failure = await store
+            .acceptUpload(sid, oid, 'file-0', source, () => {
+                if (!active)
+                    throw new ConversionTransitionError(
+                        'upload_error',
+                        'Request cancelled',
+                    );
+            })
+            .then(
+                () => null,
+                (error: unknown) => error,
+            );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { code: 'ENOENT', message: 'Staging path missing' },
+        });
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'awaiting_upload',
+        );
+        await absent(source);
     });
 
     it('holds upload ownership until both cleanup paths settle', async () => {
@@ -963,6 +1116,48 @@ describe('per-file commits and recovery', () => {
         expect(
             (await store.recoverAfterRestart(sid)).operation.files[0].status,
         ).toBe('completed');
+    });
+
+    it('preserves a receipt failure when staging cleanup also fails', async () => {
+        await ready(1);
+        await start();
+        const rename = fs.rename.bind(fs);
+        vi.spyOn(fs, 'rename').mockImplementation(async (source, target) => {
+            if (target === locations.receipt('file-0'))
+                throw Object.assign(new Error('Receipt publication failed'), {
+                    code: 'EIO',
+                });
+            return rename(source, target);
+        });
+        const unlink = fs.unlink.bind(fs);
+        let cleanupAttempted = false;
+        vi.spyOn(fs, 'unlink').mockImplementation(async (target) => {
+            if (String(target).startsWith(`${locations.staging}${path.sep}`)) {
+                cleanupAttempted = true;
+                throw Object.assign(new Error('Staging cleanup failed'), {
+                    code: 'EACCES',
+                });
+            }
+            return unlink(target);
+        });
+        const failure = await store
+            .commitOutput(sid, oid, 'file-0', processed())
+            .then(
+                () => null,
+                (error: unknown) => error,
+            );
+        expect(cleanupAttempted).toBe(true);
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Receipt publication failed' },
+        });
+        vi.restoreAllMocks();
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'processing',
+        );
+        const recovered = await store.recoverAfterRestart(sid);
+        expect(recovered.operation.files[0].status).toBe('failed');
+        expect(await fs.readdir(locations.staging)).toEqual([]);
     });
 
     it('recovers a receipt after its directory sync reports failure', async () => {
