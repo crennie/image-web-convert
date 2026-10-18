@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
 import { secureId } from '@image-web-convert/node-shared';
 import { generateAccessToken } from '../auth/authUtils';
 import type { SessionImageConfig } from '@image-web-convert/schemas';
@@ -52,6 +53,14 @@ export class InvalidSessionRecordError extends Error {
     }
 }
 
+export class SessionStorageError extends Error {
+    readonly type = 'storage_error';
+    constructor(message: string, cause?: unknown) {
+        super(message, { cause });
+        this.name = 'SessionStorageError';
+    }
+}
+
 export function parseSessionInfo(value: unknown, sid: string): SessionInfo {
     try {
         const info = SessionInfoSchema.parse(value);
@@ -95,15 +104,20 @@ export async function create(): Promise<CreateSessionResponse> {
     // Write session.info.json
     const directory = sessionDir(sid);
     const root = path.dirname(directory);
-    await fs.mkdir(root, { recursive: true, mode: 0o700 });
-    if (!(await fs.lstat(root)).isDirectory())
-        throw new InvalidSessionRecordError('Invalid upload root');
-    await fs.chmod(root, 0o700);
-    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-    if (!(await fs.lstat(directory)).isDirectory())
-        throw new InvalidSessionRecordError('Invalid session directory');
-    await fs.chmod(directory, 0o700);
-    await writeSessionInfo(sid, info);
+    try {
+        await fs.mkdir(root, { recursive: true, mode: 0o700 });
+        if (!(await fs.lstat(root)).isDirectory())
+            throw new InvalidSessionRecordError('Invalid upload root');
+        await fs.chmod(root, 0o700);
+        await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+        if (!(await fs.lstat(directory)).isDirectory())
+            throw new InvalidSessionRecordError('Invalid session directory');
+        await fs.chmod(directory, 0o700);
+        await writeSessionInfo(sid, info);
+    } catch (error) {
+        if (error instanceof SessionStorageError) throw error;
+        throw new SessionStorageError('Unable to create session', error);
+    }
 
     return { sid, expiresAt: info.expiresAt, accessToken: token, imageConfig };
 }
@@ -133,11 +147,48 @@ export async function writeSessionInfo(
     sid: string,
     info: SessionInfo,
 ): Promise<void> {
-    await fs.writeFile(sessionInfoPath(sid), JSON.stringify(info, null, 2), {
-        encoding: 'utf8',
-        mode: 0o600,
-    });
-    await fs.chmod(sessionInfoPath(sid), 0o600);
+    const target = sessionInfoPath(sid);
+    const temporary = `${target}.${randomUUID()}.tmp`;
+    const content = Buffer.from(
+        JSON.stringify(parseSessionInfo(info, sid), null, 2),
+    );
+    try {
+        await fs.writeFile(temporary, content, { flag: 'wx', mode: 0o600 });
+        const file = await fs.open(temporary, 'r');
+        try {
+            await file.sync();
+        } finally {
+            await file.close();
+        }
+        const actual = await fs.readFile(temporary);
+        if (
+            actual.length !== content.length ||
+            createHash('sha256').update(actual).digest('hex') !==
+                createHash('sha256').update(content).digest('hex')
+        )
+            throw new SessionStorageError('Incomplete session record write');
+        await fs.rename(temporary, target);
+        const directory = await fs.open(path.dirname(target), 'r');
+        try {
+            await directory.sync();
+        } finally {
+            await directory.close();
+        }
+    } catch (error) {
+        if (error instanceof SessionStorageError) throw error;
+        throw new SessionStorageError(
+            'Unable to persist session record',
+            error,
+        );
+    } finally {
+        await fs.unlink(temporary).catch((error: NodeJS.ErrnoException) => {
+            if (error.code !== 'ENOENT')
+                throw new SessionStorageError(
+                    'Unable to clean session record staging',
+                    error,
+                );
+        });
+    }
 }
 
 export function isSessionExpired(info: SessionInfo, now = new Date()): boolean {

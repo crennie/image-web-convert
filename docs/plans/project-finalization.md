@@ -508,6 +508,38 @@ Local commit: `PF-08: retire legacy reads and harden storage`. No remote write w
 
 Remaining PF-08 work: classify storage read/write/rename/short-write faults with response and readiness behavior; prove isolation and partial-commit recovery at the process boundary. Consider whether startup should normalize individual older file modes in addition to the owner-only root. Path-type checks and mode normalization are not atomic against a local actor with write access to storage.
 
+### PF-08 staged-write fault checkpoint (2026-10-17)
+
+**Status: in progress.** Conversion JSON snapshots and output buffers are now checked against their expected byte count and SHA-256 digest after staging and sync, before rename/publication. An incomplete successful write cannot become a committed snapshot or output. Upload and output staging I/O faults, including cleanup faults, now surface as `ConversionStorageError` so the existing HTTP boundary returns a generic 503 while retaining the filesystem cause for operator diagnostics. Transition errors retain their existing status. Injected short writes, EACCES/ENOSPC staging failures, and preexisting rename/partial-commit recovery tests cover this slice.
+
+Validation: focused conversion-storage suite **42/42 passed**; full API suite **239/239 passed**; separately started API suite **27/27 passed**, including crash recovery and corrupt-session isolation. API production build, typecheck, lint, changed-file Prettier, and `git diff --check` passed. The first focused run found two older assertions expecting raw filesystem messages, which were updated to check classified errors and retained causes. A fresh checkout needed `npm ci --legacy-peer-deps` and an API build before declaration-based typecheck. The install left the lockfile unchanged and reported 129 vulnerable packages, tracked in the dependency tasks. The final diff was reviewed. No local commit or remote write was made.
+
+Remaining PF-08 work: classify other create/read/rename/cleanup fault paths and verify their HTTP/readiness behavior with fault injection at the process boundary; verify startup handling of older broadly readable files. The existing process recovery suite does not inject a disk fault into a running production process, so it does not close that required evidence gap.
+
+### PF-08 existing-file mode checkpoint (2026-10-18)
+
+**Status: in progress.** Before reading each discovered conversion operation at startup, recovery now restricts its directories to `0700` and existing regular files in the operation, input, staging, and receipt directories to `0600`. Files already stored by older versions are included. Symlinks present at inspection are skipped; a unit regression verifies that an external symlink target retains its original mode. The separately started API regression broadens an operation record and accepted input before a crash restart, then checks both are private and the accepted slot remains usable. The recovery architecture and UC-076/E112–E113 record this contract.
+
+Validation: focused conversion-storage suite **42/42 passed**; full API suite **239/239 passed**; separately started API suite **27/27 passed**; API build, typecheck, lint, and use-case inventory **76/76 covered** passed. No dependency or lockfile changes. This slice remains uncommitted with the preceding staged-write slice; no remote write was made.
+
+Remaining PF-08 work: classify other create/read/rename/cleanup fault paths and verify HTTP/readiness behavior with fault injection in a running API process. The mode pass inspects then changes files and does not provide atomic protection against a local actor with storage write access.
+
+### PF-08 request-mutation readiness checkpoint (2026-10-18)
+
+**Status: in progress.** Request-time durable conversion mutations now fault the runtime when storage fails during operation creation, upload acceptance, rejection recording, or cancellation. The failure is classified as a storage error for the HTTP adapter, and `/readyz` returns 503 until process restart and recovery. Ordinary transition conflicts retain their request status and do not fault readiness. A separately started API test makes the accepted-input directory unwritable, verifies the upload returns `503 storage_error` and readiness drops, restores the directory, then restarts and completes the same slot. UC-045 now has direct process evidence E114. The existing unit expectation of immediate retry after a failed operation write was updated to require recovery while confirming its session claim is released.
+
+Validation: full API suite **239/239 passed** and separately started API suite **28/28 passed** after that assertion update. API production build, typecheck, lint, changed-file Prettier, `git diff --check`, and use-case inventory **76/76 covered** passed. An initial full API run failed on the old retry expectation; the corrected run passed. No dependency or lockfile changes. This slice remains uncommitted with the preceding PF-08 slices; no remote write was made.
+
+Remaining PF-08 work: verify create, read, write, rename, short-write, and cleanup fault classification across the remaining storage entrypoints, including response and readiness behavior where a mutation's outcome is uncertain. Preserve per-session isolation for corrupt persisted records. The process test covers a real EACCES rename failure; it does not establish behavior for every filesystem fault or a multi-process deployment.
+
+### PF-08 session-issuance durability checkpoint (2026-10-18)
+
+**Status: in progress.** Session records are now written to an owner-only temporary file, synced, read back and checked for exact bytes, then atomically renamed and the containing directory synced before a token is returned. A successful but incomplete write cannot publish a record or issue an unusable token. Rename failure preserves the prior record when `writeSessionInfo` replaces one. Session creation classifies filesystem failures as `SessionStorageError`; its controller returns a generic `503 storage_error` without sending a token. UC-077/E115–E116 maps the new boundary. Existing recordless directories after failed creation remain subject to the documented retention policy.
+
+Validation: focused session service/controller suite **13/13 passed**, full API suite **242/242 passed**, and separately started API suite **28/28 passed**. API production build, typecheck, lint, and use-case inventory **77/77 covered** passed. No dependency or lockfile changes. This slice remains uncommitted with preceding PF-08 slices; no remote write was made.
+
+Remaining PF-08 work: classify remaining conversion storage read, write, rename, and cleanup faults with appropriate response/readiness behavior; test those paths at the process boundary where practical. Session issuance's short-write and rename tests inject faults in-process; they do not prove all filesystem failure modes in a deployed environment.
+
 ## Dated dependency inventory (2026-10-16)
 
 Registry metadata was queried with `npm outdated --package-lock-only --json`; full and `--omit=dev` audits used `npm audit --package-lock-only --ignore-scripts --json`. Audit exits were 1 because findings exist. Counts refer to affected package entries, including parent propagation, not unique CVEs or demonstrated exploits.

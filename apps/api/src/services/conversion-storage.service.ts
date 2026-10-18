@@ -87,6 +87,16 @@ async function ensurePrivateDirectory(directory: string): Promise<void> {
     await fs.chmod(directory, 0o700);
 }
 
+async function ensurePrivateStoredFiles(directory: string): Promise<void> {
+    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        const target = path.join(directory, entry.name);
+        // Skip symlinks present at inspection; concurrent replacement is outside
+        // this single-process storage contract.
+        if ((await fs.lstat(target)).isFile()) await fs.chmod(target, 0o600);
+    }
+}
+
 async function fingerprint(target: string): Promise<Fingerprint> {
     const stat = await fs.lstat(target);
     if (!stat.isFile())
@@ -118,16 +128,39 @@ async function syncDirectory(directory: string): Promise<void> {
     }
 }
 
+async function writeExact(
+    target: string,
+    content: Buffer,
+): Promise<Fingerprint> {
+    await fs.writeFile(target, content, { flag: 'wx', mode: 0o600 });
+    await syncFile(target);
+    const actual = await fingerprint(target);
+    if (
+        actual.bytes !== content.length ||
+        actual.sha256 !== createHash('sha256').update(content).digest('hex')
+    )
+        throw new ConversionStorageError('Incomplete stored file write');
+    return actual;
+}
+
+function storageFailure(error: unknown, message: string): never {
+    if (
+        error instanceof ConversionStorageError ||
+        error instanceof ConversionTransitionError
+    )
+        throw error;
+    throw new ConversionStorageError(message, error);
+}
+
 /** Temp and target share a filesystem. Failures after rename have an ambiguous
  * acknowledgement: callers must reread/recover, never roll back other files. */
 async function atomicJson(target: string, value: unknown): Promise<void> {
     const temporary = `${target}.${secureId()}.tmp`;
     try {
-        await fs.writeFile(temporary, JSON.stringify(value, null, 2), {
-            flag: 'wx',
-            mode: 0o600,
-        });
-        await syncFile(temporary);
+        await writeExact(
+            temporary,
+            Buffer.from(JSON.stringify(value, null, 2)),
+        );
         await fs.rename(temporary, target);
         await syncDirectory(path.dirname(target));
     } finally {
@@ -427,12 +460,18 @@ export function createConversionStorage(
                     },
                 });
             });
+        } catch (error) {
+            return storageFailure(error, 'Unable to accept upload');
         } finally {
             uploadClaims.delete(key);
-            await Promise.all([
-                removeIfPresent(stage),
-                removeIfPresent(tempPath),
-            ]);
+            try {
+                await Promise.all([
+                    removeIfPresent(stage),
+                    removeIfPresent(tempPath),
+                ]);
+            } catch (error) {
+                storageFailure(error, 'Unable to clean upload staging');
+            }
         }
     }
 
@@ -504,12 +543,7 @@ export function createConversionStorage(
             const output = makeOutput(initial.operation, fileId, processed);
             // Validate slot/MIME/metadata before touching final artifact paths.
             finishConversionFile(initial.operation, fileId, { output }, now());
-            await fs.writeFile(stage, processed.buffer, {
-                flag: 'wx',
-                mode: 0o600,
-            });
-            await syncFile(stage);
-            const digest = await fingerprint(stage);
+            const digest = await writeExact(stage, processed.buffer);
             const committed = await serialized(location.info, async () => {
                 const latest = await read(sid, operationId);
                 await pendingCommit(latest);
@@ -544,9 +578,15 @@ export function createConversionStorage(
             });
             await removeIfPresent(location.input(fileId));
             return committed;
+        } catch (error) {
+            return storageFailure(error, 'Unable to commit output');
         } finally {
             outputClaims.delete(key);
-            await removeIfPresent(stage);
+            try {
+                await removeIfPresent(stage);
+            } catch (error) {
+                storageFailure(error, 'Unable to clean output staging');
+            }
         }
     }
 
@@ -672,8 +712,10 @@ export function createConversionStorage(
                 location.inputs,
                 location.staging,
                 location.receipts,
-            ])
+            ]) {
                 await ensurePrivateDirectory(directory);
+                await ensurePrivateStoredFiles(directory);
+            }
             let record = await read(sid);
             const commits: ConversionCommit[] = [];
             for (const file of record.operation.files) {

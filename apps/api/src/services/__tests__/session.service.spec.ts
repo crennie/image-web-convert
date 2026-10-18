@@ -5,6 +5,7 @@ import {
     isSessionExpired,
     readSessionInfo,
     InvalidSessionRecordError,
+    SessionStorageError,
     writeSessionInfo,
 } from '../sessions.service';
 import { sessionDir, sessionInfoPath } from '../storage.paths';
@@ -62,6 +63,7 @@ afterAll(async () => {
     });
     vi.useRealTimers();
 });
+afterEach(() => vi.restoreAllMocks());
 
 describe('session.service create()', () => {
     it('creates a new session dir, writes session.info.json, and returns sid/ttl/token/expiry', async () => {
@@ -124,6 +126,67 @@ describe('isSessionExpired', () => {
 });
 
 describe('writeSessionInfo / readSessionInfo', () => {
+    const validInfo = (sid: string) => ({
+        id: sid,
+        createdAt: h.fixedNow.toISOString(),
+        expiresAt: new Date(h.fixedNow.getTime() + 60_000).toISOString(),
+        sealedAt: null,
+        counts: { files: 0, totalBytes: 0 },
+        tokenHash: 'b'.repeat(64),
+    });
+
+    it('rejects a successful short write before publishing a session record', async () => {
+        const sid = 'short-write';
+        await fs.mkdir(sessionDir(sid), { recursive: true });
+        const writeFile = fs.writeFile.bind(fs);
+        vi.spyOn(fs, 'writeFile').mockImplementation(
+            async (target, data, options) => {
+                if (String(target).startsWith(`${sessionInfoPath(sid)}.`))
+                    return writeFile(
+                        target,
+                        (data as Buffer).subarray(0, 8),
+                        options,
+                    );
+                return writeFile(target, data, options);
+            },
+        );
+        await expect(
+            writeSessionInfo(sid, validInfo(sid)),
+        ).rejects.toBeInstanceOf(SessionStorageError);
+        await expect(fs.stat(sessionInfoPath(sid))).rejects.toMatchObject({
+            code: 'ENOENT',
+        });
+        expect(await fs.readdir(sessionDir(sid))).toEqual([]);
+    });
+
+    it('keeps the prior record when replacement rename fails', async () => {
+        const sid = 'rename-failure';
+        await fs.mkdir(sessionDir(sid), { recursive: true });
+        const original = validInfo(sid);
+        await writeSessionInfo(sid, original);
+        const rename = fs.rename.bind(fs);
+        vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+            if (to === sessionInfoPath(sid))
+                throw Object.assign(new Error('Injected rename failure'), {
+                    code: 'EIO',
+                });
+            return rename(from, to);
+        });
+        await expect(
+            writeSessionInfo(sid, {
+                ...original,
+                counts: { files: 1, totalBytes: 3 },
+            }),
+        ).rejects.toMatchObject({
+            type: 'storage_error',
+            cause: { code: 'EIO' },
+        });
+        expect(await readSessionInfo(sid)).toEqual(original);
+        expect(await fs.readdir(sessionDir(sid))).toEqual([
+            'session.info.json',
+        ]);
+    });
+
     it('writes pretty JSON and can be read back', async () => {
         const sid = 'abc';
         const info = {
