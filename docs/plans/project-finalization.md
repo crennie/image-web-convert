@@ -540,6 +540,78 @@ Validation: focused session service/controller suite **13/13 passed**, full API 
 
 Remaining PF-08 work: classify remaining conversion storage read, write, rename, and cleanup faults with appropriate response/readiness behavior; test those paths at the process boundary where practical. Session issuance's short-write and rename tests inject faults in-process; they do not prove all filesystem failure modes in a deployed environment.
 
+### PF-08 persisted-read fault checkpoint (2026-10-18)
+
+**Status: in progress.** Conversion runtime distinguishes operating-system I/O failures from corrupt or missing per-session artifacts during startup recovery, operation scans, status reads, and commit-evidence reads. An I/O fault stops admission and readiness; malformed persisted records still isolate only their session. Session discovery failures now become a `503 storage_error` on operation creation and also stop readiness. A separately started API test makes an operation record unreadable, verifies status and readiness return 503, then restores access and recovers on restart. UC-078/E117–E120 records the startup, scan, live-read, and process evidence.
+
+Validation: full API suite **245/245 passed**, separately started API suite **29/29 passed**, API build/typecheck/lint and API E2E lint passed; use-case inventory **78/78 covered**. The first focused command used a workspace-relative filter and found no tests; the corrected filter passed. One new startup assertion initially expected the raw EACCES error rather than the storage wrapper; the corrected focused and full runs passed. No dependency or lockfile changes. This slice is uncommitted; no remote write was made.
+
+Remaining PF-08 work: classify remaining conversion storage write, rename, and cleanup fault paths and their HTTP/readiness behavior, including uncertainty after a rename or directory sync. The process test exercises EACCES on a live read; it does not establish every filesystem fault mode or multi-process behavior.
+
+### PF-08 output-write and root-loss checkpoint (2026-10-18)
+
+**Status: in progress.** A separately started API process now proves that an EACCES failure writing converter output staging drops readiness, leaves the file uncommitted, and recovers it as `processing_interrupted` after restart; the failed output cannot be downloaded. Session discovery now distinguishes an existing empty storage root from a root that disappeared: it raises `ConversionStorageError` for the latter, so operation scans cannot silently treat lost storage as zero operations. UC-045/E121 and UC-078/E122 map these boundaries.
+
+Validation: full API suite **246/246 passed**, separately started API suite **30/30 passed**, API production build/typecheck/lint, API E2E lint, and use-case inventory **78/78 covered** passed. No dependency or lockfile changes. This slice and the preceding PF-08 read-fault slice remain uncommitted; no remote write was made.
+
+Remaining PF-08 work: exercise ambiguous rename/directory-sync outcomes and cleanup failures through the runtime and HTTP boundary, and review whether any remaining storage exceptions can return a misleading status or leave readiness green. The EACCES process test proves the failed output staging write path, not all output publication failures.
+
+### PF-08 receipt-publication and cleanup checkpoint (2026-10-18)
+
+**Status: in progress.** A separately started API test now interrupts receipt persistence after the output and metadata have been written. Readiness drops; restart marks the file interrupted and removes both receiptless artifacts before they can be downloaded. A focused storage test simulates a receipt rename that reaches disk but reports EIO; recovery verifies the receipt and completes the output rather than discarding it. Another process test makes accepted-input cleanup fail after a completed snapshot; readiness drops, and restart removes the stale input while preserving the committed download. UC-079/E123–E124 and UC-045/E125 record these boundaries. The existing expired-session process test now accepts either a record-only directory or an already removed directory, as retention may run between the 403 response and filesystem inspection.
+
+Validation: full API suite **247/247 passed**, separately started API suite **32/32 passed** on the final run, API build/typecheck/lint, API E2E lint, and use-case inventory **79/79 covered** passed. The first full API process run and a focused rerun failed on the expired-session test's stale directory-presence assumption; the corrected focused and full runs passed. No dependency or lockfile changes. This slice and preceding PF-08 slices remain uncommitted; no remote write was made.
+
+Remaining PF-08 work: verify directory-sync ambiguity and audit remaining storage exception paths for misleading HTTP status or green readiness. Receipt rename ambiguity is covered with an injected post-rename fault; the process tests cover EACCES receipt creation and cleanup rather than an actual filesystem sync failure.
+
+### PF-08 directory-sync and session-reread checkpoint (2026-10-18)
+
+**Status: in progress.** A focused fault test now fails receipt-directory sync after the receipt rename, then verifies recovery accepts the on-disk receipt and completes the output. The exception audit found that operation creation rereads the session record after authentication; previously, a disk failure in that second read could return a generic 500 without faulting readiness. It now becomes `503 storage_error` and faults readiness. A missing session produces `404 session_not_found`, while a corrupt record blocks only that session and permits healthy admission. UC-079/E126 and UC-080/E127–E129 record these results.
+
+Validation: full API suite **251/251 passed**, separately started API suite **32/32 passed**, API production build/typecheck/lint, and use-case inventory **80/80 covered** passed. The first typecheck exposed a duplicate import in this slice; it passed after removal. No dependency or lockfile changes. This slice and preceding PF-08 slices remain uncommitted; no remote write was made.
+
+Remaining PF-08 work: check whether authentication-time session read faults should immediately drop runtime readiness or remain isolated until the periodic retention scan, and broaden filesystem fault classification beyond the current explicit code list where justified. The directory-sync test injects an EIO after rename and assumes the receipt remains visible; actual crash durability remains filesystem-dependent.
+
+### PF-08 fatal storage shutdown checkpoint (2026-10-18)
+
+**Status: in progress.** The maintainer chose immediate production shutdown for fatal storage faults. The production entrypoint now wires conversion-runtime faults and session authentication/issuance storage faults to the existing bounded graceful shutdown path. It drops readiness and closes the listener as soon as a fault is reported, waits up to `CONVERSION_SHUTDOWN_GRACE_MS` for active requests and conversions, and exits with code 1 even when draining succeeds. A live download can finish within that grace period; a stalled transfer may be interrupted. Corrupt session records remain isolated. Separately started production API tests prove that an upload mutation fault and an authentication-time session-record read fault each return 503, cause exit code 1, and recover after storage repair and restart. UC-045/E130–E131 records the process evidence.
+
+Validation: full API suite **251/251 passed**, separately started API suite **34/34 passed**, API production build, API and API E2E typecheck/lint, changed-file Prettier, use-case inventory **80/80 covered**, and `git diff --check` passed. No dependency or lockfile changes. This slice and preceding PF-08 slices remain uncommitted; no remote write was made.
+
+Remaining PF-08 work: review filesystem error classification beyond the current explicit code list and check for storage exception paths that could bypass fatal shutdown. The process tests inject EACCES faults; they do not prove every filesystem failure mode or the precise transfer behavior at the grace deadline.
+
+### PF-08 fatal shutdown seam checkpoint (2026-10-18)
+
+**Status: in progress.** UC-081/E132 now exercises a real production output download held open while an unrelated session authentication read raises EACCES. The process remains alive for that active response, refuses a fresh connection after shutdown begins, delivers the complete image within grace, then exits with code 1. UC-082/E133 holds a multipart upload open when the same fault occurs with an 800 ms grace period; the process remains alive while the upload is active, then exits with code 1 and closes it at the deadline. These cases directly cover the boundary between immediate admission shutdown and bounded draining. The test launcher now accepts a per-test shutdown grace period.
+
+Validation: focused new API process tests **2/2 passed**, full API process suite **36/36 passed**, API E2E typecheck/lint, use-case inventory **82/82 covered**, changed-file Prettier, and `git diff --check` passed. No production dependency or lockfile changes. This test slice remains uncommitted with the preceding PF-08 work; no remote write was made.
+
+Remaining PF-08 work: audit additional filesystem error codes and storage exception paths. The download test covers a connection that finishes before grace; the stalled-upload test covers the forced deadline. They do not model every client, proxy, or filesystem failure timing.
+
+### PF-08 download-read fault checkpoint (2026-10-18)
+
+**Status: in progress.** The conversion HTTP error boundary now recognizes filesystem and resource failures that occur during download resolution or after response headers have been sent. Before headers it returns a generic `503 storage_error`; after headers it closes the partial response. Both paths notify the production storage-fault shutdown hook. The shared classifier now includes `EBUSY`, `ESTALE`, and other filesystem/resource codes beyond the original list, while excluding transport errors such as `EPIPE` so a disconnected client does not stop the API. Existing missing-file and malformed-path cases remain isolated. UC-083/E134–E135 and UC-084/E136 record these boundaries; authentication tests also check the added codes and isolated `ENOTDIR` behavior.
+
+Validation: focused API HTTP/auth tests **22/22 passed**, full API suite **257/257 passed**, separately started API suite **36/36 passed**, API production build/typecheck/lint, changed-file Prettier, use-case inventory **84/84 covered**, and `git diff --check` passed. The first typecheck found an implicit `this` type in the new test mock; it passed after annotation. No dependency or lockfile changes. This slice remains uncommitted with the preceding PF-08 work; no remote write was made.
+
+Remaining PF-08 work: inspect remaining storage entrypoints and path-specific error handling, especially failures whose errors have no errno code. The new late-download tests inject faults at the HTTP boundary; they do not reproduce a filesystem failure at exactly that point in a separate production process.
+
+### PF-08 unlabelled read-fault checkpoint (2026-10-18)
+
+**Status: in progress.** Session-record and conversion-operation reads now tag failures from their filesystem calls even when the underlying error has no errno code. An unlabelled session read becomes `SessionStorageError`, which authentication returns as a generic 503 and reports to the fatal shutdown hook. An unlabelled operation read becomes `ConversionStorageIoError`; startup and live runtime classification stop readiness instead of quarantining the session as corrupt. Missing records and malformed paths retain their isolated behavior. UC-078/E137 and E140, plus UC-085/E138–E139, record the new boundary tests.
+
+Validation: focused storage/runtime/session/auth suites **113/113 passed**, full API suite **261/261 passed**, separately started API suite **36/36 passed** on a sequential rerun, API production build/typecheck/lint, changed-file Prettier, use-case inventory **85/85 covered**, and `git diff --check` passed. The initial focused run failed because the new session wrapper added a level to an error cause assertion; the corrected run passed. The first API process run failed because a concurrent build temporarily removed the generated observability entrypoint; its isolated rerun passed. No dependency or lockfile changes. This slice remains uncommitted with preceding PF-08 work; no remote write was made.
+
+Remaining PF-08 work: inspect other read and commit-evidence paths for unlabelled filesystem failures, while keeping malformed persisted data isolated. The new tests inject unlabelled errors in-process; they do not reproduce such an error from a real filesystem in a separate production process.
+
+### PF-08 commit-evidence read checkpoint (2026-10-18)
+
+**Status: in progress.** Commit-evidence verification now tags unlabelled filesystem failures while reading receipt, metadata, and output fingerprints as storage I/O. Missing and malformed artifacts, including malformed receipt JSON and invalid paths, remain isolated to the affected session. The startup recovery permission scan also tags unlabelled filesystem failures before it verifies receipts. UC-086/E141–E146 covers receipt, metadata, and output stat/read failures, startup recovery and live download readiness, and malformed-evidence isolation. The recovery design document records this distinction.
+
+Validation: full API suite **270/270 passed**, separately started API suite **36/36 passed**, API production build/typecheck/lint, changed-file Prettier, use-case inventory **86/86 covered**, and `git diff --check` passed. The first startup test exposed the earlier permission-scan path and failed; after classifying that path and testing it separately, the full suite passed. No dependency or lockfile changes. This slice remains uncommitted with preceding PF-08 work; no remote write was made.
+
+Remaining PF-08 work: inspect other conversion-storage filesystem paths for unlabelled errors that may still be mistaken for per-session corruption, especially accepted-input verification and cleanup during recovery. These tests inject errors in-process; the separate process suite covers ordinary EACCES faults, not a real filesystem error without an errno code.
+
 ## Dated dependency inventory (2026-10-16)
 
 Registry metadata was queried with `npm outdated --package-lock-only --json`; full and `--omit=dev` audits used `npm audit --package-lock-only --ignore-scripts --json`. Audit exits were 1 because findings exist. Counts refer to affected package entries, including parent propagation, not unique CVEs or demonstrated exploits.

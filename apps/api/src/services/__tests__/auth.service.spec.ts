@@ -7,7 +7,11 @@ import {
     timingSafeEqHex,
 } from '../../auth/authUtils';
 
-import { readSessionInfo, isSessionExpired } from '../sessions.service';
+import {
+    readSessionInfo,
+    isSessionExpired,
+    SessionStorageError,
+} from '../sessions.service';
 
 // ---- Mocks ----
 vi.mock('../../auth/authUtils', () => ({
@@ -16,7 +20,8 @@ vi.mock('../../auth/authUtils', () => ({
     timingSafeEqHex: vi.fn(),
 }));
 
-vi.mock('../sessions.service', () => ({
+vi.mock('../sessions.service', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../sessions.service')>()),
     readSessionInfo: vi.fn(),
     isSessionExpired: vi.fn(),
 }));
@@ -32,6 +37,7 @@ const mockedExpired = vi.mocked(isSessionExpired);
 function makeReq(opts?: {
     sid?: string;
     authorization?: string | null;
+    onStorageFault?: (error: unknown) => void;
 }): Request {
     const sid = opts?.sid ?? 'S123';
     const authorization = opts?.authorization ?? null;
@@ -42,6 +48,7 @@ function makeReq(opts?: {
     return {
         params: { sid },
         header: (name: string) => headers[name.toLowerCase()],
+        app: { locals: { onStorageFault: opts?.onStorageFault } },
     } as unknown as Request;
 }
 
@@ -107,37 +114,52 @@ describe('validateRequestWithToken', () => {
         expect(res.setHeader).not.toHaveBeenCalled();
     });
 
-    it.each(['EACCES', 'ENOSPC', 'CORRUPT'])(
-        'returns 503 for %s while reading a session',
-        async (code) => {
-            mockedExtract.mockReturnValueOnce('abc');
-            mockedRead.mockRejectedValueOnce(
-                code === 'CORRUPT'
-                    ? new Error('Invalid persisted session record')
-                    : Object.assign(new Error('storage failed'), { code }),
-            );
-            const log = vi
-                .spyOn(console, 'error')
-                .mockImplementation(() => undefined);
-            try {
-                expect(
-                    await validateRequestWithToken(
-                        makeReq({ authorization: 'Bearer abc' }),
-                        makeRes(),
-                    ),
-                ).toEqual({
-                    valid: false,
-                    status: 503,
-                    apiError: {
-                        type: 'storage_error',
-                        message: 'Session storage is unavailable',
-                    },
-                });
-            } finally {
-                log.mockRestore();
-            }
-        },
-    );
+    it.each([
+        ['EACCES', true],
+        ['ENOSPC', true],
+        ['EBUSY', true],
+        ['ESTALE', true],
+        ['ENOTDIR', false],
+        ['UNCODED', true],
+        ['CORRUPT', false],
+    ])('returns 503 for %s while reading a session', async (code, fatal) => {
+        const onStorageFault = vi.fn();
+        mockedExtract.mockReturnValueOnce('abc');
+        mockedRead.mockRejectedValueOnce(
+            code === 'CORRUPT'
+                ? new Error('Invalid persisted session record')
+                : code === 'UNCODED'
+                  ? new SessionStorageError(
+                        'Unable to read session record',
+                        new Error('Unlabelled disk failure'),
+                    )
+                  : Object.assign(new Error('storage failed'), { code }),
+        );
+        const log = vi
+            .spyOn(console, 'error')
+            .mockImplementation(() => undefined);
+        try {
+            expect(
+                await validateRequestWithToken(
+                    makeReq({
+                        authorization: 'Bearer abc',
+                        onStorageFault,
+                    }),
+                    makeRes(),
+                ),
+            ).toEqual({
+                valid: false,
+                status: 503,
+                apiError: {
+                    type: 'storage_error',
+                    message: 'Session storage is unavailable',
+                },
+            });
+            expect(onStorageFault).toHaveBeenCalledTimes(fatal ? 1 : 0);
+        } finally {
+            log.mockRestore();
+        }
+    });
 
     it('401 when token hash mismatch; sets invalid_token header', async () => {
         const req = makeReq({ authorization: 'Bearer abc' });

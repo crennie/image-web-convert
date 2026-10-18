@@ -298,6 +298,131 @@ describe('backend conversion scheduling', () => {
         expect(rt.isReady()).toBe(true);
     });
 
+    it('fails startup readiness when a persisted operation cannot be read from disk', async () => {
+        await seed('session-a', 1, 0);
+        const io = Object.assign(new Error('disk read failed'), {
+            code: 'EACCES',
+        });
+        vi.spyOn(fs, 'readFile').mockRejectedValueOnce(io);
+        const rt = runtime();
+        await expect(rt.start()).rejects.toThrow('Unable to read operation');
+        expect(rt.isReady()).toBe(false);
+        expect(rt.diagnostics().blockedSessions).toEqual([]);
+    });
+
+    it('fails startup readiness when a persisted operation read has no errno code', async () => {
+        await seed('session-a', 1, 0);
+        vi.spyOn(fs, 'readFile').mockRejectedValueOnce(
+            new Error('Unlabelled disk failure'),
+        );
+        const rt = runtime();
+        await expect(rt.start()).rejects.toThrow('Unable to read operation');
+        expect(rt.isReady()).toBe(false);
+        expect(rt.diagnostics().blockedSessions).toEqual([]);
+    });
+
+    it('fails startup readiness when committed evidence has an unlabelled read failure', async () => {
+        const operation = await seed('session-a', 1);
+        await store.update('session-a', operation.id, (current) =>
+            startConversionFile(current, 'file-0', new Date()),
+        );
+        await store.commitOutput('session-a', operation.id, 'file-0', result());
+        expect(await store.listSessions()).toContain('session-a');
+        expect((await store.read('session-a')).operation.files[0].status).toBe(
+            'completed',
+        );
+        const receipt = conversionStoragePaths('session-a', root).receipt(
+            'file-0',
+        );
+        const readFile = fs.readFile.bind(fs);
+        vi.spyOn(fs, 'readFile').mockImplementation(async (target, options) => {
+            if (target === receipt) throw new Error('Unlabelled disk failure');
+            return readFile(target, options);
+        });
+        const rt = runtime();
+        await expect(rt.start()).rejects.toThrow(
+            'Unable to read commit receipt',
+        );
+        expect(rt.isReady()).toBe(false);
+        expect(rt.diagnostics().blockedSessions).toEqual([]);
+    });
+
+    it('fails startup readiness when the permission scan has an unlabelled file failure', async () => {
+        const operation = await seed('session-a', 1);
+        await store.update('session-a', operation.id, (current) =>
+            startConversionFile(current, 'file-0', new Date()),
+        );
+        await store.commitOutput('session-a', operation.id, 'file-0', result());
+        const receipt = conversionStoragePaths('session-a', root).receipt(
+            'file-0',
+        );
+        const lstat = fs.lstat.bind(fs);
+        vi.spyOn(fs, 'lstat').mockImplementation(async (target) => {
+            if (target === receipt) throw new Error('Unlabelled disk failure');
+            return lstat(target);
+        });
+        const rt = runtime();
+        await expect(rt.start()).rejects.toThrow(
+            'Unable to inspect stored files',
+        );
+        expect(rt.isReady()).toBe(false);
+        expect(rt.diagnostics().blockedSessions).toEqual([]);
+    });
+
+    it('drops readiness for a disk read failure after startup', async () => {
+        await seed('session-a', 1, 0);
+        const onFault = vi.fn();
+        const rt = runtime({ onFault });
+        await rt.start();
+        vi.spyOn(fs, 'readFile').mockRejectedValueOnce(
+            Object.assign(new Error('disk read failed'), { code: 'EACCES' }),
+        );
+        await expect(rt.read('session-a')).rejects.toThrow(
+            'Unable to read operation',
+        );
+        expect(rt.isReady()).toBe(false);
+        expect(rt.diagnostics().blockedSessions).toEqual([]);
+        expect(onFault).toHaveBeenCalledTimes(1);
+        await expect(rt.read('session-a')).resolves.toBeDefined();
+        expect(onFault).toHaveBeenCalledTimes(1);
+    });
+
+    it('drops readiness when committed evidence has an unlabelled read failure', async () => {
+        const operation = await seed('session-a', 1);
+        const onFault = vi.fn();
+        const rt = runtime({ onFault });
+        await rt.start();
+        await rt.whenIdle();
+        const receipt = conversionStoragePaths('session-a', root).receipt(
+            'file-0',
+        );
+        const lstat = fs.lstat.bind(fs);
+        vi.spyOn(fs, 'lstat').mockImplementation(async (target) => {
+            if (target === receipt) throw new Error('Unlabelled disk failure');
+            return lstat(target);
+        });
+        await expect(
+            rt.completedOutput('session-a', operation.id, 'file-0'),
+        ).rejects.toThrow('Unable to read commit receipt');
+        expect(rt.isReady()).toBe(false);
+        expect(rt.diagnostics().blockedSessions).toEqual([]);
+        expect(onFault).toHaveBeenCalledTimes(1);
+    });
+
+    it('drops readiness for a disk fault during the operation scan', async () => {
+        await seed('session-a', 1, 0);
+        const onError = vi.fn();
+        const rt = runtime({ onError });
+        await rt.start();
+        vi.spyOn(fs, 'readFile').mockRejectedValueOnce(
+            Object.assign(new Error('disk read failed'), { code: 'EIO' }),
+        );
+        await rt.sweep();
+        expect(rt.isReady()).toBe(false);
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(rt.diagnostics().blockedSessions).toEqual([]);
+    });
+
     it('halts further processing after a storage commit failure', async () => {
         await seed('session-a', 2);
         const convert = vi.fn<(input: ProcessInput) => Promise<ProcessOutput>>(
@@ -737,7 +862,7 @@ describe('admission and runtime lifecycle', () => {
         await rt.start();
         await expect(
             rt.createOperation('retry-session', manifest),
-        ).rejects.toMatchObject({ code: 'ENOENT' });
+        ).rejects.toMatchObject({ type: 'session_not_found' });
         await seedSession('retry-session');
         vi.spyOn(store, 'create').mockRejectedValueOnce(
             new Error('write failed'),
@@ -753,6 +878,50 @@ describe('admission and runtime lifecycle', () => {
         await expect(
             rt.createOperation('retry-session', manifest),
         ).rejects.toThrow('requires recovery');
+    });
+
+    it('faults readiness when session reread fails during operation creation', async () => {
+        await seedSession('read-failure');
+        const rt = runtime();
+        await rt.start();
+        vi.spyOn(fs, 'readFile').mockRejectedValueOnce(
+            Object.assign(new Error('session disk unavailable'), {
+                code: 'EACCES',
+            }),
+        );
+        await expect(
+            rt.createOperation('read-failure', manifest),
+        ).rejects.toMatchObject({
+            type: 'storage_error',
+            cause: { cause: { code: 'EACCES' } },
+        });
+        expect(rt.isReady()).toBe(false);
+    });
+
+    it('reports a missing session during operation creation without faulting readiness', async () => {
+        const rt = runtime();
+        await rt.start();
+        await expect(
+            rt.createOperation('missing-session', manifest),
+        ).rejects.toMatchObject({ type: 'session_not_found' });
+        expect(rt.isReady()).toBe(true);
+    });
+
+    it('isolates a corrupt session reread without faulting healthy admission', async () => {
+        await seedSession('corrupt-session');
+        await seedSession('healthy-session');
+        const rt = runtime();
+        await rt.start();
+        await fs.writeFile(sessionInfoPath('corrupt-session', root), '{broken');
+        await expect(
+            rt.createOperation('corrupt-session', manifest),
+        ).rejects.toMatchObject({ type: 'storage_error' });
+        expect(rt.diagnostics().blockedSessions).toContain('corrupt-session');
+        expect(rt.isReady()).toBe(true);
+        expect(
+            (await rt.createOperation('healthy-session', manifest)).operation
+                .sessionId,
+        ).toBe('healthy-session');
     });
 
     it('serializes concurrent identical and conflicting creation without duplicating the operation', async () => {

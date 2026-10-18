@@ -19,6 +19,7 @@ export async function createSession(
     } catch (err) {
         if (err instanceof SessionStorageError) {
             console.error('Session creation storage failure', err);
+            req.app?.locals.onStorageFault?.(err);
             res.status(503).json({
                 type: 'storage_error',
                 message: 'Session storage is unavailable',

@@ -62,6 +62,58 @@ export class ConversionStorageError extends Error {
     }
 }
 
+export class ConversionStorageIoError extends ConversionStorageError {
+    constructor(message: string, cause?: unknown) {
+        super(message, cause);
+        this.name = 'ConversionStorageIoError';
+    }
+}
+
+// Corrupt or missing artifacts belong to one session. Filesystem and resource
+// failures may affect every session. Transport errors from disconnected clients
+// must not stop the process.
+const storageErrnoCodes = new Set([
+    'EACCES',
+    'EPERM',
+    'ENOSPC',
+    'EDQUOT',
+    'EROFS',
+    'EIO',
+    'EMFILE',
+    'ENFILE',
+    'EBUSY',
+    'ESTALE',
+    'ENODEV',
+    'ENXIO',
+    'EFBIG',
+    'ENOMEM',
+    'EAGAIN',
+    'EINTR',
+    'EMLINK',
+    'ENOTEMPTY',
+    'EXDEV',
+    'EEXIST',
+    'ENOSYS',
+    'ENOTSUP',
+    'EOPNOTSUPP',
+]);
+export function isStorageIoFailure(error: unknown): boolean {
+    let current = error;
+    const seen = new Set<unknown>();
+    while (current && typeof current === 'object' && !seen.has(current)) {
+        seen.add(current);
+        if (current instanceof ConversionStorageIoError) return true;
+        if (
+            'code' in current &&
+            typeof current.code === 'string' &&
+            storageErrnoCodes.has(current.code)
+        )
+            return true;
+        current = 'cause' in current ? current.cause : undefined;
+    }
+    return false;
+}
+
 function missing(error: unknown): boolean {
     return (
         typeof error === 'object' &&
@@ -69,6 +121,32 @@ function missing(error: unknown): boolean {
         'code' in error &&
         error.code === 'ENOENT'
     );
+}
+
+function invalidStoragePath(error: unknown): boolean {
+    return (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        ['ENOTDIR', 'EISDIR', 'ELOOP'].includes(String(error.code))
+    );
+}
+
+async function readCommitArtifact<T>(action: () => Promise<T>): Promise<T> {
+    try {
+        return await action();
+    } catch (error) {
+        if (error instanceof ConversionStorageError) throw error;
+        if (missing(error) || invalidStoragePath(error))
+            throw new ConversionStorageError(
+                'Invalid file commit evidence',
+                error,
+            );
+        throw new ConversionStorageIoError(
+            'Unable to read file commit evidence',
+            error,
+        );
+    }
 }
 
 async function removeIfPresent(target: string): Promise<void> {
@@ -80,20 +158,43 @@ async function removeIfPresent(target: string): Promise<void> {
 }
 
 async function ensurePrivateDirectory(directory: string): Promise<void> {
-    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-    const stat = await fs.lstat(directory);
-    if (!stat.isDirectory())
-        throw new ConversionStorageError('Invalid storage directory');
-    await fs.chmod(directory, 0o700);
+    try {
+        await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+        const stat = await fs.lstat(directory);
+        if (!stat.isDirectory())
+            throw new ConversionStorageError('Invalid storage directory');
+        await fs.chmod(directory, 0o700);
+    } catch (error) {
+        if (error instanceof ConversionStorageError) throw error;
+        if (invalidStoragePath(error))
+            throw new ConversionStorageError('Invalid storage path', error);
+        throw new ConversionStorageIoError(
+            'Unable to prepare storage directory',
+            error,
+        );
+    }
 }
 
 async function ensurePrivateStoredFiles(directory: string): Promise<void> {
-    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
-        if (!entry.isFile()) continue;
-        const target = path.join(directory, entry.name);
-        // Skip symlinks present at inspection; concurrent replacement is outside
-        // this single-process storage contract.
-        if ((await fs.lstat(target)).isFile()) await fs.chmod(target, 0o600);
+    try {
+        for (const entry of await fs.readdir(directory, {
+            withFileTypes: true,
+        })) {
+            if (!entry.isFile()) continue;
+            const target = path.join(directory, entry.name);
+            // Skip symlinks present at inspection; concurrent replacement is outside
+            // this single-process storage contract.
+            if ((await fs.lstat(target)).isFile())
+                await fs.chmod(target, 0o600);
+        }
+    } catch (error) {
+        if (error instanceof ConversionStorageError) throw error;
+        if (missing(error) || invalidStoragePath(error))
+            throw new ConversionStorageError('Invalid stored file path', error);
+        throw new ConversionStorageIoError(
+            'Unable to inspect stored files',
+            error,
+        );
     }
 }
 
@@ -217,7 +318,15 @@ export function createConversionStorage(
                     'Operation not found',
                 );
             if (error instanceof ConversionStorageError) throw error;
-            throw new ConversionStorageError('Unable to read operation', error);
+            if (invalidStoragePath(error))
+                throw new ConversionStorageError(
+                    'Invalid operation path',
+                    error,
+                );
+            throw new ConversionStorageIoError(
+                'Unable to read operation',
+                error,
+            );
         }
         let record: StoredConversion;
         try {
@@ -627,7 +736,12 @@ export function createConversionStorage(
         } catch (error) {
             if (missing(error)) return null;
             if (error instanceof ConversionStorageError) throw error;
-            throw new ConversionStorageError(
+            if (invalidStoragePath(error))
+                throw new ConversionStorageError(
+                    'Invalid commit receipt path',
+                    error,
+                );
+            throw new ConversionStorageIoError(
                 'Unable to read commit receipt',
                 error,
             );
@@ -650,14 +764,22 @@ export function createConversionStorage(
                 commit.fingerprint.bytes !== commit.output.meta.output.sizeBytes
             )
                 throw new Error('Commit association mismatch');
-            const metaFile = await fs.lstat(location.meta(fileId));
+            const metaFile = await readCommitArtifact(() =>
+                fs.lstat(location.meta(fileId)),
+            );
             if (!metaFile.isFile())
                 throw new Error('Invalid output metadata file');
             const meta = UploadMetaSchema.parse(
-                JSON.parse(await fs.readFile(location.meta(fileId), 'utf8')),
+                JSON.parse(
+                    await readCommitArtifact(() =>
+                        fs.readFile(location.meta(fileId), 'utf8'),
+                    ),
+                ),
             );
-            const digest = await fingerprint(
-                location.output(fileId, operation.options.outputMime),
+            const digest = await readCommitArtifact(() =>
+                fingerprint(
+                    location.output(fileId, operation.options.outputMime),
+                ),
             );
             if (
                 !isDeepStrictEqual(meta, commit.output.meta) ||
@@ -666,6 +788,7 @@ export function createConversionStorage(
                 throw new Error('Commit artifacts do not match receipt');
             return commit;
         } catch (error) {
+            if (error instanceof ConversionStorageIoError) throw error;
             throw new ConversionStorageError(
                 'Invalid file commit evidence',
                 error,
@@ -855,8 +978,10 @@ export function createConversionStorage(
         try {
             entries = await fs.readdir(root, { withFileTypes: true });
         } catch (error) {
-            if (missing(error)) return [];
-            throw error;
+            throw new ConversionStorageError(
+                'Unable to discover conversion sessions',
+                error,
+            );
         }
         const sessions: string[] = [];
         for (const entry of entries) {
@@ -869,7 +994,11 @@ export function createConversionStorage(
                 await fs.stat(paths(entry.name).info);
                 sessions.push(entry.name);
             } catch (error) {
-                if (!missing(error)) throw error;
+                if (!missing(error))
+                    throw new ConversionStorageError(
+                        'Unable to inspect conversion session',
+                        error,
+                    );
             }
         }
         return sessions.sort();

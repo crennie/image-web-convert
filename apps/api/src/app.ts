@@ -19,6 +19,7 @@ import {
 
 export type AppDeps = {
     conversions?: ConversionRuntime;
+    onStorageFault?: (error: unknown) => void;
 };
 
 export async function createApp(deps: AppDeps = {}): Promise<express.Express> {
@@ -28,6 +29,7 @@ export async function createApp(deps: AppDeps = {}): Promise<express.Express> {
     // before listening and owns shutdown; server tests can inject/control it.
     const conversions = deps.conversions ?? createConversionRuntime();
     app.locals.conversions = conversions;
+    app.locals.onStorageFault = deps.onStorageFault;
 
     // 0) Init OpenTelemetry logging
     if (env.ENABLE_OTEL) {

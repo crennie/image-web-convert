@@ -85,17 +85,21 @@ describe('createSession controller', () => {
     });
 
     it('returns a generic 503 when session storage fails', async () => {
-        mockedCreate.mockRejectedValueOnce(
-            new SessionStorageError('private disk detail'),
-        );
+        const failure = new SessionStorageError('private disk detail');
+        mockedCreate.mockRejectedValueOnce(failure);
+        const onStorageFault = vi.fn();
+        const req = {
+            app: { locals: { onStorageFault } },
+        } as unknown as Request;
         const res = makeRes();
         const next = makeNext();
-        await createSession(makeReq(), res, next);
+        await createSession(req, res, next);
         expect(res.status).toHaveBeenCalledWith(503);
         expect(res.json).toHaveBeenCalledWith({
             type: 'storage_error',
             message: 'Session storage is unavailable',
         });
+        expect(onStorageFault).toHaveBeenCalledWith(failure);
         expect(next).not.toHaveBeenCalled();
     });
 });

@@ -18,6 +18,7 @@ import {
 import {
     createConversionStorage,
     ConversionStorageError,
+    isStorageIoFailure,
 } from './conversion-storage.service';
 import {
     createSessionRetention,
@@ -65,6 +66,7 @@ export function createConversionRuntime(
         clock?: ConversionRuntimeClock;
         convert?: (input: ProcessInput) => Promise<ProcessOutput>;
         onError?: (error: unknown, sessionId?: string) => void;
+        onFault?: (error: unknown) => void;
     } = {},
 ) {
     const root = path.resolve(options.root ?? UPLOAD_DIR);
@@ -115,10 +117,12 @@ export function createConversionRuntime(
     }
 
     function halt(error: unknown, sid?: string) {
+        if (fault) return;
         fault = error;
         if (maintenanceTimer) clock.clearTimeout(maintenanceTimer);
         maintenanceTimer = undefined;
         report(error, sid);
+        options.onFault?.(error);
     }
 
     async function durableMutation<T>(
@@ -182,7 +186,18 @@ export function createConversionRuntime(
 
     async function records(): Promise<StoredConversion[]> {
         const results: StoredConversion[] = [];
-        for (const sid of await store.listSessions()) {
+        let sessions: string[];
+        try {
+            sessions = await store.listSessions();
+        } catch (error) {
+            const failure = new ConversionStorageError(
+                'Unable to discover conversion sessions',
+                error,
+            );
+            halt(failure);
+            throw failure;
+        }
+        for (const sid of sessions) {
             if (blockedSessions.has(sid) || deleting.has(sid)) continue;
             try {
                 results.push(await store.read(sid));
@@ -192,6 +207,10 @@ export function createConversionRuntime(
                     error.type === 'operation_not_found'
                 )
                     continue;
+                if (isStorageIoFailure(error)) {
+                    halt(error, sid);
+                    throw error;
+                }
                 blockedSessions.add(sid);
                 report(error, sid);
             }
@@ -469,6 +488,7 @@ export function createConversionRuntime(
                     try {
                         await store.recoverAfterRestart(sid);
                     } catch (error) {
+                        if (isStorageIoFailure(error)) throw error;
                         blockedSessions.add(sid);
                         report(error, sid);
                     }
@@ -506,7 +526,35 @@ export function createConversionRuntime(
             assertAccepting();
             // Application ownership also protects callers outside the HTTP adapter.
             releaseClaim = claimSessionWork(sid);
-            const session = await readSessionInfo(sid, root);
+            let session;
+            try {
+                session = await readSessionInfo(sid, root);
+            } catch (error) {
+                if (error instanceof InvalidSessionRecordError) {
+                    blockedSessions.add(sid);
+                    report(error, sid);
+                    throw new ConversionStorageError(
+                        'Invalid persisted session',
+                        error,
+                    );
+                }
+                if (
+                    error &&
+                    typeof error === 'object' &&
+                    'code' in error &&
+                    error.code === 'ENOENT'
+                )
+                    throw new ConversionTransitionError(
+                        'session_not_found',
+                        'Session not found',
+                    );
+                const failure = new ConversionStorageError(
+                    'Unable to read session during operation creation',
+                    error,
+                );
+                halt(failure, sid);
+                throw failure;
+            }
             if (session.sealedAt || session.counts.files)
                 throw new ConversionTransitionError(
                     'conversion_conflict',
@@ -760,8 +808,24 @@ export function createConversionRuntime(
     }
 
     return {
-        read: store.read,
-        completedOutput: store.completedOutput,
+        read: async (...args: Parameters<Store['read']>) => {
+            try {
+                return await store.read(...args);
+            } catch (error) {
+                if (isStorageIoFailure(error)) halt(error, args[0]);
+                throw error;
+            }
+        },
+        completedOutput: async (
+            ...args: Parameters<Store['completedOutput']>
+        ) => {
+            try {
+                return await store.completedOutput(...args);
+            } catch (error) {
+                if (isStorageIoFailure(error)) halt(error, args[0]);
+                throw error;
+            }
+        },
         start,
         stop,
         wake,

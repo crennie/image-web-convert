@@ -128,13 +128,28 @@ export async function readSessionInfo(
     sid: string,
     root?: string,
 ): Promise<SessionInfo> {
-    const directory = await fs.lstat(sessionDir(sid, root));
-    if (!directory.isDirectory())
-        throw new InvalidSessionRecordError('Invalid session directory');
-    const record = await fs.lstat(sessionInfoPath(sid, root));
-    if (!record.isFile())
-        throw new InvalidSessionRecordError('Invalid session record file');
-    const raw = await fs.readFile(sessionInfoPath(sid, root), 'utf8');
+    let raw: string;
+    try {
+        const directory = await fs.lstat(sessionDir(sid, root));
+        if (!directory.isDirectory())
+            throw new InvalidSessionRecordError('Invalid session directory');
+        const record = await fs.lstat(sessionInfoPath(sid, root));
+        if (!record.isFile())
+            throw new InvalidSessionRecordError('Invalid session record file');
+        raw = await fs.readFile(sessionInfoPath(sid, root), 'utf8');
+    } catch (error) {
+        if (error instanceof InvalidSessionRecordError) throw error;
+        if (
+            error &&
+            typeof error === 'object' &&
+            'code' in error &&
+            ['ENOENT', 'ENOTDIR', 'EISDIR', 'ELOOP'].includes(
+                String(error.code),
+            )
+        )
+            throw error;
+        throw new SessionStorageError('Unable to read session record', error);
+    }
     try {
         return parseSessionInfo(JSON.parse(raw), sid);
     } catch (error) {

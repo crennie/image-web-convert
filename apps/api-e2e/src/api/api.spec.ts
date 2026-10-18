@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
+import { randomBytes } from 'node:crypto';
 import sharp from 'sharp';
 import {
     ApiCreateSessionResponseSchema,
@@ -26,7 +27,12 @@ async function session() {
     expect(response.status).toBe(201);
     return ApiCreateSessionResponseSchema.parse(await response.json());
 }
-async function create(s: Session, count = 2, names?: string[]) {
+async function create(
+    s: Session,
+    count = 2,
+    names?: string[],
+    declaredBytes = png.length,
+) {
     const response = await fetch(`${base(s)}/conversions`, {
         method: 'POST',
         headers: { ...headers(s), 'Content-Type': 'application/json' },
@@ -36,7 +42,7 @@ async function create(s: Session, count = 2, names?: string[]) {
             files: Array.from({ length: count }, (_, i) => ({
                 clientId: `client-${i}`,
                 name: names?.[i] ?? `${i}.png`,
-                sizeBytes: png.length,
+                sizeBytes: declaredBytes,
             })),
         }),
     });
@@ -127,6 +133,7 @@ async function productionApi(
         corsOrigin?: string;
         uploadIdleMs?: number;
         uploadTotalMs?: number;
+        shutdownGraceMs?: number;
     } = {},
 ) {
     await api.stop();
@@ -627,9 +634,15 @@ it('rejects an expired test session through real authentication without creating
         403,
         'session_expired',
     );
-    expect(await fs.readdir(path.join(api.storage, s.sid))).toEqual([
-        'session.info.json',
-    ]);
+    // Retention may remove the expired session between authentication and this
+    // inspection; either state must contain no operation data.
+    const files = await fs
+        .readdir(path.join(api.storage, s.sid))
+        .catch((error: NodeJS.ErrnoException) => {
+            if (error.code === 'ENOENT') return [];
+            throw error;
+        });
+    expect([[], ['session.info.json']]).toContainEqual(files);
     expect(await fs.readdir(api.incoming)).toEqual([]);
 });
 
@@ -942,6 +955,304 @@ it('drops readiness after a durable upload failure and recovers on restart', asy
     expect((await fetch(`${api.url}/readyz`)).status).toBe(200);
     expect((await upload(s, op)).status).toBe(200);
     await diskStatus(s, 'completed');
+    await output(s, op);
+});
+
+it('shuts down the production API after a fatal storage fault', async () => {
+    await productionApi();
+    const s = await session();
+    const op = await create(s, 1);
+    const inputs = path.join(api.storage, s.sid, 'inputs');
+    await fs.chmod(inputs, 0o500);
+    try {
+        await expectApiError(await upload(s, op), 503, 'storage_error');
+        await api.expectExitCode(1);
+    } finally {
+        await fs.chmod(inputs, 0o700);
+    }
+    await api.restart();
+    expect((await fetch(`${api.url}/readyz`)).status).toBe(200);
+    expect((await upload(s, op)).status).toBe(200);
+    await diskStatus(s, 'completed');
+    await output(s, op);
+});
+
+it('shuts down the production API after a session authentication read fault', async () => {
+    await productionApi();
+    const s = await session();
+    const op = await create(s, 1);
+    const info = path.join(api.storage, s.sid, 'session.info.json');
+    await fs.chmod(info, 0o000);
+    try {
+        await expectApiError(
+            await fetch(`${base(s)}/conversions/${op.id}`, {
+                headers: headers(s),
+            }),
+            503,
+            'storage_error',
+        );
+        await api.expectExitCode(1);
+    } finally {
+        await fs.chmod(info, 0o600);
+    }
+    await api.restart();
+    expect((await status(s, op)).id).toBe(op.id);
+});
+
+it('finishes an active download before fatal storage shutdown exits', async () => {
+    await productionApi();
+    const owner = await session();
+    const width = 2048;
+    const height = 2048;
+    const source = await sharp(randomBytes(width * height * 3), {
+        raw: { width, height, channels: 3 },
+    })
+        .png()
+        .toBuffer();
+    const operation = await create(owner, 1, undefined, source.length);
+    expect(
+        (await upload(owner, operation, 0, owner.token, source)).status,
+    ).toBe(200);
+    await diskStatus(owner, 'completed');
+
+    const chunks: Buffer[] = [];
+    const download = await new Promise<http.IncomingMessage>(
+        (resolve, reject) => {
+            const request = http.get(
+                `${base(owner)}/files/${operation.files[0].id}`,
+                { headers: headers(owner), agent: false },
+                (response) => {
+                    if (response.statusCode !== 200) {
+                        response.resume();
+                        reject(
+                            new Error(
+                                `Download returned ${response.statusCode}`,
+                            ),
+                        );
+                        return;
+                    }
+                    response.once('data', (chunk: Buffer) => {
+                        chunks.push(chunk);
+                        response.pause();
+                        resolve(response);
+                    });
+                    response.once('error', reject);
+                },
+            );
+            request.once('error', reject);
+        },
+    );
+    const completed = new Promise<Buffer>((resolve, reject) => {
+        download.on('data', (chunk: Buffer) => chunks.push(chunk));
+        download.once('end', () => resolve(Buffer.concat(chunks)));
+        download.once('error', reject);
+        download.once('aborted', () => reject(new Error('Download aborted')));
+    });
+    void completed.catch(() => undefined);
+
+    const faulty = await session();
+    const record = path.join(api.storage, faulty.sid, 'session.info.json');
+    await fs.chmod(record, 0o000);
+    try {
+        await expectApiError(
+            await fetch(`${base(faulty)}/files/missing`, {
+                headers: headers(faulty),
+            }),
+            503,
+            'storage_error',
+        );
+        expect(api.running).toBe(true);
+        const refused = await new Promise<boolean>((resolve) => {
+            const request = http.get(
+                `${api.url}/readyz`,
+                { agent: false },
+                (response) => {
+                    response.resume();
+                    resolve(false);
+                },
+            );
+            request.once('error', () => resolve(true));
+        });
+        expect(refused).toBe(true);
+        download.resume();
+        const bytes = await completed;
+        expect(bytes.length).toBeGreaterThan(1_000_000);
+        expect(await sharp(bytes).metadata()).toMatchObject({
+            format: 'webp',
+            width,
+            height,
+        });
+        await api.expectExitCode(1);
+    } finally {
+        download.destroy();
+        await fs.chmod(record, 0o600);
+    }
+});
+
+it('cuts off a stalled upload at the fatal shutdown grace deadline', async () => {
+    await productionApi({ shutdownGraceMs: 800 });
+    const active = await session();
+    const operation = await create(active, 1);
+    const stalled = partialUpload(active, operation);
+    await vi.waitFor(async () => {
+        expect((await fs.readdir(api.incoming)).length).toBeGreaterThan(0);
+    });
+
+    const faulty = await session();
+    const record = path.join(api.storage, faulty.sid, 'session.info.json');
+    await fs.chmod(record, 0o000);
+    try {
+        const started = Date.now();
+        await expectApiError(
+            await fetch(`${base(faulty)}/files/missing`, {
+                headers: headers(faulty),
+            }),
+            503,
+            'storage_error',
+        );
+        expect(api.running).toBe(true);
+        expect(stalled.isClosed()).toBe(false);
+        await api.expectExitCode(1);
+        expect(Date.now() - started).toBeLessThan(3000);
+        await vi.waitFor(() => expect(stalled.isClosed()).toBe(true));
+    } finally {
+        stalled.request.destroy();
+        await fs.chmod(record, 0o600);
+    }
+});
+
+it('drops readiness after a persisted operation read fails and recovers on restart', async () => {
+    const s = await session();
+    const op = await create(s, 1);
+    const info = path.join(api.storage, s.sid, 'conversion.info.json');
+    await fs.chmod(info, 0o000);
+    try {
+        await expectApiError(
+            await fetch(`${base(s)}/conversions/${op.id}`, {
+                headers: headers(s),
+            }),
+            503,
+            'storage_error',
+        );
+        expect((await fetch(`${api.url}/readyz`)).status).toBe(503);
+    } finally {
+        await fs.chmod(info, 0o600);
+    }
+    await api.restart();
+    expect((await fetch(`${api.url}/readyz`)).status).toBe(200);
+    expect((await status(s, op)).id).toBe(op.id);
+});
+
+it('recovers an interrupted output after a conversion staging write fails', async () => {
+    const s = await session();
+    const op = await create(s, 1);
+    await api.hold();
+    expect((await upload(s, op)).status).toBe(200);
+    await vi.waitFor(() => expect(api.held).toBe(true), { timeout: 10_000 });
+    const staging = path.join(api.storage, s.sid, '.conversion-staging');
+    await fs.chmod(staging, 0o500);
+    try {
+        await api.release();
+        await vi.waitFor(
+            async () =>
+                expect((await fetch(`${api.url}/readyz`)).status).toBe(503),
+            { timeout: 10_000 },
+        );
+        expect((await api.readOperation(s.sid)).files[0].status).toBe(
+            'processing',
+        );
+    } finally {
+        await fs.chmod(staging, 0o700);
+    }
+    await api.restart();
+    expect((await fetch(`${api.url}/readyz`)).status).toBe(200);
+    const recovered = await status(s, op);
+    expect(recovered.files[0]).toMatchObject({
+        status: 'failed',
+        error: { type: 'processing_interrupted' },
+    });
+    await expectApiError(
+        await fetch(`${base(s)}/files/${op.files[0].id}`, {
+            headers: headers(s),
+        }),
+        404,
+        'file_not_found',
+    );
+});
+
+it('removes unpublished output after commit receipt persistence fails', async () => {
+    const s = await session();
+    const op = await create(s, 1);
+    await api.hold();
+    expect((await upload(s, op)).status).toBe(200);
+    await vi.waitFor(() => expect(api.held).toBe(true), { timeout: 10_000 });
+    const directory = path.join(api.storage, s.sid);
+    const fileId = op.files[0].id;
+    const outputPath = path.join(directory, `${fileId}.webp`);
+    const metaPath = path.join(directory, `${fileId}.json`);
+    const receipts = path.join(directory, '.conversion-commits');
+    await fs.chmod(receipts, 0o500);
+    try {
+        await api.release();
+        await vi.waitFor(
+            async () =>
+                expect((await fetch(`${api.url}/readyz`)).status).toBe(503),
+            { timeout: 10_000 },
+        );
+        expect((await api.readOperation(s.sid)).files[0].status).toBe(
+            'processing',
+        );
+        await expect(fs.stat(outputPath)).resolves.toBeDefined();
+        await expect(fs.stat(metaPath)).resolves.toBeDefined();
+        await expect(
+            fs.stat(path.join(receipts, `${fileId}.json`)),
+        ).rejects.toMatchObject({
+            code: 'ENOENT',
+        });
+    } finally {
+        await fs.chmod(receipts, 0o700);
+    }
+    await api.restart();
+    expect((await fetch(`${api.url}/readyz`)).status).toBe(200);
+    expect((await status(s, op)).files[0]).toMatchObject({
+        status: 'failed',
+        error: { type: 'processing_interrupted' },
+    });
+    await expect(fs.stat(outputPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.stat(metaPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expectApiError(
+        await fetch(`${base(s)}/files/${fileId}`, { headers: headers(s) }),
+        404,
+        'file_not_found',
+    );
+});
+
+it('preserves committed output when input cleanup fails after publication', async () => {
+    const s = await session();
+    const op = await create(s, 1);
+    await api.hold();
+    expect((await upload(s, op)).status).toBe(200);
+    await vi.waitFor(() => expect(api.held).toBe(true), { timeout: 10_000 });
+    const input = path.join(api.storage, s.sid, 'inputs', op.files[0].id);
+    await fs.chmod(path.dirname(input), 0o500);
+    try {
+        await api.release();
+        await vi.waitFor(
+            async () =>
+                expect((await fetch(`${api.url}/readyz`)).status).toBe(503),
+            { timeout: 10_000 },
+        );
+        expect((await api.readOperation(s.sid)).files[0].status).toBe(
+            'completed',
+        );
+        await expect(fs.stat(input)).resolves.toBeDefined();
+    } finally {
+        await fs.chmod(path.dirname(input), 0o700);
+    }
+    await api.restart();
+    expect((await fetch(`${api.url}/readyz`)).status).toBe(200);
+    expect((await status(s, op)).files[0].status).toBe('completed');
+    await expect(fs.stat(input)).rejects.toMatchObject({ code: 'ENOENT' });
     await output(s, op);
 });
 
