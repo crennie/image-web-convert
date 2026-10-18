@@ -161,6 +161,34 @@
                     "gaps": []
                 },
                 {
+                    "id": "UC-077",
+                    "actor": "Browser",
+                    "given": "Session record persistence fails or writes incomplete bytes",
+                    "when": "It requests a new session",
+                    "then": "The API does not issue a bearer token and reports a generic storage error; no incomplete record is published.",
+                    "sources": ["apps/api/src/services/sessions.service.ts"],
+                    "tests": [
+                        {
+                            "evidenceId": "E115",
+                            "file": "apps/api/src/services/__tests__/session.service.spec.ts",
+                            "name": "rejects a successful short write before publishing a session record",
+                            "layer": "Session service",
+                            "environment": "In-process temporary storage with an injected short write",
+                            "asserts": "An incomplete successful write is rejected and leaves no published session record."
+                        },
+                        {
+                            "evidenceId": "E116",
+                            "file": "apps/api/src/controllers/__tests__/sessions.controller.spec.ts",
+                            "name": "returns a generic 503 when session storage fails",
+                            "layer": "Session controller",
+                            "environment": "In-process controller with a failed session store",
+                            "asserts": "A storage failure returns a generic 503 without issuing a bearer token."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
                     "id": "UC-074",
                     "actor": "Browser",
                     "given": "A persisted session record is malformed or unreadable",
@@ -1598,6 +1626,36 @@
                     "gaps": []
                 },
                 {
+                    "id": "UC-076",
+                    "actor": "API process",
+                    "given": "An existing conversion operation has broadly readable regular files",
+                    "when": "It restarts and recovers that operation",
+                    "then": "The operation's regular stored files become owner-only before requests resume; symlink targets outside storage are not changed.",
+                    "sources": [
+                        "docs/architecture/dynamic/recover-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E112",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "resumes an unfinished upload manifest after restart without replacing accepted slots",
+                            "layer": "API process",
+                            "environment": "Separately started local API process and temporary storage",
+                            "asserts": "Restart restricts older operation and accepted-input files to owner-only mode while preserving the accepted slot."
+                        },
+                        {
+                            "evidenceId": "E113",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "keeps conversion directories and artifacts private, including reused directories",
+                            "layer": "Conversion storage",
+                            "environment": "In-process temporary storage with broadened modes and an external symlink target",
+                            "asserts": "Recovery restricts regular operation artifacts and does not chmod an external symlink target."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
                     "id": "UC-044",
                     "actor": "API process",
                     "given": "One stored operation is corrupt",
@@ -1647,6 +1705,14 @@
                             "layer": "Conversion runtime",
                             "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
                             "asserts": "Durable mutation failure stops further scheduling."
+                        },
+                        {
+                            "evidenceId": "E114",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "drops readiness after a durable upload failure and recovers on restart",
+                            "layer": "API process",
+                            "environment": "Separately started local API process with an EACCES input directory",
+                            "asserts": "A failed durable upload returns 503 and drops readiness; restart restores admission and the same slot completes."
                         }
                     ],
                     "coverage": "covered",

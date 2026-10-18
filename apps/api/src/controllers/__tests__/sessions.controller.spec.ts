@@ -1,9 +1,12 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createSession } from '../sessions.controller';
-import { create } from '../../services/sessions.service';
+import { create, SessionStorageError } from '../../services/sessions.service';
 import { MockInstance } from 'vitest';
 
-vi.mock('../../services/sessions.service', () => ({
+vi.mock('../../services/sessions.service', async (importOriginal) => ({
+    ...(await importOriginal<
+        typeof import('../../services/sessions.service')
+    >()),
     create: vi.fn(),
 }));
 
@@ -79,5 +82,20 @@ describe('createSession controller', () => {
         expect(next).toHaveBeenCalledWith(err);
         expect(res.status).not.toHaveBeenCalled();
         expect(res.json).not.toHaveBeenCalled();
+    });
+
+    it('returns a generic 503 when session storage fails', async () => {
+        mockedCreate.mockRejectedValueOnce(
+            new SessionStorageError('private disk detail'),
+        );
+        const res = makeRes();
+        const next = makeNext();
+        await createSession(makeReq(), res, next);
+        expect(res.status).toHaveBeenCalledWith(503);
+        expect(res.json).toHaveBeenCalledWith({
+            type: 'storage_error',
+            message: 'Session storage is unavailable',
+        });
+        expect(next).not.toHaveBeenCalled();
     });
 });

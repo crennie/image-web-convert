@@ -162,9 +162,24 @@ describe('durable conversion records', () => {
 
         await fs.chmod(locations.directory, 0o755);
         await fs.chmod(locations.receipts, 0o755);
+        const olderFiles = [
+            locations.info,
+            locations.output('file-0', 'image/webp'),
+            locations.meta('file-0'),
+            locations.receipt('file-0'),
+        ];
+        for (const file of olderFiles) await fs.chmod(file, 0o644);
+        const outside = path.join(directory, 'outside');
+        await fs.writeFile(outside, 'keep');
+        await fs.chmod(outside, 0o644);
+        const link = path.join(locations.staging, 'old-link');
+        await fs.symlink(outside, link);
         await store.recoverAfterRestart(sid);
         expect((await fs.stat(locations.directory)).mode & 0o777).toBe(0o700);
         expect((await fs.stat(locations.receipts)).mode & 0o777).toBe(0o700);
+        for (const file of olderFiles)
+            expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
+        expect((await fs.stat(outside)).mode & 0o777).toBe(0o644);
     });
 
     it('round-trips an operation across independent instances without persisting counts', async () => {
@@ -204,6 +219,26 @@ describe('durable conversion records', () => {
         vi.spyOn(fs, 'readFile').mockRejectedValueOnce(diskFailure());
         await expect(store.read(sid)).rejects.toThrow(
             'Unable to read operation',
+        );
+    });
+
+    it('does not publish a short operation record write', async () => {
+        const writeFile = fs.writeFile.bind(fs);
+        vi.spyOn(fs, 'writeFile').mockImplementation(
+            async (target, data, options) => {
+                if (String(target).startsWith(`${locations.info}.`))
+                    return writeFile(
+                        target,
+                        (data as Buffer).subarray(0, 8),
+                        options,
+                    );
+                return writeFile(target, data, options);
+            },
+        );
+        await expect(create(1)).rejects.toThrow('Unable to persist operation');
+        await absent(locations.info);
+        expect(await fs.readdir(locations.directory)).not.toContain(
+            'conversion.info.json',
         );
     });
 
@@ -359,7 +394,10 @@ describe('staged upload ownership', () => {
     it('cleans failed copy and permits retry', async () => {
         await create(1);
         vi.spyOn(fs, 'copyFile').mockRejectedValueOnce(diskFailure());
-        await expect(upload('file-0')).rejects.toThrow('Injected disk failure');
+        await expect(upload('file-0')).rejects.toMatchObject({
+            type: 'storage_error',
+            cause: { code: 'EIO' },
+        });
         expect((await store.read(sid)).operation.files[0].status).toBe(
             'awaiting_upload',
         );
@@ -436,6 +474,60 @@ describe('staged upload ownership', () => {
 });
 
 describe('per-file commits and recovery', () => {
+    it.each(['EACCES', 'ENOSPC'])(
+        'classifies %s upload staging failure as a storage error',
+        async (code) => {
+            await create(1);
+            const source = await requestFile();
+            vi.spyOn(fs, 'copyFile').mockRejectedValueOnce(
+                Object.assign(new Error('Injected disk failure'), { code }),
+            );
+            await expect(
+                store.acceptUpload(sid, oid, 'file-0', source),
+            ).rejects.toMatchObject({ type: 'storage_error' });
+            expect((await store.read(sid)).operation.files[0].status).toBe(
+                'awaiting_upload',
+            );
+        },
+    );
+
+    it.each(['short', 'ENOSPC'])(
+        'does not publish output after %s staging failure',
+        async (failure) => {
+            await ready(1);
+            await start();
+            const writeFile = fs.writeFile.bind(fs);
+            vi.spyOn(fs, 'writeFile').mockImplementation(
+                async (target, data, options) => {
+                    if (
+                        String(target).startsWith(
+                            `${locations.staging}${path.sep}`,
+                        )
+                    ) {
+                        if (failure === 'short')
+                            return writeFile(
+                                target,
+                                (data as Buffer).subarray(0, 3),
+                                options,
+                            );
+                        throw Object.assign(new Error('Disk full'), {
+                            code: 'ENOSPC',
+                        });
+                    }
+                    return writeFile(target, data, options);
+                },
+            );
+            await expect(
+                store.commitOutput(sid, oid, 'file-0', processed()),
+            ).rejects.toMatchObject({ type: 'storage_error' });
+            await absent(locations.output('file-0', 'image/webp'));
+            await absent(locations.receipt('file-0'));
+            expect((await store.read(sid)).operation.files[0].status).toBe(
+                'processing',
+            );
+        },
+    );
+
     it('waits for an in-flight publication before acknowledging an upload replay', async () => {
         await ready(1);
         await start();
@@ -582,7 +674,10 @@ describe('per-file commits and recovery', () => {
             });
         await expect(
             store.commitOutput(sid, oid, 'file-0', processed()),
-        ).rejects.toThrow('Injected disk failure');
+        ).rejects.toMatchObject({
+            type: 'storage_error',
+            cause: { code: 'EIO' },
+        });
         spy.mockRestore();
         expect((await store.read(sid)).operation.status).toBe('completed');
         await store.recoverAfterRestart(sid);

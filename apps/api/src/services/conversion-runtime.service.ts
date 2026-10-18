@@ -121,6 +121,26 @@ export function createConversionRuntime(
         report(error, sid);
     }
 
+    async function durableMutation<T>(
+        sid: string,
+        action: () => Promise<T>,
+    ): Promise<T> {
+        try {
+            return await action();
+        } catch (error) {
+            if (error instanceof ConversionTransitionError) throw error;
+            const failure =
+                error instanceof ConversionStorageError
+                    ? error
+                    : new ConversionStorageError(
+                          'Unable to persist conversion mutation',
+                          error,
+                      );
+            halt(failure, sid);
+            throw failure;
+        }
+    }
+
     function assertAccepting() {
         if (fault)
             throw new ConversionStorageError(
@@ -558,7 +578,7 @@ export function createConversionRuntime(
                     maxDimension: config.maxDimension,
                 },
             });
-            return await store.create(operation);
+            return await durableMutation(sid, () => store.create(operation));
         } finally {
             releaseClaim?.();
             unlock();
@@ -576,12 +596,14 @@ export function createConversionRuntime(
     ) {
         const release = acquireSessionUse(sid);
         try {
-            return await store.acceptUpload(
-                sid,
-                oid,
-                fileId,
-                tempPath,
-                assertRequestActive,
+            return await durableMutation(sid, () =>
+                store.acceptUpload(
+                    sid,
+                    oid,
+                    fileId,
+                    tempPath,
+                    assertRequestActive,
+                ),
             );
         } finally {
             release();
@@ -597,8 +619,15 @@ export function createConversionRuntime(
     ) {
         const release = acquireSessionUse(sid);
         try {
-            return await store.update(sid, oid, (operation) =>
-                rejectConversionUpload(operation, fileId, error, clock.now()),
+            return await durableMutation(sid, () =>
+                store.update(sid, oid, (operation) =>
+                    rejectConversionUpload(
+                        operation,
+                        fileId,
+                        error,
+                        clock.now(),
+                    ),
+                ),
             );
         } finally {
             release();
@@ -609,7 +638,9 @@ export function createConversionRuntime(
     async function cancel(sid: string, oid: string) {
         const release = acquireSessionUse(sid);
         try {
-            return await stopOperation(sid, oid, 'user_cancelled');
+            return await durableMutation(sid, () =>
+                stopOperation(sid, oid, 'user_cancelled'),
+            );
         } finally {
             release();
             wake();

@@ -732,7 +732,7 @@ describe('admission and runtime lifecycle', () => {
         expect(retried.operation).toEqual(original.operation);
     });
 
-    it('releases ownership on session read and operation persistence failures', async () => {
+    it('releases ownership but stops admission after operation persistence failure', async () => {
         const rt = runtime();
         await rt.start();
         await expect(
@@ -744,9 +744,15 @@ describe('admission and runtime lifecycle', () => {
         );
         await expect(
             rt.createOperation('retry-session', manifest),
-        ).rejects.toThrow('write failed');
-        const record = await rt.createOperation('retry-session', manifest);
-        expect(record.operation.expiresAt).toBe(expiresAt);
+        ).rejects.toMatchObject({
+            type: 'storage_error',
+            cause: { message: 'write failed' },
+        });
+        expect(rt.isReady()).toBe(false);
+        claimSessionWork('retry-session')();
+        await expect(
+            rt.createOperation('retry-session', manifest),
+        ).rejects.toThrow('requires recovery');
     });
 
     it('serializes concurrent identical and conflicting creation without duplicating the operation', async () => {

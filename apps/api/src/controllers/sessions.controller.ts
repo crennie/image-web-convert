@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { create } from '../services/sessions.service';
+import { create, SessionStorageError } from '../services/sessions.service';
 import { ApiCreateSessionResponse } from '@image-web-convert/schemas';
 
 export async function createSession(
@@ -17,6 +17,14 @@ export async function createSession(
         };
         res.status(201).json(response);
     } catch (err) {
+        if (err instanceof SessionStorageError) {
+            console.error('Session creation storage failure', err);
+            res.status(503).json({
+                type: 'storage_error',
+                message: 'Session storage is unavailable',
+            });
+            return;
+        }
         next(err);
     }
 }

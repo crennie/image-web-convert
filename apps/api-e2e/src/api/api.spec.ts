@@ -908,12 +908,39 @@ it('resumes an unfinished upload manifest after restart without replacing accept
     const s = await session();
     const op = await create(s);
     expect((await upload(s, op)).status).toBe(200);
+    const sessionDirectory = path.join(api.storage, s.sid);
+    const olderFiles = [
+        path.join(sessionDirectory, 'conversion.info.json'),
+        path.join(sessionDirectory, 'inputs', op.files[0].id),
+    ];
+    for (const file of olderFiles) await fs.chmod(file, 0o644);
     await api.restart(true);
+    for (const file of olderFiles)
+        expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
     expect((await status(s, op)).files.map((file) => file.status)).toEqual([
         'uploaded',
         'awaiting_upload',
     ]);
     expect((await upload(s, op, 1)).status).toBe(200);
+    await diskStatus(s, 'completed');
+    await output(s, op);
+});
+
+it('drops readiness after a durable upload failure and recovers on restart', async () => {
+    const s = await session();
+    const op = await create(s, 1);
+    const inputs = path.join(api.storage, s.sid, 'inputs');
+    await fs.chmod(inputs, 0o500);
+    try {
+        await expectApiError(await upload(s, op), 503, 'storage_error');
+        expect((await fetch(`${api.url}/readyz`)).status).toBe(503);
+        expect(await fs.readdir(inputs)).toEqual([]);
+    } finally {
+        await fs.chmod(inputs, 0o700);
+    }
+    await api.restart();
+    expect((await fetch(`${api.url}/readyz`)).status).toBe(200);
+    expect((await upload(s, op)).status).toBe(200);
     await diskStatus(s, 'completed');
     await output(s, op);
 });
