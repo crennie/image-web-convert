@@ -104,8 +104,10 @@ const EnvSchema = z.object({
 
     ENABLE_OTEL: z
         .string()
-        .transform((v) => (String(v).toLowerCase() === 'false' ? false : v))
-        .default('false') as z.ZodType<string | false>,
+        .transform((v) => v.trim().toLowerCase())
+        .pipe(z.enum(['true', 'false', '1', '0', 'yes', 'no', 'on', 'off']))
+        .transform((v) => ['true', '1', 'yes', 'on'].includes(v))
+        .prefault('false'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

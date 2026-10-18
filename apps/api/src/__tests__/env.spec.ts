@@ -5,6 +5,26 @@ import {
 } from '../env';
 
 describe('API environment configuration', () => {
+    it.each([
+        ['true', true],
+        ['1', true],
+        ['yes', true],
+        ['on', true],
+        ['false', false],
+        ['0', false],
+        ['no', false],
+        ['off', false],
+        [' FALSE ', false],
+    ])('parses ENABLE_OTEL=%s as %s', (value, expected) => {
+        expect(loadEnv({ ENABLE_OTEL: value }).ENABLE_OTEL).toBe(expected);
+    });
+
+    it('rejects ambiguous telemetry enable values', () => {
+        expect(() => loadEnv({ ENABLE_OTEL: 'sometimes' })).toThrow(
+            'Invalid environment',
+        );
+    });
+
     it('loads explicit conversion resource bounds and deadline defaults', () => {
         expect(getConversionRuntimeConfig({})).toEqual({
             maxOperations: 3,

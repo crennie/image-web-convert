@@ -5,7 +5,7 @@
 - Discovery completed: 2026-10-16; baseline commit `ec20ff482267d8fa2569fa85a7d1955a337ff806`.
 - Scope: personal, self-hosted, single persistent API process with exclusive local storage. Public anonymous hosting is a separate release gate, not an implicit requirement to add accounts, a database, a queue, SaaS monitoring, or distributed workers.
 - Discovery and PF-01 changed only documentation. PF-02 updates exposed dependency families, adds boundary regressions, and preserves telemetry/build behavior; see its checkpoint for current evidence.
-- Task states: `pending`, `in_progress`, `blocked`, `done`, `deferred`. PF-01, PF-01A, PF-02, PF-03, PF-04, PF-05, PF-06, PF-07, PF-08, and PF-09 are **done**; PF-20 is **deferred** for this private self-host release; all other tasks are **pending**. Discovery is **done**, with explicitly recorded verification gaps. Priorities: **P0** release blocker/security exposure; **P1** required finalization; **P2** bounded cleanup/documentation; **PUBLIC** required before untrusted public exposure.
+- Task states: `pending`, `in_progress`, `blocked`, `done`, `deferred`. PF-01, PF-01A, PF-02, PF-03, PF-04, PF-05, PF-06, PF-07, PF-08, and PF-09 are **done**; PF-10 is **in_progress**; PF-20 is **deferred** for this private self-host release; all other tasks are **pending**. Discovery is **done**, with explicitly recorded verification gaps. Priorities: **P0** release blocker/security exposure; **P1** required finalization; **P2** bounded cleanup/documentation; **PUBLIC** required before untrusted public exposure.
 - In subsequent sessions, select the highest-priority ready task (listed order breaks priority ties), mark it in progress here, inspect only changed evidence, implement one reviewable slice, run its tests, and record commit, commands, outcomes, residual risks, and status. Do not mark a task done merely because a test file exists. Refresh registry/security results at implementation time; do not repeat the entire assessment.
 - Preserve the architecture's HTTP adapter → runtime → transitions/storage/encoder boundaries, immutable manifests, independent commits, process-local claims/leases, and controlled-process test seams. The maintainer decided to retire sealed legacy-session reads; preserve current operation downloads at the shared file URLs.
 
@@ -159,7 +159,7 @@ Every task is independently reviewable. Dependencies refer to completed tasks; s
 - **Acceptance:** no private stacks/paths/tokens in browser-visible errors; HTML has tested compatible CSP/frame/referrer policy; private responses cannot be reused by shared caches after expiry; auth precedes conditional/range requests. Preserve Router hydration and blob previews.
 - **Required tests:** built production SSR errors/404, CSP browser console/hydration, image blobs/downloads, conditional GET/HEAD/range/expired bearer, cross-origin allowed/disallowed preflight. Verify the built page makes no external font request and retains readable fallback typography; manual privacy wording review.
 
-### PF-10 — Make optional observability correct and testable (P1, pending)
+### PF-10 — Make optional observability correct and testable (P1, in progress)
 
 - **Scope/why:** F10; fix environment precedence/boolean parsing, bounded request IDs, token-safe logs, await telemetry shutdown within grace period. Replace trivial smoke with behavioral tests.
 - **Depends:** PF-03; coordinate SDK versions with PF-14.
@@ -693,6 +693,12 @@ Validation: focused API/root suites **40/40 passed**; built SSR security and rea
 ### PF-09 built HTTP 500 closeout (2026-10-18)
 
 **Status: done.** A regression now clones the built production route table in a local HTTP harness, injects a rendering error containing a private path/token marker, and calls the production-mode React Router handler. The HTTP 500 document contains generic error copy and CSP without the private marker or workspace path. It passed in all three Playwright projects (**3/3**); web-E2E lint and the **94/94 covered** use-case inventory passed with E176 added to UC-092. This closes the remaining PF-09 acceptance gap without adding a fault route to the shipped site. Expected server-side fault logs are outside the browser response contract; log redaction remains PF-10. Public-host readiness remains a separate gate. This slice is included in the PF-09 local commit; no remote write was made. PF-10 is the next ready P1 task.
+
+### PF-10 configuration, request ID, and shutdown checkpoint (2026-10-18)
+
+**Status: in progress.** Observability now honors explicit sampler and log-level environment values in both development and production. The API parses `ENABLE_OTEL` as a boolean and rejects ambiguous values. HTTP logging reflects only bounded, printable client request IDs; invalid values receive a generated UUID. The production entrypoint retains the telemetry controller and awaits its shutdown after HTTP and conversion draining, under the existing process shutdown deadline. The trivial observability smoke test was replaced with behavioral config and HTTP request-ID tests. A production-process regression starts the API with telemetry enabled and verifies SIGTERM completion within a three-second grace period. Telemetry remains excluded from the use-case inventory's declared scope, which stays at **94/94 covered**.
+
+Validation: `npm ci --legacy-peer-deps --ignore-scripts` completed from the lockfile (npm reported 129 audit findings; no dependency files changed). Observability **6/6** and API **308/308** tests, their build/typecheck/lint targets, focused telemetry-enabled API process test **1/1**, API-E2E lint, changed-file Prettier, and use-case inventory passed. The first typecheck exposed Zod enum-default typing in the config fix; this was corrected before the passing rerun. Remaining PF-10 work: token-safe error/log capture, SDK repeated-init/shutdown and unavailable-exporter behavior, and process shutdown with an exporter that stalls. Local commit: `Start PF-10 observability hardening`. No remote write was made.
 
 ## Dated dependency inventory (2026-10-16)
 

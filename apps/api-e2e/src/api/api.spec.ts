@@ -134,6 +134,7 @@ async function productionApi(
         uploadIdleMs?: number;
         uploadTotalMs?: number;
         shutdownGraceMs?: number;
+        enableOtel?: boolean;
     } = {},
 ) {
     await api.stop();
@@ -148,6 +149,14 @@ async function productionApi(
         options,
     );
 }
+
+it('stops the production API within its grace period with telemetry enabled', async () => {
+    await productionApi({ enableOtel: true, shutdownGraceMs: 3000 });
+    const response = await fetch(`${api.url}/readyz`);
+    expect(response.status).toBe(200);
+    await api.stop();
+    expect(api.running).toBe(false);
+});
 
 beforeAll(async () => {
     png = await sharp({

@@ -165,6 +165,7 @@ export async function startApi(
         uploadIdleMs?: number;
         uploadTotalMs?: number;
         shutdownGraceMs?: number;
+        enableOtel?: boolean;
     } = {},
 ) {
     const storage = path.join(directory, 'uploads');
@@ -173,7 +174,10 @@ export async function startApi(
         UPLOAD_DIR: storage,
         UPLOAD_TMP_DIR: incoming,
         OTEL_LOG_FILE: path.join(directory, 'app.log'),
-        ENABLE_OTEL: 'false',
+        ENABLE_OTEL: options.enableOtel ? 'true' : 'false',
+        OTEL_TRACES_SAMPLER: 'always_off',
+        OTEL_METRICS_EXPORTER: 'none',
+        OTEL_LOGS_EXPORTER: 'none',
         SESSION_TTL_MINUTES: '15',
         SESSION_MAX_FILES: '20',
         SESSION_PER_FILE_BYTES: '20000000',

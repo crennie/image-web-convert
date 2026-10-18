@@ -14,6 +14,22 @@ const numFromEnv = (v: string | undefined, fallback: number): number => {
 
 const env = process.env;
 const isProd = env['NODE_ENV'] === 'production';
+const samplerSchema = z.enum([
+    'always_on',
+    'always_off',
+    'parentbased_always_on',
+    'parentbased_always_off',
+    'parentbased_traceidratio',
+]);
+const logLevelSchema = z.enum([
+    'fatal',
+    'error',
+    'warn',
+    'info',
+    'debug',
+    'trace',
+    'silent',
+]);
 
 export type ObservabilityConfig = z.infer<typeof ObservabilityConfigSchema>;
 export const ObservabilityConfigSchema = z.object({
@@ -31,30 +47,23 @@ export const ObservabilityConfigSchema = z.object({
         .default(env['OTEL_EXPORTER_OTLP_ENDPOINT'] ?? 'http://localhost:4318'),
 
     // Sampler
-    sampler: z
-        .enum([
-            'always_on',
-            'always_off',
-            'parentbased_always_on',
-            'parentbased_always_off',
-            'parentbased_traceidratio',
-        ])
-        .default(
-            env['OTEL_TRACES_SAMPLER'] ?? isProd
-                ? 'parentbased_traceidratio'
-                : 'parentbased_always_on'
+    sampler: samplerSchema.default(() =>
+        samplerSchema.parse(
+            env['OTEL_TRACES_SAMPLER'] ??
+                (isProd ? 'parentbased_traceidratio' : 'parentbased_always_on'),
         ),
+    ),
 
     samplerArg: z
         .number()
         .default(
-            numFromEnv(env['OTEL_TRACES_SAMPLER_ARG'], isProd ? 0.1 : 1.0)
+            numFromEnv(env['OTEL_TRACES_SAMPLER_ARG'], isProd ? 0.1 : 1.0),
         ),
 
     // Logging
-    logLevel: z
-        .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
-        .default(env['LOG_LEVEL'] ?? isProd ? 'info' : 'debug'),
+    logLevel: logLevelSchema.default(() =>
+        logLevelSchema.parse(env['LOG_LEVEL'] ?? (isProd ? 'info' : 'debug')),
+    ),
     pretty: z.boolean().default(boolFromEnv(env['LOG_PRETTY'], !isProd)),
     redact: z.array(z.string()).default([
         // Common sensitive fields (pino supports redaction paths)
@@ -65,7 +74,7 @@ export const ObservabilityConfigSchema = z.object({
 });
 
 export function loadObservabilityConfig(
-    partial?: Partial<z.input<typeof ObservabilityConfigSchema>>
+    partial?: Partial<z.input<typeof ObservabilityConfigSchema>>,
 ): ObservabilityConfig {
     // Allow callers to override specific fields programmatically if desired.
     const cfg = ObservabilityConfigSchema.parse({

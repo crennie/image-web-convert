@@ -3,9 +3,7 @@ import { initTelemetry } from '@image-web-convert/observability';
 (async () => {
     const { loadEnv } = await import('./env.js');
     const env = loadEnv();
-    if (env.ENABLE_OTEL) {
-        await initTelemetry();
-    }
+    const telemetry = env.ENABLE_OTEL ? await initTelemetry() : undefined;
     const http = await import('node:http');
     const { createApp } = await import('./app.js');
     const { createConversionRuntime } = await import(
@@ -46,7 +44,8 @@ import { initTelemetry } from '@image-web-convert/observability';
                 server.close((err) => (err ? reject(err) : resolve())),
             );
             void Promise.all([httpClosed, conversions.stop()])
-                .then(([, result]) => {
+                .then(async ([, result]) => {
+                    await telemetry?.shutdown();
                     clearTimeout(fallback);
                     process.exit(result.drained && !fatal ? 0 : 1);
                 })
