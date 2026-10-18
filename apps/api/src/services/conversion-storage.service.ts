@@ -289,7 +289,7 @@ async function writeExact(
         actual.bytes !== content.length ||
         actual.sha256 !== createHash('sha256').update(content).digest('hex')
     )
-        throw new ConversionStorageError('Incomplete stored file write');
+        throw new ConversionStorageIoError('Incomplete stored file write');
     return actual;
 }
 
@@ -306,15 +306,31 @@ function storageFailure(error: unknown, message: string): never {
  * acknowledgement: callers must reread/recover, never roll back other files. */
 async function atomicJson(target: string, value: unknown): Promise<void> {
     const temporary = `${target}.${secureId()}.tmp`;
+    const content = Buffer.from(JSON.stringify(value, null, 2));
+    const snapshotFilesystem = async <T>(
+        action: () => Promise<T>,
+    ): Promise<T> => {
+        try {
+            return await action();
+        } catch (error) {
+            if (error instanceof ConversionStorageError) throw error;
+            if (invalidStoragePath(error))
+                throw new ConversionStorageError(
+                    'Invalid snapshot path',
+                    error,
+                );
+            throw new ConversionStorageIoError(
+                'Unable to persist snapshot',
+                error,
+            );
+        }
+    };
     try {
-        await writeExact(
-            temporary,
-            Buffer.from(JSON.stringify(value, null, 2)),
-        );
-        await fs.rename(temporary, target);
-        await syncDirectory(path.dirname(target));
+        await snapshotFilesystem(() => writeExact(temporary, content));
+        await snapshotFilesystem(() => fs.rename(temporary, target));
+        await snapshotFilesystem(() => syncDirectory(path.dirname(target)));
     } finally {
-        await removeIfPresent(temporary);
+        await snapshotFilesystem(() => removeIfPresent(temporary));
     }
 }
 

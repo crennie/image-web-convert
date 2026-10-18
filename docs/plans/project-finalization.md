@@ -652,6 +652,14 @@ Validation: focused conversion-storage suite **70/70 passed**, full API suite **
 
 Remaining PF-08 work: classify unlabelled filesystem errors in atomic snapshot writes without confusing malformed data with storage I/O, and test a simultaneous receipt-publication and staging-cleanup fault if useful. A missing request source during staging still enters the storage-fault path; decide whether a proven client disconnect should be handled as an upload transition before altering that behavior.
 
+### PF-08 atomic snapshot fault checkpoint (2026-10-18)
+
+**Status: in progress.** Atomic snapshot staging, rename, directory sync, and temporary-file cleanup now classify unlabelled filesystem failures as storage I/O; invalid path types retain per-session storage classification. An incomplete verified write is a storage I/O failure. Focused tests show that an unacknowledged rename leaves the previous snapshot intact, while cleanup failure after publication leaves a readable committed record. A failed upload snapshot still retains its input for restart recovery.
+
+Validation: focused conversion-storage suite **72/72 passed**, full API suite **291/291 passed**, API production build/typecheck/lint, use-case inventory **91/91 covered**, changed-file Prettier, and `git diff --check` passed. The first test attempt could not start because dependencies were absent; `npm ci --legacy-peer-deps --ignore-scripts` installed the existing lockfile. No dependency or lockfile changes. Local commit: `PF-08: classify atomic snapshot write faults`. No remote write was made.
+
+Remaining PF-08 work: audit simultaneous receipt-publication and staging-cleanup failures and decide whether a proven client disconnect during upload staging should be classified as a transition. The fault tests inject unlabelled errors in-process; they do not reproduce an unlabelled OS fault in a separate production process.
+
 ## Dated dependency inventory (2026-10-16)
 
 Registry metadata was queried with `npm outdated --package-lock-only --json`; full and `--omit=dev` audits used `npm audit --package-lock-only --ignore-scripts --json`. Audit exits were 1 because findings exist. Counts refer to affected package entries, including parent propagation, not unique CVEs or demonstrated exploits.

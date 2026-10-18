@@ -330,11 +330,51 @@ describe('durable conversion records', () => {
                 return writeFile(target, data, options);
             },
         );
-        await expect(create(1)).rejects.toThrow('Unable to persist operation');
+        const failure = await create(1).then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(failure).toMatchObject({
+            message:
+                'Unable to persist operation; reread or recover before continuing',
+        });
+        expect(isStorageIoFailure(failure)).toBe(true);
         await absent(locations.info);
         expect(await fs.readdir(locations.directory)).not.toContain(
             'conversion.info.json',
         );
+    });
+
+    it('tags an unlabelled snapshot rename failure while keeping the old record', async () => {
+        await create(1);
+        const original = await fs.readFile(locations.info, 'utf8');
+        const rename = fs.rename.bind(fs);
+        vi.spyOn(fs, 'rename').mockImplementation(async (source, target) => {
+            if (target === locations.info)
+                throw new Error('Unlabelled disk failure');
+            return rename(source, target);
+        });
+        const failure = await upload('file-0').then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(await fs.readFile(locations.info, 'utf8')).toBe(original);
+    });
+
+    it('tags an unlabelled snapshot cleanup failure after publication', async () => {
+        const unlink = fs.unlink.bind(fs);
+        vi.spyOn(fs, 'unlink').mockImplementation(async (target) => {
+            if (String(target).startsWith(`${locations.info}.`))
+                throw new Error('Unlabelled disk failure');
+            return unlink(target);
+        });
+        const failure = await create(1).then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect((await store.read(sid)).operation.id).toBe(oid);
     });
 
     it.each(['version', 'association', 'lifecycle', 'input'])(
