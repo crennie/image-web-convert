@@ -5,6 +5,7 @@ import { DEFAULT_SESSION_IMAGE_CONFIG } from '@image-web-convert/schemas';
 import {
     createConversionStorage,
     ConversionStorageError,
+    isStorageIoFailure,
 } from '../conversion-storage.service';
 import { conversionStoragePaths } from '../storage.paths';
 import {
@@ -29,6 +30,19 @@ const initialTime = '2026-09-08T12:00:00.000Z';
 const expiry = '2026-09-08T12:15:00.000Z';
 const diskFailure = () =>
     Object.assign(new Error('Injected disk failure'), { code: 'EIO' });
+
+it('isolates a malformed operation path without treating it as a storage outage', async () => {
+    await create();
+    vi.spyOn(fs, 'lstat').mockRejectedValueOnce(
+        Object.assign(new Error('Invalid path component'), { code: 'ENOTDIR' }),
+    );
+    const failure = await store.read(sid, oid).then(
+        () => null,
+        (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(ConversionStorageError);
+    expect(isStorageIoFailure(failure)).toBe(false);
+});
 
 beforeEach(async () => {
     await fs.mkdir(path.resolve('tmp'), { recursive: true });
@@ -120,6 +134,16 @@ async function absent(target: string) {
 }
 
 describe('durable conversion records', () => {
+    it('distinguishes an empty root from a root lost after startup', async () => {
+        await fs.mkdir(root);
+        expect(await store.listSessions()).toEqual([]);
+        await fs.rename(root, path.join(directory, 'moved-uploads'));
+        await expect(store.listSessions()).rejects.toMatchObject({
+            type: 'storage_error',
+            cause: { code: 'ENOENT' },
+        });
+    });
+
     it('keeps conversion directories and artifacts private, including reused directories', async () => {
         for (const directory of [
             root,
@@ -638,6 +662,60 @@ describe('per-file commits and recovery', () => {
         },
     );
 
+    it('recovers a receipt whose rename succeeded but reported failure', async () => {
+        await ready(1);
+        await start();
+        const rename = fs.rename.bind(fs);
+        const spy = vi
+            .spyOn(fs, 'rename')
+            .mockImplementation(async (source, target) => {
+                await rename(source, target);
+                if (target === locations.receipt('file-0')) throw diskFailure();
+            });
+        await expect(
+            store.commitOutput(sid, oid, 'file-0', processed()),
+        ).rejects.toMatchObject({ type: 'storage_error' });
+        spy.mockRestore();
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'processing',
+        );
+        await expect(
+            fs.stat(locations.receipt('file-0')),
+        ).resolves.toBeDefined();
+        const recovered = await store.recoverAfterRestart(sid);
+        expect(recovered.operation.files[0].status).toBe('completed');
+        expect((await store.completedOutput(sid, oid, 'file-0')).meta.id).toBe(
+            'file-0',
+        );
+    });
+
+    it('recovers a receipt after its directory sync reports failure', async () => {
+        await ready(1);
+        await start();
+        const open = fs.open.bind(fs);
+        const spy = vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+            const handle = await open(...args);
+            if (args[0] === locations.receipts)
+                vi.spyOn(handle, 'sync').mockRejectedValueOnce(diskFailure());
+            return handle;
+        });
+        await expect(
+            store.commitOutput(sid, oid, 'file-0', processed()),
+        ).rejects.toMatchObject({ type: 'storage_error' });
+        spy.mockRestore();
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'processing',
+        );
+        await expect(
+            fs.stat(locations.receipt('file-0')),
+        ).resolves.toBeDefined();
+        const recovered = await store.recoverAfterRestart(sid);
+        expect(recovered.operation.files[0].status).toBe('completed');
+        expect((await store.completedOutput(sid, oid, 'file-0')).meta.id).toBe(
+            'file-0',
+        );
+    });
+
     it('requires recovery after receipt publication before accepting more mutations', async () => {
         await ready(1);
         await start();
@@ -839,6 +917,81 @@ describe('per-file commits and recovery', () => {
         expect((await store.read(sid)).operation.files[0].status).toBe(
             'completed',
         );
+    });
+
+    it.each(['receipt', 'metadata', 'output'] as const)(
+        'tags an unlabelled %s evidence stat failure as storage I/O',
+        async (artifact) => {
+            await ready(1);
+            await start();
+            await store.commitOutput(sid, oid, 'file-0', processed());
+            const target = {
+                receipt: locations.receipt('file-0'),
+                metadata: locations.meta('file-0'),
+                output: locations.output('file-0', 'image/webp'),
+            }[artifact];
+            const lstat = fs.lstat.bind(fs);
+            vi.spyOn(fs, 'lstat').mockImplementation(async (path) => {
+                if (path === target) throw new Error('Unlabelled disk failure');
+                return lstat(path);
+            });
+            const failure = await store
+                .completedOutput(sid, oid, 'file-0')
+                .then(
+                    () => null,
+                    (error: unknown) => error,
+                );
+            expect(isStorageIoFailure(failure)).toBe(true);
+            expect(failure).toMatchObject({
+                type: 'storage_error',
+                cause: { message: 'Unlabelled disk failure' },
+            });
+        },
+    );
+
+    it.each(['receipt', 'metadata'] as const)(
+        'tags an unlabelled %s evidence read failure as storage I/O',
+        async (artifact) => {
+            await ready(1);
+            await start();
+            await store.commitOutput(sid, oid, 'file-0', processed());
+            const target = {
+                receipt: locations.receipt('file-0'),
+                metadata: locations.meta('file-0'),
+            }[artifact];
+            const readFile = fs.readFile.bind(fs);
+            vi.spyOn(fs, 'readFile').mockImplementation(
+                async (path, options) => {
+                    if (path === target)
+                        throw new Error('Unlabelled disk failure');
+                    return readFile(path, options);
+                },
+            );
+            const failure = await store
+                .completedOutput(sid, oid, 'file-0')
+                .then(
+                    () => null,
+                    (error: unknown) => error,
+                );
+            expect(isStorageIoFailure(failure)).toBe(true);
+            expect(failure).toMatchObject({
+                type: 'storage_error',
+                cause: { message: 'Unlabelled disk failure' },
+            });
+        },
+    );
+
+    it('keeps malformed commit evidence isolated from storage I/O faults', async () => {
+        await ready(1);
+        await start();
+        await store.commitOutput(sid, oid, 'file-0', processed());
+        await fs.writeFile(locations.receipt('file-0'), '{broken');
+        const failure = await store.completedOutput(sid, oid, 'file-0').then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(failure).toBeInstanceOf(ConversionStorageError);
+        expect(isStorageIoFailure(failure)).toBe(false);
     });
 
     it('removes orphan staging and incomplete artifacts without treating sidecars as completed', async () => {

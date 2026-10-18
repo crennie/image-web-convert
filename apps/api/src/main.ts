@@ -8,40 +8,60 @@ import { initTelemetry } from '@image-web-convert/observability';
     }
     const http = await import('node:http');
     const { createApp } = await import('./app.js');
+    const { createConversionRuntime } = await import(
+        './services/conversion-runtime.service.js'
+    );
 
     async function main() {
-        const app = await createApp();
+        let shutdownOnFault: () => void = () => undefined;
+        const conversions = createConversionRuntime({
+            onFault: () => shutdownOnFault(),
+        });
+        const app = await createApp({
+            conversions,
+            onStorageFault: () => shutdownOnFault(),
+        });
         const server = http.createServer(app);
-        const conversions = app.locals.conversions;
 
         // Recovery and scheduler ownership must precede accepting requests.
-        const { recoverConversionRequestStaging } = await import('./controllers/conversion-upload.http.js');
+        const { recoverConversionRequestStaging } = await import(
+            './controllers/conversion-upload.http.js'
+        );
         const { UPLOAD_TMP_DIR } = await import('./services/storage.paths.js');
         await recoverConversionRequestStaging(UPLOAD_TMP_DIR);
         await conversions.start();
-        server.listen(env.PORT, () => {
-            // mark ready once we are listening
-            app.locals.setReady?.(true);
-            console.log(`API listening on http://0.0.0.0:${env.PORT}`);
-        });
 
         let shuttingDown = false;
-        const shutdown = (signal: string) => {
+        const shutdown = (signal: string, fatal = false) => {
             if (shuttingDown) return;
             shuttingDown = true;
             console.log(`\n${signal} received. Shutting down...`);
             app.locals.setReady?.(false);
             // HTTP closure alone does not imply background conversion drained.
-            const fallback = setTimeout(() => process.exit(1), env.CONVERSION_SHUTDOWN_GRACE_MS).unref();
-            const httpClosed = new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
-            void Promise.all([httpClosed, conversions.stop()]).then(([, result]) => {
-                clearTimeout(fallback);
-                process.exit(result.drained ? 0 : 1);
-            }).catch(err => {
-                console.error('Error during shutdown:', err);
-                process.exit(1);
-            });
+            const fallback = setTimeout(
+                () => process.exit(1),
+                env.CONVERSION_SHUTDOWN_GRACE_MS,
+            ).unref();
+            const httpClosed = new Promise<void>((resolve, reject) =>
+                server.close((err) => (err ? reject(err) : resolve())),
+            );
+            void Promise.all([httpClosed, conversions.stop()])
+                .then(([, result]) => {
+                    clearTimeout(fallback);
+                    process.exit(result.drained && !fatal ? 0 : 1);
+                })
+                .catch((err) => {
+                    console.error('Error during shutdown:', err);
+                    process.exit(1);
+                });
         };
+
+        shutdownOnFault = () => shutdown('Storage fault', true);
+        server.listen(env.PORT, () => {
+            // mark ready once we are listening
+            app.locals.setReady?.(true);
+            console.log(`API listening on http://0.0.0.0:${env.PORT}`);
+        });
 
         process.on('SIGINT', () => shutdown('SIGINT'));
         process.on('SIGTERM', () => shutdown('SIGTERM'));

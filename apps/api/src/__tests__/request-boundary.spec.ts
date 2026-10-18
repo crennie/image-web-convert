@@ -12,6 +12,7 @@ const resolved = vi.hoisted(() => vi.fn());
 const acquireArchiveSlot = vi.hoisted(() => vi.fn());
 const leaseRelease = vi.hoisted(() => vi.fn());
 const acquireLease = vi.hoisted(() => vi.fn(() => leaseRelease));
+const onStorageFault = vi.hoisted(() => vi.fn());
 
 vi.mock('../services/auth.service', () => ({
     validateRequestWithToken: auth,
@@ -51,7 +52,7 @@ beforeEach(async () => {
         read: readOperation,
         completedOutput,
     } as unknown as ConversionRuntime;
-    await listen(await createApp({ conversions: runtime }));
+    await listen(await createApp({ conversions: runtime, onStorageFault }));
 });
 
 afterEach(async () => {
@@ -127,6 +128,83 @@ it('does not expose rejected conversion metadata reads', async () => {
     expect(body).not.toContain('private storage path');
 });
 
+it('returns 503 and reports an unexpected filesystem read fault', async () => {
+    const failure = Object.assign(new Error('private disk detail'), {
+        code: 'ESTALE',
+    });
+    resolved.mockRejectedValueOnce(failure);
+    const response = await fetch(base + '/api/sessions/sid/files/file');
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ type: 'storage_error' });
+    expect(onStorageFault).toHaveBeenCalledExactlyOnceWith(failure);
+});
+
+it('reports a filesystem read fault after download headers have started', async () => {
+    const failure = Object.assign(new Error('private disk detail'), {
+        code: 'EBUSY',
+    });
+    resolved.mockResolvedValueOnce({
+        found: [
+            {
+                absPath: '/test/output.webp',
+                contentType: 'image/webp',
+                contentDisposition: 'attachment; filename="file.webp"',
+            },
+        ],
+        missing: [],
+    });
+    const sendFile = vi
+        .spyOn(express.response, 'sendFile')
+        .mockImplementation(function (this: express.Response, ...args) {
+            this.write('partial');
+            const callback = args.at(-1) as (error: Error) => void;
+            callback(failure);
+        });
+    try {
+        await expect(
+            fetch(base + '/api/sessions/sid/files/file').then((response) =>
+                response.text(),
+            ),
+        ).rejects.toThrow();
+        expect(onStorageFault).toHaveBeenCalledExactlyOnceWith(failure);
+    } finally {
+        sendFile.mockRestore();
+    }
+});
+
+it('does not treat a disconnected download client as a storage fault', async () => {
+    const disconnect = Object.assign(new Error('client disconnected'), {
+        code: 'EPIPE',
+    });
+    resolved.mockResolvedValueOnce({
+        found: [
+            {
+                absPath: '/test/output.webp',
+                contentType: 'image/webp',
+                contentDisposition: 'attachment; filename="file.webp"',
+            },
+        ],
+        missing: [],
+    });
+    const sendFile = vi
+        .spyOn(express.response, 'sendFile')
+        .mockImplementation(function (this: express.Response, ...args) {
+            this.write('partial');
+            const callback = args.at(-1) as (error: Error) => void;
+            callback(disconnect);
+        });
+    try {
+        await expect(
+            fetch(base + '/api/sessions/sid/files/file').then((response) =>
+                response.text(),
+            ),
+        ).rejects.toThrow();
+        expect(onStorageFault).not.toHaveBeenCalled();
+    } finally {
+        sendFile.mockRestore();
+    }
+});
+
 it('holds the request lease until a conversion metadata response settles', async () => {
     let finish!: (value: { meta: { id: string } }) => void;
     completedOutput.mockReturnValueOnce(
@@ -167,6 +245,7 @@ it('handles sendFile failure before headers and terminates after headers', async
     const missing = await fetch(base + '/api/sessions/sid/files/file');
     expect(missing.status).toBe(500);
     expect(await missing.json()).toMatchObject({ type: 'storage_error' });
+    expect(onStorageFault).not.toHaveBeenCalled();
 
     const app = express();
     app.get('/stream', (_req, res, next) => {

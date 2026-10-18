@@ -1689,9 +1689,9 @@
                 {
                     "id": "UC-045",
                     "actor": "API process",
-                    "given": "A durable storage mutation fails",
-                    "when": "Scheduling continues",
-                    "then": "The runtime faults and stops further work/readiness instead of guessing state.",
+                    "given": "A fatal storage I/O fault occurs during conversion or session access",
+                    "when": "The production API detects it",
+                    "then": "It rejects the request, stops scheduling and readiness, begins bounded shutdown, and exits with an error.",
                     "sources": [
                         "README.md",
                         "docs/architecture/dynamic/recover-conversion.md",
@@ -1713,6 +1713,183 @@
                             "layer": "API process",
                             "environment": "Separately started local API process with an EACCES input directory",
                             "asserts": "A failed durable upload returns 503 and drops readiness; restart restores admission and the same slot completes."
+                        },
+                        {
+                            "evidenceId": "E121",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "recovers an interrupted output after a conversion staging write fails",
+                            "layer": "API process",
+                            "environment": "Separately started local API process with an EACCES conversion staging directory",
+                            "asserts": "A converter output write fault drops readiness; restart marks the uncommitted file interrupted and keeps it unavailable for download."
+                        },
+                        {
+                            "evidenceId": "E125",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "preserves committed output when input cleanup fails after publication",
+                            "layer": "API process",
+                            "environment": "Separately started local API process with an EACCES accepted-input directory",
+                            "asserts": "Post-commit cleanup failure drops readiness; restart removes the stale input and preserves the downloadable output."
+                        },
+                        {
+                            "evidenceId": "E130",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "shuts down the production API after a fatal storage fault",
+                            "layer": "API process",
+                            "environment": "Separately started production API with an EACCES input directory",
+                            "asserts": "The failed upload receives 503, the production process exits with code 1, and restart recovers the slot."
+                        },
+                        {
+                            "evidenceId": "E131",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "shuts down the production API after a session authentication read fault",
+                            "layer": "API process",
+                            "environment": "Separately started production API with an EACCES session record",
+                            "asserts": "The failed authenticated request receives 503, the production process exits with code 1, and restart reads the session again."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-079",
+                    "actor": "API process",
+                    "given": "Output publication is interrupted at the commit receipt",
+                    "when": "The process restarts",
+                    "then": "Only output backed by a valid durable receipt is completed; receiptless artifacts are removed.",
+                    "sources": [
+                        "docs/architecture/dynamic/recover-conversion.md",
+                        "docs/architecture/decisions/ADR-002-commit-files-independently.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E123",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "removes unpublished output after commit receipt persistence fails",
+                            "layer": "API process",
+                            "environment": "Separately started local API process with an EACCES receipt directory",
+                            "asserts": "Readiness drops after receipt persistence fails; restart removes output and metadata without a receipt."
+                        },
+                        {
+                            "evidenceId": "E124",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "recovers a receipt whose rename succeeded but reported failure",
+                            "layer": "Conversion storage",
+                            "environment": "In-process temporary storage with an injected post-rename EIO error",
+                            "asserts": "Recovery verifies a receipt that reached disk despite a failed acknowledgement and completes the output."
+                        },
+                        {
+                            "evidenceId": "E126",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "recovers a receipt after its directory sync reports failure",
+                            "layer": "Conversion storage",
+                            "environment": "In-process temporary storage with an injected receipt-directory EIO sync",
+                            "asserts": "Recovery verifies a receipt left on disk after directory sync failure and completes the output."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-080",
+                    "actor": "API process",
+                    "given": "Operation creation rereads a session record",
+                    "when": "The record is missing, corrupt, or unreadable",
+                    "then": "Missing sessions return a not-found error; corruption is isolated; storage I/O failure drops readiness and reports a storage error.",
+                    "sources": ["docs/architecture/quality/requirements.md"],
+                    "tests": [
+                        {
+                            "evidenceId": "E127",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "reports a missing session during operation creation without faulting readiness",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process temporary storage with an absent session record",
+                            "asserts": "Missing session is reported as session_not_found without dropping readiness."
+                        },
+                        {
+                            "evidenceId": "E128",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "faults readiness when session reread fails during operation creation",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process temporary storage with an injected EACCES session read",
+                            "asserts": "Session I/O failure becomes storage_error and drops readiness."
+                        },
+                        {
+                            "evidenceId": "E129",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "isolates a corrupt session reread without faulting healthy admission",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process temporary storage with one corrupt and one healthy session",
+                            "asserts": "Corrupt session is blocked while a healthy session can still create an operation."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-078",
+                    "actor": "API process",
+                    "given": "A persisted conversion record cannot be read because storage I/O fails",
+                    "when": "The process starts, scans operations, or serves a status request",
+                    "then": "The API reports a storage error and drops readiness until restart; corrupt records remain isolated per session.",
+                    "sources": [
+                        "docs/architecture/dynamic/recover-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E117",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "fails startup readiness when a persisted operation cannot be read from disk",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process temporary storage with an injected EACCES read",
+                            "asserts": "Startup fails readiness for a disk read fault instead of isolating the session as corrupt."
+                        },
+                        {
+                            "evidenceId": "E118",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "drops readiness for a disk read failure after startup",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process temporary storage with an injected EACCES read",
+                            "asserts": "A live read fault drops readiness without classifying the session as corrupt."
+                        },
+                        {
+                            "evidenceId": "E119",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "drops readiness after a persisted operation read fails and recovers on restart",
+                            "layer": "API process",
+                            "environment": "Separately started local API process with an unreadable operation record",
+                            "asserts": "The status request returns 503, readiness drops, and restart recovers the record."
+                        },
+                        {
+                            "evidenceId": "E120",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "drops readiness for a disk fault during the operation scan",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process temporary storage with an injected EIO read",
+                            "asserts": "An operation scan fault drops readiness and reports the fault once."
+                        },
+                        {
+                            "evidenceId": "E122",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "distinguishes an empty root from a root lost after startup",
+                            "layer": "Conversion storage",
+                            "environment": "In-process temporary storage with a renamed root",
+                            "asserts": "An empty root has no sessions, while a missing root raises a storage fault instead of appearing empty."
+                        },
+                        {
+                            "evidenceId": "E137",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "fails startup readiness when a persisted operation read has no errno code",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process temporary storage with an injected unlabelled file read error",
+                            "asserts": "An unlabelled filesystem read failure stops startup readiness instead of isolating the session as corrupt."
+                        },
+                        {
+                            "evidenceId": "E140",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "isolates a malformed operation path without treating it as a storage outage",
+                            "layer": "Conversion storage",
+                            "environment": "In-process temporary storage with an injected ENOTDIR path error",
+                            "asserts": "A malformed per-session path remains a storage error without being classified as a global I/O outage."
                         }
                     ],
                     "coverage": "covered",
@@ -1752,6 +1929,197 @@
                             "layer": "Conversion runtime",
                             "environment": "In-process deterministic local fixtures, mocks, or temporary storage",
                             "asserts": "Grace expiry is reported while the active invocation and input remain."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-081",
+                    "actor": "API process",
+                    "given": "A committed output download is active when a fatal storage fault occurs in another session",
+                    "when": "The production API begins shutdown",
+                    "then": "New connections are refused, the active download can finish within the grace period, and the process exits with an error afterward.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E132",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "finishes an active download before fatal storage shutdown exits",
+                            "layer": "API process",
+                            "environment": "Separately started production API with a paused image download and an EACCES session record",
+                            "asserts": "The listener refuses a new connection while the active download finishes; the process then exits with code 1."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-082",
+                    "actor": "API process",
+                    "given": "An upload remains stalled when a fatal storage fault occurs in another session",
+                    "when": "The configured shutdown grace period expires",
+                    "then": "The production process exits with an error and closes the stalled upload connection.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/constraints.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E133",
+                            "file": "apps/api-e2e/src/api/api.spec.ts",
+                            "name": "cuts off a stalled upload at the fatal shutdown grace deadline",
+                            "layer": "API process",
+                            "environment": "Separately started production API with a partial multipart upload, a short grace period, and an EACCES session record",
+                            "asserts": "A stalled active connection cannot hold the process open beyond the grace period; the process exits with code 1."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-083",
+                    "actor": "API process",
+                    "given": "A file download encounters an operating-system storage read fault",
+                    "when": "The fault occurs before or after response headers are sent",
+                    "then": "The API reports a generic 503 before headers or closes the partial response, and both paths trigger fatal storage shutdown.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/dynamic/recover-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E134",
+                            "file": "apps/api/src/__tests__/request-boundary.spec.ts",
+                            "name": "returns 503 and reports an unexpected filesystem read fault",
+                            "layer": "API HTTP boundary",
+                            "environment": "In-process HTTP server with an injected ESTALE download resolution fault",
+                            "asserts": "Before headers, an unexpected storage errno returns a generic 503 and reports the fatal fault."
+                        },
+                        {
+                            "evidenceId": "E135",
+                            "file": "apps/api/src/__tests__/request-boundary.spec.ts",
+                            "name": "reports a filesystem read fault after download headers have started",
+                            "layer": "API HTTP boundary",
+                            "environment": "In-process HTTP server with an injected EBUSY sendFile callback after headers",
+                            "asserts": "After headers, the partial response is terminated and the fatal storage fault is reported."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-084",
+                    "actor": "API process",
+                    "given": "A download transport reports that the client disconnected",
+                    "when": "The partial response is closed",
+                    "then": "The API does not classify the transport error as a fatal storage fault.",
+                    "sources": ["README.md"],
+                    "tests": [
+                        {
+                            "evidenceId": "E136",
+                            "file": "apps/api/src/__tests__/request-boundary.spec.ts",
+                            "name": "does not treat a disconnected download client as a storage fault",
+                            "layer": "API HTTP boundary",
+                            "environment": "In-process HTTP server with an injected EPIPE sendFile callback after headers",
+                            "asserts": "The partial response closes without invoking the fatal storage-fault callback."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-085",
+                    "actor": "API process",
+                    "given": "A session record read fails without an operating-system errno code",
+                    "when": "The API authenticates the session",
+                    "then": "The read failure is tagged as storage I/O, returns a generic 503, and signals fatal shutdown; malformed records remain isolated.",
+                    "sources": [
+                        "README.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E138",
+                            "file": "apps/api/src/services/__tests__/session.service.spec.ts",
+                            "name": "tags an unlabelled session file read failure as storage I/O",
+                            "layer": "Session storage",
+                            "environment": "In-process temporary storage with an injected unlabelled readFile error",
+                            "asserts": "The filesystem read failure becomes a SessionStorageError retaining its cause."
+                        },
+                        {
+                            "evidenceId": "E139",
+                            "file": "apps/api/src/services/__tests__/auth.service.spec.ts",
+                            "name": "returns 503 for %s while reading a session",
+                            "layer": "Session authentication",
+                            "environment": "In-process authentication with an unlabelled SessionStorageError and isolated malformed-path errors",
+                            "asserts": "A tagged unlabelled read failure reports the fatal fault, while ENOTDIR and corrupt data do not."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-086",
+                    "actor": "API process",
+                    "given": "A committed output is being recovered or verified for download",
+                    "when": "A receipt, metadata, or output filesystem scan or read fails without an errno code",
+                    "then": "The API treats the failure as storage I/O and drops readiness; malformed commit evidence remains isolated.",
+                    "sources": [
+                        "docs/architecture/dynamic/recover-conversion.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E141",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags an unlabelled %s evidence stat failure as storage I/O",
+                            "layer": "Conversion storage",
+                            "environment": "In-process temporary storage with injected unlabelled receipt, metadata, and output stat failures",
+                            "asserts": "Every filesystem stat failure is tagged as storage I/O rather than invalid commit data."
+                        },
+                        {
+                            "evidenceId": "E142",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags an unlabelled %s evidence read failure as storage I/O",
+                            "layer": "Conversion storage",
+                            "environment": "In-process temporary storage with injected unlabelled receipt and metadata read failures",
+                            "asserts": "Both file read failures are tagged as storage I/O."
+                        },
+                        {
+                            "evidenceId": "E143",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "drops readiness when committed evidence has an unlabelled read failure",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process completed output with an injected unlabelled receipt stat failure",
+                            "asserts": "A live download lookup drops readiness and reports the fatal fault once."
+                        },
+                        {
+                            "evidenceId": "E144",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "keeps malformed commit evidence isolated from storage I/O faults",
+                            "layer": "Conversion storage",
+                            "environment": "In-process completed output with a malformed receipt",
+                            "asserts": "Malformed receipt data is an isolated storage error rather than a global I/O fault."
+                        },
+                        {
+                            "evidenceId": "E145",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "fails startup readiness when committed evidence has an unlabelled read failure",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process completed output with an injected unlabelled receipt stat failure during recovery",
+                            "asserts": "Startup fails readiness rather than quarantining the session as corrupt."
+                        },
+                        {
+                            "evidenceId": "E146",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "fails startup readiness when the permission scan has an unlabelled file failure",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process completed output with an injected unlabelled receipt stat failure during recovery's permission scan",
+                            "asserts": "The recovery scan fails readiness rather than quarantining the session as corrupt."
                         }
                     ],
                     "coverage": "covered",

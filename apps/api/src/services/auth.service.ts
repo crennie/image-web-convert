@@ -13,8 +13,10 @@ import {
 import {
     isSessionExpired,
     readSessionInfo,
+    SessionStorageError,
     SessionInfo,
 } from './sessions.service';
+import { isStorageIoFailure } from './conversion-storage.service';
 import { ConversionIdSchema } from '@image-web-convert/schemas';
 
 type ValidTokenResponse = {
@@ -69,6 +71,8 @@ export async function validateRequestWithToken(
             return { valid: false, status: 404, apiError: response };
         }
         console.error('Unable to read persisted session record');
+        if (error instanceof SessionStorageError || isStorageIoFailure(error))
+            req.app?.locals.onStorageFault?.(error);
         return {
             valid: false,
             status: 503,

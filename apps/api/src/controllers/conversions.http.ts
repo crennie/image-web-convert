@@ -1,7 +1,10 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { ConversionIdSchema } from '@image-web-convert/schemas';
 import { ConversionTransitionError } from '../services/conversions.service';
-import { ConversionStorageError } from '../services/conversion-storage.service';
+import {
+    ConversionStorageError,
+    isStorageIoFailure,
+} from '../services/conversion-storage.service';
 import type { ConversionRuntime } from '../services/conversion-runtime.service';
 import { validateRequestWithToken } from '../services/auth.service';
 
@@ -9,6 +12,8 @@ export function conversionRuntime(req: Request): ConversionRuntime {
     return req.app.locals.conversions;
 }
 export function sendConversionError(res: Response, error: unknown) {
+    const storageIoFailure = isStorageIoFailure(error);
+    if (storageIoFailure) res.req.app?.locals.onStorageFault?.(error);
     if (res.destroyed) return;
     if (res.headersSent) {
         res.destroy();
@@ -16,6 +21,7 @@ export function sendConversionError(res: Response, error: unknown) {
     }
     if (error instanceof ConversionTransitionError) {
         const statuses: Partial<Record<string, number>> = {
+            session_not_found: 404,
             operation_not_found: 404,
             file_not_found: 404,
             session_expired: 403,
@@ -32,7 +38,11 @@ export function sendConversionError(res: Response, error: unknown) {
     }
     console.error('Conversion request failed', error);
     return res
-        .status(error instanceof ConversionStorageError ? 503 : 500)
+        .status(
+            error instanceof ConversionStorageError || storageIoFailure
+                ? 503
+                : 500,
+        )
         .json({
             type: 'storage_error',
             message: 'Conversion storage is unavailable',

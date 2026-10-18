@@ -87,6 +87,19 @@ export async function startNodeServer(options: {
         }
         if (failure) throw failure;
     }
+    async function expectExitCode(code: number) {
+        const timeout = setTimeout(() => child.kill('SIGKILL'), 12_000);
+        try {
+            await closed;
+        } finally {
+            clearTimeout(timeout);
+        }
+        if (child.exitCode !== code || child.signalCode)
+            throw new Error(
+                `Expected server exit ${code}, received ${child.exitCode}/${child.signalCode}; see ${options.log}`,
+            );
+        failure = undefined;
+    }
     try {
         const deadline = Date.now() + 30_000;
         while (Date.now() < deadline) {
@@ -99,7 +112,8 @@ export async function startNodeServer(options: {
                 signal: AbortSignal.timeout(1000),
             }).catch(() => undefined);
             await response?.body?.cancel();
-            if (response?.ok && !exited) return { url, port, child, stop };
+            if (response?.ok && !exited)
+                return { url, port, child, stop, expectExitCode };
             if (response && response.status !== 503)
                 throw new Error(
                     `Readiness returned HTTP ${response.status}; see ${options.log}`,
@@ -150,6 +164,7 @@ export async function startApi(
         corsOrigin?: string;
         uploadIdleMs?: number;
         uploadTotalMs?: number;
+        shutdownGraceMs?: number;
     } = {},
 ) {
     const storage = path.join(directory, 'uploads');
@@ -172,7 +187,7 @@ export async function startApi(
         CONVERSION_UPLOAD_TOTAL_MS: String(options.uploadTotalMs ?? 300000),
         CONVERSION_FILE_TIMEOUT_MS: '120000',
         CONVERSION_SWEEP_INTERVAL_MS: '100',
-        CONVERSION_SHUTDOWN_GRACE_MS: '10000',
+        CONVERSION_SHUTDOWN_GRACE_MS: String(options.shutdownGraceMs ?? 10000),
         CONVERSION_MAX_INPUT_PIXELS: '200000000',
         CONVERSION_MAX_DIMENSION: '8192',
     };
@@ -205,6 +220,12 @@ export async function startApi(
         },
         get held() {
             return held;
+        },
+        get running() {
+            return (
+                server.child.exitCode === null &&
+                server.child.signalCode === null
+            );
         },
         storage,
         incoming,
@@ -240,6 +261,9 @@ export async function startApi(
         },
         async stop() {
             await server.stop();
+        },
+        async expectExitCode(code: number) {
+            await server.expectExitCode(code);
         },
     };
 }

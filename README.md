@@ -250,14 +250,20 @@ On startup, the API cleans abandoned conversion request staging and recovers
 operations before listening and reporting ready. Valid committed output survives;
 a file interrupted without a valid commit becomes `processing_interrupted`, and
 valid remaining uploads can continue without browser polling. Invalid session
-records are isolated/reported; storage mutation failures stop scheduling/readiness.
+records are isolated/reported; fatal storage faults stop scheduling/readiness and
+make the production API begin shutdown immediately. In-flight transfers get up
+to the configured shutdown grace period; the process exits with an error. A
+supervisor can restart it, but a persistent storage fault prevents readiness.
 A background sweep reclaims expired operation, create-only, and sealed legacy
 sessions. Cleanup waits for active request, conversion, upload, and download
 leases before removing files. It ignores unrelated directories and symlinks.
 Malformed records and directories still missing a session record after five
 minutes are retained and reported once per process with their session ID in
 runtime diagnostics; an operator must repair or remove them.
-Filesystem scan or deletion failures stop readiness until process recovery.
+Filesystem scan, deletion, or download read failures also trigger this shutdown.
+If a download has already sent headers when storage fails, its partial response
+is closed. A client disconnect is a transport error and does not trigger a
+storage-fault shutdown.
 Shutdown stops accepting work and starting new files, drains active work within
 the grace period, and relies on restart recovery if the process must exit early.
 

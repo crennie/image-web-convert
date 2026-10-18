@@ -135,6 +135,18 @@ describe('writeSessionInfo / readSessionInfo', () => {
         tokenHash: 'b'.repeat(64),
     });
 
+    it('tags an unlabelled session file read failure as storage I/O', async () => {
+        const sid = 'unlabelled-read';
+        await fs.mkdir(sessionDir(sid), { recursive: true });
+        await writeSessionInfo(sid, validInfo(sid));
+        const failure = new Error('Unlabelled disk failure');
+        vi.spyOn(fs, 'readFile').mockRejectedValueOnce(failure);
+        await expect(readSessionInfo(sid)).rejects.toMatchObject({
+            type: 'storage_error',
+            cause: failure,
+        });
+    });
+
     it('rejects a successful short write before publishing a session record', async () => {
         const sid = 'short-write';
         await fs.mkdir(sessionDir(sid), { recursive: true });
