@@ -12,29 +12,18 @@ import { Nav, SessionProvider } from '@image-web-convert/ui';
 import '../styles.css';
 import { ParticleBackground } from './components/ParticleBackground';
 
-export function ErrorBoundary(...args: any[]) {
-    const error = args[0].error;
-    if (isRouteErrorResponse(error)) {
-        return (
-            <>
-                <h1>
-                    {error.status} {error.statusText}
-                </h1>
-                <p>{error.data}</p>
-            </>
-        );
-    } else if (error instanceof Error) {
-        return (
-            <div>
-                <h1>Error</h1>
-                <p>{error.message}</p>
-                <p>The stack trace is:</p>
-                <pre>{error.stack}</pre>
-            </div>
-        );
-    } else {
-        return <h1>Unknown Error</h1>;
-    }
+export function ErrorBoundary({ error }: { error: unknown }) {
+    const notFound = isRouteErrorResponse(error) && error.status === 404;
+    return (
+        <main role="alert" className="mx-auto max-w-2xl px-6 py-16">
+            <h1>{notFound ? 'Page not found' : 'Something went wrong'}</h1>
+            <p>
+                {notFound
+                    ? 'Check the address and try again.'
+                    : 'Please try again later.'}
+            </p>
+        </main>
+    );
 }
 
 export const meta: MetaFunction = () => [
@@ -46,16 +35,6 @@ export const meta: MetaFunction = () => [
 export const links: LinksFunction = () => [
     { rel: 'icon', href: '/favicon.ico', sizes: '16x16 32x32 48x48' },
     { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
-    { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
-    {
-        rel: 'preconnect',
-        href: 'https://fonts.gstatic.com',
-        crossOrigin: 'anonymous',
-    },
-    {
-        rel: 'stylesheet',
-        href: 'https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap',
-    },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {

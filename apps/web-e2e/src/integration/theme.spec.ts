@@ -1,6 +1,30 @@
 import { firstImage } from '../fixtures/images';
 import { test, expect } from '../support/application';
 
+test('built SSR keeps missing-page details private and makes no font request', async ({
+    page,
+}) => {
+    const fontRequests: string[] = [];
+    page.on('request', (request) => {
+        if (
+            request.resourceType() === 'font' ||
+            /fonts\.googleapis\.com|fonts\.gstatic\.com/.test(request.url())
+        )
+            fontRequests.push(request.url());
+    });
+    await page.goto('/');
+    await expect(
+        page.getByRole('heading', { name: 'Image Web Convert' }),
+    ).toBeVisible();
+    const response = await page.goto('/missing-private-page');
+    expect(response?.status()).toBe(404);
+    await expect(page.getByRole('alert')).toContainText('Page not found');
+    await expect(page.getByRole('alert')).not.toContainText(
+        '/missing-private-page',
+    );
+    expect(fontRequests).toEqual([]);
+});
+
 for (const colorScheme of ['light', 'dark'] as const) {
     for (const width of [375, 1280]) {
         test(`${colorScheme} theme has filled controls and readable surfaces at ${width}px`, async ({
@@ -11,7 +35,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
             await page.goto('/');
             const body = page.locator('body');
             await expect(body).toHaveCSS('color-scheme', colorScheme);
-            await expect(body).toHaveCSS('font-family', /Inter/);
+            await expect(body).toHaveCSS('font-family', /system-ui/);
             await expect(body).toHaveCSS('background-image', /radial-gradient/);
             const background = await body.evaluate(
                 (element) => getComputedStyle(element).backgroundColor,

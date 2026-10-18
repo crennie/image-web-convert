@@ -630,10 +630,24 @@ export function createConversionStorage(
                     now(),
                 );
                 if ('uploadedAt' in slot && slot.uploadedAt) return initial;
-                const stat = await acceptFilesystem(
-                    () => fs.lstat(tempPath),
-                    'Unable to inspect upload source',
-                );
+                assertRequestActive();
+                let stat;
+                try {
+                    stat = await acceptFilesystem(
+                        () => fs.lstat(tempPath),
+                        'Unable to inspect upload source',
+                    );
+                } catch (error) {
+                    // The middleware may remove its temporary file on disconnect.
+                    // Only a confirmed inactive request changes this to an upload
+                    // transition; a missing source for an active request is I/O.
+                    if (
+                        error instanceof ConversionStorageIoError &&
+                        missing(error.cause)
+                    )
+                        assertRequestActive();
+                    throw error;
+                }
                 if (!stat.isFile())
                     throw new ConversionStorageError(
                         'Upload source must be a regular file',
@@ -644,15 +658,29 @@ export function createConversionStorage(
                     stat.size,
                     now(),
                 );
-                await acceptFilesystem(
-                    () =>
-                        fs.copyFile(
-                            tempPath,
-                            stage,
-                            fs.constants.COPYFILE_EXCL,
-                        ),
-                    'Unable to stage upload',
-                );
+                try {
+                    await acceptFilesystem(
+                        () =>
+                            fs.copyFile(
+                                tempPath,
+                                stage,
+                                fs.constants.COPYFILE_EXCL,
+                            ),
+                        'Unable to stage upload',
+                    );
+                } catch (error) {
+                    if (
+                        error instanceof ConversionStorageIoError &&
+                        missing(error.cause)
+                    ) {
+                        try {
+                            await fs.lstat(tempPath);
+                        } catch (sourceError) {
+                            if (missing(sourceError)) assertRequestActive();
+                        }
+                    }
+                    throw error;
+                }
                 await acceptFilesystem(
                     () => fs.chmod(stage, 0o600),
                     'Unable to secure upload staging',
@@ -785,6 +813,7 @@ export function createConversionStorage(
             );
         outputClaims.add(key);
         const stage = location.staged(secureId());
+        let primaryFailure: unknown;
         try {
             const initial = await mutationBase(sid, operationId);
             const output = makeOutput(initial.operation, fileId, processed);
@@ -849,6 +878,7 @@ export function createConversionStorage(
             );
             return committed;
         } catch (error) {
+            primaryFailure = error;
             return storageFailure(error, 'Unable to commit output');
         } finally {
             outputClaims.delete(key);
@@ -858,7 +888,11 @@ export function createConversionStorage(
                     'Unable to clean output staging',
                 );
             } catch (error) {
-                storageFailure(error, 'Unable to clean output staging');
+                if (
+                    primaryFailure === undefined ||
+                    !isStorageIoFailure(primaryFailure)
+                )
+                    storageFailure(error, 'Unable to clean output staging');
             }
         }
     }

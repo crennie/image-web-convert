@@ -2284,6 +2284,14 @@
                             "layer": "Conversion storage",
                             "environment": "In-process committed operation with an injected unlabelled staging unlink failure",
                             "asserts": "The cleanup failure is tagged as storage I/O without losing the committed output."
+                        },
+                        {
+                            "evidenceId": "E167",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "preserves a receipt failure when staging cleanup also fails",
+                            "layer": "Conversion storage",
+                            "environment": "In-process output commit with simultaneous receipt rename and staging cleanup faults",
+                            "asserts": "The receipt failure remains visible, and restart recovery fails the uncommitted file and clears staging."
                         }
                     ],
                     "coverage": "covered",
@@ -2339,6 +2347,38 @@
                             "layer": "Conversion storage",
                             "environment": "In-process upload with staging removal deliberately held open",
                             "asserts": "A duplicate upload remains rejected until staging cleanup completes."
+                        },
+                        {
+                            "evidenceId": "E165",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "treats a missing request source as cancellation only when the request became inactive",
+                            "layer": "Conversion storage",
+                            "environment": "In-process upload whose request source disappears during an observed disconnect",
+                            "asserts": "The inactive request reports an upload transition without accepting input or tagging a storage outage."
+                        },
+                        {
+                            "evidenceId": "E166",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "treats a missing source for an active request as storage I/O",
+                            "layer": "Conversion storage",
+                            "environment": "In-process upload whose request source is missing while the request remains active",
+                            "asserts": "The missing source reports storage I/O and leaves the upload unaccepted."
+                        },
+                        {
+                            "evidenceId": "E168",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "treats a source lost during copy as cancellation when the request is inactive",
+                            "layer": "Conversion storage",
+                            "environment": "In-process upload whose request source disappears while copy reports ENOENT",
+                            "asserts": "The confirmed inactive request remains an upload transition and staging is clean."
+                        },
+                        {
+                            "evidenceId": "E169",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "keeps a copy ENOENT as storage I/O when its request source still exists",
+                            "layer": "Conversion storage",
+                            "environment": "In-process upload whose copy reports ENOENT but the source remains available",
+                            "asserts": "The copy failure stays storage I/O even when the request becomes inactive."
                         }
                     ],
                     "coverage": "covered",
@@ -2471,6 +2511,48 @@
                             "layer": "Conversion runtime",
                             "environment": "In-process temporary storage with a failed removal",
                             "asserts": "A failed removal preserves files and faults readiness."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                }
+            ]
+        },
+        {
+            "id": "ssr-privacy",
+            "sources": ["apps/web/app/root.tsx", "apps/web/styles.css"],
+            "cases": [
+                {
+                    "id": "UC-092",
+                    "actor": "Browser",
+                    "given": "The built website loads or encounters a missing page or rendering error",
+                    "when": "The document and root error boundary render",
+                    "then": "Private error details are hidden, missing pages show generic copy, and typography loads without an external font request.",
+                    "sources": ["apps/web/app/root.tsx", "apps/web/styles.css"],
+                    "tests": [
+                        {
+                            "evidenceId": "E170",
+                            "file": "apps/web/app/root.smoke.spec.tsx",
+                            "name": "hides application error details",
+                            "layer": "Web root component",
+                            "environment": "In-process React render with a private error message and stack",
+                            "asserts": "The boundary renders generic copy without the private message or stack."
+                        },
+                        {
+                            "evidenceId": "E171",
+                            "file": "apps/web/app/root.smoke.spec.tsx",
+                            "name": "hides route error data on a missing page",
+                            "layer": "Web root component",
+                            "environment": "In-process React render with private route status text and data",
+                            "asserts": "The 404 boundary uses generic copy without route error data."
+                        },
+                        {
+                            "evidenceId": "E172",
+                            "file": "apps/web-e2e/src/integration/theme.spec.ts",
+                            "name": "built SSR keeps missing-page details private and makes no font request",
+                            "layer": "Built browser integration",
+                            "environment": "Built SSR site in Chromium, Firefox, and WebKit",
+                            "asserts": "A 404 page hides the missing path and neither page requests Google Fonts."
                         }
                     ],
                     "coverage": "covered",
