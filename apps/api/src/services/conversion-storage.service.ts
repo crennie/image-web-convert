@@ -149,6 +149,55 @@ async function readCommitArtifact<T>(action: () => Promise<T>): Promise<T> {
     }
 }
 
+async function recoverFilesystem<T>(
+    action: () => Promise<T>,
+    message: string,
+): Promise<T> {
+    try {
+        return await action();
+    } catch (error) {
+        if (error instanceof ConversionStorageError) throw error;
+        if (missing(error)) throw error;
+        if (invalidStoragePath(error))
+            throw new ConversionStorageError('Invalid recovery path', error);
+        throw new ConversionStorageIoError(message, error);
+    }
+}
+
+async function publishFilesystem<T>(
+    action: () => Promise<T>,
+    message: string,
+): Promise<T> {
+    try {
+        return await action();
+    } catch (error) {
+        if (error instanceof ConversionStorageError) throw error;
+        if (invalidStoragePath(error))
+            throw new ConversionStorageError(
+                'Invalid output artifact path',
+                error,
+            );
+        throw new ConversionStorageIoError(message, error);
+    }
+}
+
+async function acceptFilesystem<T>(
+    action: () => Promise<T>,
+    message: string,
+): Promise<T> {
+    try {
+        return await action();
+    } catch (error) {
+        if (error instanceof ConversionStorageError) throw error;
+        if (invalidStoragePath(error))
+            throw new ConversionStorageError(
+                'Invalid upload staging path',
+                error,
+            );
+        throw new ConversionStorageIoError(message, error);
+    }
+}
+
 async function removeIfPresent(target: string): Promise<void> {
     try {
         await fs.unlink(target);
@@ -373,7 +422,15 @@ export function createConversionStorage(
                 );
             } catch (error) {
                 if (missing(error)) continue;
-                throw error;
+                if (invalidStoragePath(error))
+                    throw new ConversionStorageError(
+                        'Invalid pending commit receipt path',
+                        error,
+                    );
+                throw new ConversionStorageIoError(
+                    'Unable to inspect pending commit receipt',
+                    error,
+                );
             }
             throw new ConversionStorageError(
                 'An interrupted file commit requires recovery before further mutations',
@@ -409,15 +466,28 @@ export function createConversionStorage(
                     'Only a new operation may be created',
                 );
             }
+            let existing = false;
             try {
                 await fs.stat(location.info);
+                existing = true;
+            } catch (error) {
+                if (!missing(error)) {
+                    if (invalidStoragePath(error))
+                        throw new ConversionStorageError(
+                            'Invalid operation creation path',
+                            error,
+                        );
+                    throw new ConversionStorageIoError(
+                        'Unable to inspect existing operation',
+                        error,
+                    );
+                }
+            }
+            if (existing)
                 throw new ConversionTransitionError(
                     'conversion_conflict',
                     'Session already owns an operation',
                 );
-            } catch (error) {
-                if (!missing(error)) throw error;
-            }
             await ensurePrivateDirectory(root);
             await ensurePrivateDirectory(location.directory);
             for (const directory of [
@@ -427,7 +497,14 @@ export function createConversionStorage(
             ]) {
                 await ensurePrivateDirectory(directory);
             }
-            await syncDirectory(location.directory);
+            try {
+                await syncDirectory(location.directory);
+            } catch (error) {
+                throw new ConversionStorageIoError(
+                    'Unable to sync operation directory',
+                    error,
+                );
+            }
             return write(record);
         });
     }
@@ -517,71 +594,116 @@ export function createConversionStorage(
             );
         uploadClaims.add(key);
         const stage = location.staged(secureId());
+        let outcome: PromiseSettledResult<StoredConversion>;
         try {
-            const initial = await mutationBase(sid, operationId);
-            // Validate association/lifecycle before copying a potentially large file.
-            const slot = initial.operation.files.find(
-                (file) => file.id === fileId,
-            );
-            if (!slot)
-                throw new ConversionTransitionError(
-                    'file_not_found',
-                    'File does not belong to operation',
+            const result = await (async () => {
+                const initial = await mutationBase(sid, operationId);
+                // Validate association/lifecycle before copying a potentially large file.
+                const slot = initial.operation.files.find(
+                    (file) => file.id === fileId,
                 );
-            acceptConversionUpload(
-                initial.operation,
-                fileId,
-                slot.declaredBytes,
-                now(),
-            );
-            if ('uploadedAt' in slot && slot.uploadedAt) return initial;
-            const stat = await fs.lstat(tempPath);
-            if (!stat.isFile())
-                throw new ConversionStorageError(
-                    'Upload source must be a regular file',
-                );
-            acceptConversionUpload(initial.operation, fileId, stat.size, now());
-            await fs.copyFile(tempPath, stage, fs.constants.COPYFILE_EXCL);
-            await fs.chmod(stage, 0o600);
-            await syncFile(stage);
-            const input = await fingerprint(stage);
-            return await serialized(location.info, async () => {
-                const latest = await read(sid, operationId);
-                await pendingCommit(latest);
-                assertRequestActive();
-                const operation = acceptConversionUpload(
-                    latest.operation,
+                if (!slot)
+                    throw new ConversionTransitionError(
+                        'file_not_found',
+                        'File does not belong to operation',
+                    );
+                acceptConversionUpload(
+                    initial.operation,
                     fileId,
-                    input.bytes,
+                    slot.declaredBytes,
                     now(),
                 );
-                if (operation.revision === latest.operation.revision)
-                    return latest;
-                await fs.rename(stage, key);
-                await syncDirectory(location.inputs);
-                // If the snapshot fails, input remains unacknowledged; recovery
-                // removes it or a subsequent retry replaces that orphan safely.
-                return write({
-                    operation,
-                    inputs: {
-                        ...latest.inputs,
-                        [fileId]: { ...input, storedName: fileId },
-                    },
+                if ('uploadedAt' in slot && slot.uploadedAt) return initial;
+                const stat = await acceptFilesystem(
+                    () => fs.lstat(tempPath),
+                    'Unable to inspect upload source',
+                );
+                if (!stat.isFile())
+                    throw new ConversionStorageError(
+                        'Upload source must be a regular file',
+                    );
+                acceptConversionUpload(
+                    initial.operation,
+                    fileId,
+                    stat.size,
+                    now(),
+                );
+                await acceptFilesystem(
+                    () =>
+                        fs.copyFile(
+                            tempPath,
+                            stage,
+                            fs.constants.COPYFILE_EXCL,
+                        ),
+                    'Unable to stage upload',
+                );
+                await acceptFilesystem(
+                    () => fs.chmod(stage, 0o600),
+                    'Unable to secure upload staging',
+                );
+                await acceptFilesystem(
+                    () => syncFile(stage),
+                    'Unable to sync upload staging',
+                );
+                const input = await acceptFilesystem(
+                    () => fingerprint(stage),
+                    'Unable to verify upload staging',
+                );
+                return await serialized(location.info, async () => {
+                    const latest = await read(sid, operationId);
+                    await pendingCommit(latest);
+                    assertRequestActive();
+                    const operation = acceptConversionUpload(
+                        latest.operation,
+                        fileId,
+                        input.bytes,
+                        now(),
+                    );
+                    if (operation.revision === latest.operation.revision)
+                        return latest;
+                    await acceptFilesystem(
+                        () => fs.rename(stage, key),
+                        'Unable to promote accepted input',
+                    );
+                    await acceptFilesystem(
+                        () => syncDirectory(location.inputs),
+                        'Unable to sync accepted input directory',
+                    );
+                    // If the snapshot fails, input remains unacknowledged; recovery
+                    // removes it or a subsequent retry replaces that orphan safely.
+                    return write({
+                        operation,
+                        inputs: {
+                            ...latest.inputs,
+                            [fileId]: { ...input, storedName: fileId },
+                        },
+                    });
                 });
-            });
+            })();
+            outcome = { status: 'fulfilled', value: result };
         } catch (error) {
-            return storageFailure(error, 'Unable to accept upload');
+            outcome = { status: 'rejected', reason: error };
+        }
+        let cleanup: PromiseSettledResult<void>[];
+        try {
+            cleanup = await Promise.allSettled([
+                acceptFilesystem(
+                    () => removeIfPresent(stage),
+                    'Unable to clean upload staging',
+                ),
+                acceptFilesystem(
+                    () => removeIfPresent(tempPath),
+                    'Unable to clean upload source',
+                ),
+            ]);
         } finally {
             uploadClaims.delete(key);
-            try {
-                await Promise.all([
-                    removeIfPresent(stage),
-                    removeIfPresent(tempPath),
-                ]);
-            } catch (error) {
-                storageFailure(error, 'Unable to clean upload staging');
-            }
         }
+        const failure = cleanup.find((result) => result.status === 'rejected');
+        if (failure?.status === 'rejected') throw failure.reason;
+        if (outcome.status === 'rejected')
+            return storageFailure(outcome.reason, 'Unable to accept upload');
+        return outcome.value;
     }
 
     function makeOutput(
@@ -652,7 +774,10 @@ export function createConversionStorage(
             const output = makeOutput(initial.operation, fileId, processed);
             // Validate slot/MIME/metadata before touching final artifact paths.
             finishConversionFile(initial.operation, fileId, { output }, now());
-            const digest = await writeExact(stage, processed.buffer);
+            const digest = await publishFilesystem(
+                () => writeExact(stage, processed.buffer),
+                'Unable to stage output',
+            );
             const committed = await serialized(location.info, async () => {
                 const latest = await read(sid, operationId);
                 await pendingCommit(latest);
@@ -668,31 +793,54 @@ export function createConversionStorage(
                 );
                 if (file?.status !== 'completed')
                     return write({ ...latest, operation });
-                await fs.rename(
-                    stage,
-                    location.output(fileId, operation.options.outputMime),
+                await publishFilesystem(
+                    () =>
+                        fs.rename(
+                            stage,
+                            location.output(
+                                fileId,
+                                operation.options.outputMime,
+                            ),
+                        ),
+                    'Unable to publish output',
                 );
-                await syncDirectory(location.directory);
-                await atomicJson(location.meta(fileId), output.meta);
+                await publishFilesystem(
+                    () => syncDirectory(location.directory),
+                    'Unable to sync output directory',
+                );
+                await publishFilesystem(
+                    () => atomicJson(location.meta(fileId), output.meta),
+                    'Unable to publish output metadata',
+                );
                 // Receipt is durable evidence that both artifacts were published.
                 // Never roll these back on a subsequent snapshot-write failure.
-                await atomicJson(key, {
-                    operationId,
-                    fileId,
-                    finishedAt: finishedAt.toISOString(),
-                    fingerprint: digest,
-                    output,
-                } satisfies ConversionCommit);
+                await publishFilesystem(
+                    () =>
+                        atomicJson(key, {
+                            operationId,
+                            fileId,
+                            finishedAt: finishedAt.toISOString(),
+                            fingerprint: digest,
+                            output,
+                        } satisfies ConversionCommit),
+                    'Unable to publish output receipt',
+                );
                 return write({ ...latest, operation });
             });
-            await removeIfPresent(location.input(fileId));
+            await publishFilesystem(
+                () => removeIfPresent(location.input(fileId)),
+                'Unable to clean committed input',
+            );
             return committed;
         } catch (error) {
             return storageFailure(error, 'Unable to commit output');
         } finally {
             outputClaims.delete(key);
             try {
-                await removeIfPresent(stage);
+                await publishFilesystem(
+                    () => removeIfPresent(stage),
+                    'Unable to clean output staging',
+                );
             } catch (error) {
                 storageFailure(error, 'Unable to clean output staging');
             }
@@ -910,7 +1058,10 @@ export function createConversionStorage(
                     let valid = false;
                     try {
                         valid = isDeepStrictEqual(
-                            await fingerprint(location.input(file.id)),
+                            await recoverFilesystem(
+                                () => fingerprint(location.input(file.id)),
+                                'Unable to verify accepted input',
+                            ),
                             {
                                 bytes: record.inputs[file.id].bytes,
                                 sha256: record.inputs[file.id].sha256,
@@ -940,34 +1091,40 @@ export function createConversionStorage(
             }
             // Snapshot is durable before removal. Failed cleanup is observable
             // and can be repeated next startup without changing completed files.
-            for (const file of record.operation.files) {
-                if (!['uploaded', 'processing'].includes(file.status))
-                    await removeIfPresent(location.input(file.id));
-                if (file.status !== 'completed') {
-                    await removeIfPresent(
-                        location.output(
-                            file.id,
-                            record.operation.options.outputMime,
-                        ),
-                    );
-                    await removeIfPresent(location.meta(file.id));
-                    await removeIfPresent(location.receipt(file.id));
+            await recoverFilesystem(async () => {
+                for (const file of record.operation.files) {
+                    if (!['uploaded', 'processing'].includes(file.status))
+                        await removeIfPresent(location.input(file.id));
+                    if (file.status !== 'completed') {
+                        await removeIfPresent(
+                            location.output(
+                                file.id,
+                                record.operation.options.outputMime,
+                            ),
+                        );
+                        await removeIfPresent(location.meta(file.id));
+                        await removeIfPresent(location.receipt(file.id));
+                    }
                 }
-            }
-            for (const entry of await fs.readdir(location.staging))
-                await removeIfPresent(path.join(location.staging, entry));
-            for (const entry of await fs.readdir(location.directory)) {
-                if (
-                    /^(conversion\.info|[A-Za-z0-9_-]+)\.json\.[a-f0-9]+\.tmp$/.test(
-                        entry,
+                for (const entry of await fs.readdir(location.staging))
+                    await removeIfPresent(path.join(location.staging, entry));
+                for (const entry of await fs.readdir(location.directory)) {
+                    if (
+                        /^(conversion\.info|[A-Za-z0-9_-]+)\.json\.[a-f0-9]+\.tmp$/.test(
+                            entry,
+                        )
                     )
-                )
-                    await removeIfPresent(path.join(location.directory, entry));
-            }
-            for (const entry of await fs.readdir(location.receipts)) {
-                if (/\.tmp$/.test(entry))
-                    await removeIfPresent(path.join(location.receipts, entry));
-            }
+                        await removeIfPresent(
+                            path.join(location.directory, entry),
+                        );
+                }
+                for (const entry of await fs.readdir(location.receipts)) {
+                    if (/\.tmp$/.test(entry))
+                        await removeIfPresent(
+                            path.join(location.receipts, entry),
+                        );
+                }
+            }, 'Unable to clean recovery artifacts');
             return record;
         });
     }
@@ -978,7 +1135,7 @@ export function createConversionStorage(
         try {
             entries = await fs.readdir(root, { withFileTypes: true });
         } catch (error) {
-            throw new ConversionStorageError(
+            throw new ConversionStorageIoError(
                 'Unable to discover conversion sessions',
                 error,
             );
@@ -994,11 +1151,16 @@ export function createConversionStorage(
                 await fs.stat(paths(entry.name).info);
                 sessions.push(entry.name);
             } catch (error) {
-                if (!missing(error))
+                if (missing(error)) continue;
+                if (invalidStoragePath(error))
                     throw new ConversionStorageError(
-                        'Unable to inspect conversion session',
+                        'Invalid conversion session path',
                         error,
                     );
+                throw new ConversionStorageIoError(
+                    'Unable to inspect conversion session',
+                    error,
+                );
             }
         }
         return sessions.sort();
@@ -1015,7 +1177,19 @@ export function createConversionStorage(
                     ) &&
                     !uploadClaims.has(location.input(file.id))
                 ) {
-                    await removeIfPresent(location.input(file.id));
+                    try {
+                        await removeIfPresent(location.input(file.id));
+                    } catch (error) {
+                        if (invalidStoragePath(error))
+                            throw new ConversionStorageError(
+                                'Invalid settled input path',
+                                error,
+                            );
+                        throw new ConversionStorageIoError(
+                            'Unable to prune settled input',
+                            error,
+                        );
+                    }
                 }
             }
         });

@@ -2126,6 +2126,225 @@
                     "gaps": []
                 },
                 {
+                    "id": "UC-087",
+                    "actor": "API process",
+                    "given": "An accepted input or temporary artifact is inspected during restart recovery",
+                    "when": "The filesystem reports an unlabelled read or cleanup failure",
+                    "then": "Recovery reports storage I/O and does not silently fail an accepted file or quarantine the session; cleanup can be retried.",
+                    "sources": [
+                        "docs/architecture/dynamic/recover-conversion.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E147",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags an unlabelled accepted-input read failure without failing the file",
+                            "layer": "Conversion storage",
+                            "environment": "In-process temporary storage with an injected unlabelled accepted-input stat failure",
+                            "asserts": "Recovery tags the filesystem fault as storage I/O and leaves the accepted file state intact."
+                        },
+                        {
+                            "evidenceId": "E148",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags unlabelled recovery cleanup failure and permits retry",
+                            "layer": "Conversion storage",
+                            "environment": "In-process temporary storage with an injected unlabelled staging cleanup failure",
+                            "asserts": "Recovery tags the cleanup fault as storage I/O and a later recovery removes the orphan."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-088",
+                    "actor": "API process",
+                    "given": "It discovers conversion sessions or checks a pending commit receipt",
+                    "when": "A filesystem stat fails without an errno code, or a stored path is malformed",
+                    "then": "Unlabelled I/O drops readiness; malformed paths stay distinct and pending state is retained.",
+                    "sources": [
+                        "docs/architecture/dynamic/recover-conversion.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E149",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags an unlabelled session discovery stat failure as storage I/O",
+                            "layer": "Conversion storage",
+                            "environment": "In-process temporary storage with an injected unlabelled operation-record stat failure",
+                            "asserts": "Session discovery tags the filesystem fault as storage I/O."
+                        },
+                        {
+                            "evidenceId": "E150",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "keeps a malformed session discovery path isolated from storage I/O",
+                            "layer": "Conversion storage",
+                            "environment": "In-process temporary storage with an injected ENOTDIR operation-record stat failure",
+                            "asserts": "A malformed session path remains distinct from a global storage I/O fault."
+                        },
+                        {
+                            "evidenceId": "E151",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags an unlabelled pending-receipt stat failure as storage I/O",
+                            "layer": "Conversion storage",
+                            "environment": "In-process processing operation with an injected unlabelled receipt stat failure",
+                            "asserts": "The pending mutation fails with a storage I/O tag and leaves the record unchanged."
+                        },
+                        {
+                            "evidenceId": "E152",
+                            "file": "apps/api/src/services/__tests__/conversion-runtime.service.spec.ts",
+                            "name": "fails startup readiness when session discovery has an unlabelled stat failure",
+                            "layer": "Conversion runtime",
+                            "environment": "In-process runtime startup with an injected unlabelled operation-record stat failure",
+                            "asserts": "Startup fails readiness without quarantining the session as corrupt."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-089",
+                    "actor": "API process",
+                    "given": "It creates an operation or prunes a settled input",
+                    "when": "A filesystem stat, directory sync, or unlink fails without an errno code",
+                    "then": "The failure is tagged as storage I/O; creation publishes no record, and settled output remains committed for a cleanup retry.",
+                    "sources": [
+                        "docs/architecture/dynamic/recover-conversion.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E153",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags an unlabelled existing-operation stat failure without creating a record",
+                            "layer": "Conversion storage",
+                            "environment": "In-process temporary storage with an injected unlabelled record-existence stat failure",
+                            "asserts": "Operation creation tags storage I/O and publishes no record."
+                        },
+                        {
+                            "evidenceId": "E154",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags an unlabelled operation-directory sync failure without publishing a record",
+                            "layer": "Conversion storage",
+                            "environment": "In-process temporary storage with an injected unlabelled directory open failure",
+                            "asserts": "Operation creation tags storage I/O before publishing its record."
+                        },
+                        {
+                            "evidenceId": "E155",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags unlabelled settled-input cleanup failure and permits retry",
+                            "layer": "Conversion storage",
+                            "environment": "In-process committed operation with an injected unlabelled orphan-input unlink failure",
+                            "asserts": "Pruning tags storage I/O, preserves completed output, and succeeds on retry."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-090",
+                    "actor": "API process",
+                    "given": "A converted output is being published or cleaned up",
+                    "when": "A filesystem rename or removal fails without an errno code",
+                    "then": "The failure is tagged as storage I/O; only a valid receipt permits recovery of a completed output, and cleanup can retry.",
+                    "sources": [
+                        "docs/architecture/dynamic/recover-conversion.md",
+                        "docs/architecture/quality/requirements.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E156",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags an unlabelled output rename failure without publishing a receipt",
+                            "layer": "Conversion storage",
+                            "environment": "In-process processing operation with an injected unlabelled output rename failure",
+                            "asserts": "Publication tags storage I/O, leaves no receipt, and recovery fails the interrupted file."
+                        },
+                        {
+                            "evidenceId": "E157",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags an unlabelled receipt rename failure and recovers its published commit",
+                            "layer": "Conversion storage",
+                            "environment": "In-process processing operation whose receipt rename succeeds before reporting an unlabelled failure",
+                            "asserts": "Publication tags storage I/O and recovery completes the file from the valid receipt."
+                        },
+                        {
+                            "evidenceId": "E158",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags unlabelled post-commit input cleanup failure without losing output",
+                            "layer": "Conversion storage",
+                            "environment": "In-process committed operation with an injected unlabelled input unlink failure",
+                            "asserts": "The output remains committed and recovery removes the remaining input."
+                        },
+                        {
+                            "evidenceId": "E159",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags unlabelled output staging cleanup failure after commit",
+                            "layer": "Conversion storage",
+                            "environment": "In-process committed operation with an injected unlabelled staging unlink failure",
+                            "asserts": "The cleanup failure is tagged as storage I/O without losing the committed output."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-091",
+                    "actor": "API process",
+                    "given": "An uploaded file is being staged or accepted",
+                    "when": "Copy, promotion, cleanup, or cancellation interrupts it",
+                    "then": "Filesystem faults are tagged as storage I/O and cleanup settles both paths; cancellation stays a retryable upload transition.",
+                    "sources": [
+                        "docs/architecture/quality/requirements.md",
+                        "docs/architecture/dynamic/recover-conversion.md"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E160",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags an unlabelled upload copy failure without accepting the file",
+                            "layer": "Conversion storage",
+                            "environment": "In-process upload with an injected unlabelled copy failure",
+                            "asserts": "Storage I/O is tagged and the upload remains unaccepted."
+                        },
+                        {
+                            "evidenceId": "E161",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "waits for both upload cleanup paths when %s removal fails",
+                            "layer": "Conversion storage",
+                            "environment": "In-process upload with injected unlabelled staging and source unlink failures",
+                            "asserts": "Both cleanup paths settle, storage I/O is tagged, and accepted bytes remain durable."
+                        },
+                        {
+                            "evidenceId": "E162",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "tags an unlabelled promotion acknowledgement failure and recovers the orphan",
+                            "layer": "Conversion storage",
+                            "environment": "In-process upload whose accepted-input rename succeeds before reporting an unlabelled failure",
+                            "asserts": "The unacknowledged input stays outside the manifest and recovery removes it."
+                        },
+                        {
+                            "evidenceId": "E163",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "keeps request cancellation separate from storage I/O after staging",
+                            "layer": "Conversion storage",
+                            "environment": "In-process upload whose active-request callback rejects before promotion",
+                            "asserts": "Cancellation remains an upload transition and leaves no accepted input."
+                        },
+                        {
+                            "evidenceId": "E164",
+                            "file": "apps/api/src/services/__tests__/conversion-storage.service.spec.ts",
+                            "name": "holds upload ownership until both cleanup paths settle",
+                            "layer": "Conversion storage",
+                            "environment": "In-process upload with staging removal deliberately held open",
+                            "asserts": "A duplicate upload remains rejected until staging cleanup completes."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
                     "id": "UC-047",
                     "actor": "Browser",
                     "given": "It calls the retired synchronous upload endpoint",

@@ -612,6 +612,46 @@ Validation: full API suite **270/270 passed**, separately started API suite **36
 
 Remaining PF-08 work: inspect other conversion-storage filesystem paths for unlabelled errors that may still be mistaken for per-session corruption, especially accepted-input verification and cleanup during recovery. These tests inject errors in-process; the separate process suite covers ordinary EACCES faults, not a real filesystem error without an errno code.
 
+### PF-08 accepted-input and recovery-cleanup checkpoint (2026-10-18)
+
+**Status: in progress.** Restart recovery now tags unlabelled filesystem failures while fingerprinting accepted inputs or pruning incomplete artifacts as storage I/O. A missing accepted input still becomes a file-level storage failure, while a read fault leaves its accepted state intact. Cleanup faults stop recovery so a later startup can retry orphan removal. UC-087/E147–E148 records these boundaries; the recovery design document now describes them.
+
+Validation: focused conversion-storage suite **54/54 passed**; full API suite **272/272 passed** when run from `apps/api`; API production build, typecheck, lint, use-case inventory **87/87 covered**, and changed-file formatting passed. An initial full run from the repository root passed 271 tests and failed one smoke test because that test resolves its HEIC fixture relative to the current directory; the project-directory rerun passed. No dependency or lockfile changes. No local commit or remote write was made for this slice.
+
+Remaining PF-08 work: review unlabelled filesystem faults at other conversion-storage entrypoints, including pending-commit checks, operation creation/discovery, upload acceptance, and output publication. Verify that each path yields the intended readiness or isolated-session behavior; do not broaden shutdown for malformed records or ordinary client transport failures. The new tests inject faults in-process and do not reproduce an unlabelled error from a real filesystem in a separate production process.
+
+### PF-08 discovery and pending-commit checkpoint (2026-10-18)
+
+**Status: in progress.** Session discovery now tags unlabelled root reads and operation-record stat failures as storage I/O; malformed stored paths remain distinct. Pending-commit receipt inspection likewise tags unlabelled stat failures without changing the operation record. Startup still fails readiness for discovery faults rather than quarantining a single session. UC-088/E149–E152 records these boundaries, and the recovery design document describes discovery classification.
+
+Validation: focused conversion-storage/runtime suites **105/105 passed**; full API suite **276/276 passed** from `apps/api`; API production build, typecheck, lint, use-case inventory **88/88 covered**, changed-file formatting, and `git diff --check` passed. No dependency or lockfile changes. This slice remains uncommitted with the preceding PF-08 slice; no remote write was made.
+
+Remaining PF-08 work: inspect unlabelled filesystem faults during operation creation, upload acceptance, output publication, and settled-input pruning. Runtime mutation wrappers already halt on thrown non-transition errors, but direct storage classification and cleanup behavior still need review. Preserve missing-record and malformed-path isolation and receipt/fingerprint durability.
+
+### PF-08 creation and settled-input cleanup checkpoint (2026-10-18)
+
+**Status: in progress.** Operation creation now tags unlabelled record-existence and directory-sync failures as storage I/O before publishing a record. It still returns a conflict when an operation exists and treats a missing record as an available session. Settled-input pruning tags unlabelled removal failures as storage I/O; the committed output remains intact so pruning can retry. UC-089/E153–E155 covers these boundaries.
+
+Validation: focused conversion-storage suite **60/60 passed** after correcting a test mock that remained active during its absence assertion; full API suite **279/279 passed** from `apps/api`; API production build, typecheck, lint, use-case inventory **89/89 covered**, changed-file formatting, and `git diff --check` passed. No dependency or lockfile changes. This slice remains uncommitted with earlier PF-08 work; no remote write was made.
+
+Remaining PF-08 work: review unlabelled filesystem failures during upload acceptance and output publication, including staging cleanup after an ambiguous commit. Check that failures retain the correct acceptance or receipt evidence for restart recovery and do not turn request cancellation into a global storage fault.
+
+### PF-08 output-publication fault checkpoint (2026-10-18)
+
+**Status: in progress.** Filesystem calls in output staging, rename, directory sync, metadata and receipt publication, and post-commit input/staging cleanup now tag unlabelled failures as storage I/O. Invalid artifact paths and application transition errors retain their separate classification. A rename failure before receipt publication leaves the file interrupted; a receipt rename that succeeds before reporting failure remains recoverable. Post-commit cleanup faults leave the committed output intact. UC-090/E156–E159 records these boundaries.
+
+Validation: focused conversion-storage suite **64/64 passed**, full API suite **283/283 passed** from `apps/api`, API production build/typecheck/lint, use-case inventory **90/90 covered**, changed-file formatting, and `git diff --check` passed. No dependency or lockfile changes. This slice remains uncommitted with earlier PF-08 work; no remote write was made.
+
+Remaining PF-08 work: inspect unlabelled filesystem failures in upload acceptance and its two-path staging cleanup, preserving request cancellation as a transition rather than a global storage fault. Review snapshot write classification after ambiguous acknowledgement; a simultaneous receipt and staging-cleanup failure is not simulated by this slice.
+
+### PF-08 upload-acceptance fault checkpoint (2026-10-18)
+
+**Status: in progress.** Filesystem calls during upload source inspection, staging, fingerprinting, promotion, and directory sync now tag unlabelled failures as storage I/O. The request-active callback remains outside those wrappers, so cancellation stays an upload transition. Staging and request-source cleanup both settle before the upload claim is released, including when one unlink fails; accepted bytes and manifest state remain available for restart recovery. A promotion rename that succeeds before reporting failure leaves an unacknowledged input orphan for recovery to remove. UC-091/E160–E164 covers these boundaries.
+
+Validation: focused conversion-storage suite **70/70 passed**, full API suite **289/289 passed** from `apps/api`, API production build/typecheck/lint, use-case inventory **91/91 covered**, changed-file formatting, and `git diff --check` passed. The first lint run overlapped temporary-directory removal by the full test suite and failed with `ENOENT`; after those tests completed, lint exposed `no-unsafe-finally` in the first cleanup version. Cleanup was refactored to settle both results and report errors after releasing the claim; focused/full tests and lint then passed. No dependency or lockfile changes. Local commit: `PF-08: classify storage faults across conversion lifecycle`. No remote write was made.
+
+Remaining PF-08 work: classify unlabelled filesystem errors in atomic snapshot writes without confusing malformed data with storage I/O, and test a simultaneous receipt-publication and staging-cleanup fault if useful. A missing request source during staging still enters the storage-fault path; decide whether a proven client disconnect should be handled as an upload transition before altering that behavior.
+
 ## Dated dependency inventory (2026-10-16)
 
 Registry metadata was queried with `npm outdated --package-lock-only --json`; full and `--omit=dev` audits used `npm audit --package-lock-only --ignore-scripts --json`. Audit exits were 1 because findings exist. Counts refer to affected package entries, including parent propagation, not unique CVEs or demonstrated exploits.
