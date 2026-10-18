@@ -3,6 +3,7 @@ import { claimSessionWork } from './session-work.service';
 import { readSessionInfo } from './sessions.service';
 import { isDeepStrictEqual } from 'node:util';
 import { secureId } from '@image-web-convert/node-shared';
+import { safeErrorSummary } from '@image-web-convert/observability';
 import {
     ApiCreateConversionRequestSchema,
     ConversionIdSchema,
@@ -80,8 +81,8 @@ export function createConversionRuntime(
     const convert = options.convert ?? processImageToMimeType;
     const report =
         options.onError ??
-        ((error, sid) =>
-            console.error('Conversion runtime error', sid ?? '', error));
+        ((error) =>
+            console.error('Conversion runtime error', safeErrorSummary(error)));
     const blockedSessions = new Set<string>();
     const invalidSessions = new Set<string>();
     const leases = new Map<string, number>();

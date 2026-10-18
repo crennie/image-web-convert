@@ -4,9 +4,12 @@ import type pino from 'pino';
 import { loadObservabilityConfig } from './config.js';
 import { getTraceCorrelation } from './instrumentation.js';
 import { normalizeAbsolutePath } from '@image-web-convert/node-shared';
+import { safeErrorSummary } from './safe-error.js';
 
 const DEFAULT_OTEL_LOG_FILE = path.resolve(process.cwd(), 'logs', 'app.log');
-export const OTEL_LOG_FILE = normalizeAbsolutePath(process.env.OTEL_LOG_FILE || DEFAULT_OTEL_LOG_FILE);
+export const OTEL_LOG_FILE = normalizeAbsolutePath(
+    process.env.OTEL_LOG_FILE || DEFAULT_OTEL_LOG_FILE,
+);
 
 export type GetLoggerOptions = {
     level?: pino.LevelWithSilent;
@@ -23,7 +26,7 @@ if (!fssync.existsSync(path.dirname(OTEL_LOG_FILE))) {
 }
 
 export async function getLogger(
-    options: GetLoggerOptions = {}
+    options: GetLoggerOptions = {},
 ): Promise<pino.Logger> {
     if (instance) return instance;
     const cfg = loadObservabilityConfig();
@@ -35,21 +38,25 @@ export async function getLogger(
     const pinoOpts: pino.LoggerOptions = {
         level,
         redact,
+        serializers: { err: safeErrorSummary },
         base: { service: name, env: cfg.environment },
     };
 
     pinoOpts.transport = {
-        target: pretty ? "pino-pretty" : "pino/file",
+        target: pretty ? 'pino-pretty' : 'pino/file',
         options: {
             translateTime: 'SYS:standard',
             destination: OTEL_LOG_FILE,
             singleLine: false,
             ignore: 'pid,hostname',
-        }
+        },
     };
 
     const { default: pino_ } = await import('pino');
-    instance = pino_(pinoOpts, pino_.destination({ dest: OTEL_LOG_FILE, append: true, sync: true }));
+    instance = pino_(
+        pinoOpts,
+        pino_.destination({ dest: OTEL_LOG_FILE, append: true, sync: true }),
+    );
     return instance;
 }
 

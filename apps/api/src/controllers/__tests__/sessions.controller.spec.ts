@@ -86,6 +86,9 @@ describe('createSession controller', () => {
 
     it('returns a generic 503 when session storage fails', async () => {
         const failure = new SessionStorageError('private disk detail');
+        const logged = vi
+            .spyOn(console, 'error')
+            .mockImplementation(() => undefined);
         mockedCreate.mockRejectedValueOnce(failure);
         const onStorageFault = vi.fn();
         const req = {
@@ -100,6 +103,10 @@ describe('createSession controller', () => {
             message: 'Session storage is unavailable',
         });
         expect(onStorageFault).toHaveBeenCalledWith(failure);
+        expect(logged).toHaveBeenCalledWith(
+            'Session creation storage failure',
+            { kind: 'exception' },
+        );
         expect(next).not.toHaveBeenCalled();
     });
 });

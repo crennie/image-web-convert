@@ -154,12 +154,19 @@ it('applies the configured URL-encoded limit and rejects malformed forms', async
 });
 
 it('does not expose rejected conversion metadata reads', async () => {
+    const logged = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined);
     completedOutput.mockRejectedValueOnce(new Error('private storage path'));
     const response = await fetch(base + '/api/sessions/sid/files/file/meta');
     expect(response.status).toBe(500);
     const body = await response.text();
     expect(body).toContain('Conversion storage is unavailable');
     expect(body).not.toContain('private storage path');
+    expect(logged).toHaveBeenCalledWith('Conversion request failed', {
+        kind: 'exception',
+    });
+    logged.mockRestore();
 });
 
 it('returns 503 and reports an unexpected filesystem read fault', async () => {

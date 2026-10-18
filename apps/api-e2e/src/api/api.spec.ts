@@ -134,6 +134,10 @@ async function productionApi(
         uploadIdleMs?: number;
         uploadTotalMs?: number;
         shutdownGraceMs?: number;
+        enableOtel?: boolean;
+        otelSampler?: string;
+        otelEndpoint?: string;
+        otelExportTimeoutMs?: number;
     } = {},
 ) {
     await api.stop();
@@ -148,6 +152,86 @@ async function productionApi(
         options,
     );
 }
+
+it.each([false, true])(
+    'stops the production API within its grace period with telemetry enabled=%s',
+    async (enableOtel) => {
+        await productionApi({ enableOtel, shutdownGraceMs: 3000 });
+        const response = await fetch(`${api.url}/readyz`);
+        expect(response.status).toBe(200);
+        await api.stop();
+        expect(api.running).toBe(false);
+    },
+);
+
+it('exits at the shutdown deadline when the local telemetry collector stalls', async () => {
+    let received = 0;
+    const collector = http.createServer((request) => {
+        received += 1;
+        request.resume();
+        // Keep the export request open until the API process grace period ends.
+    });
+    await new Promise<void>((resolve) =>
+        collector.listen(0, '127.0.0.1', resolve),
+    );
+    const address = collector.address();
+    if (!address || typeof address === 'string')
+        throw new Error('Missing collector port');
+    try {
+        await productionApi({
+            enableOtel: true,
+            otelSampler: 'always_on',
+            otelEndpoint: `http://127.0.0.1:${address.port}`,
+            shutdownGraceMs: 800,
+        });
+        const response = await fetch(`${api.url}/readyz`);
+        expect(response.status).toBe(200);
+        await response.body?.cancel();
+        const started = Date.now();
+        expect(api.signal('SIGTERM')).toBe(true);
+        await api.expectExitCode(1);
+        expect(Date.now() - started).toBeLessThan(4000);
+        expect(received).toBeGreaterThan(0);
+    } finally {
+        collector.closeAllConnections();
+        await new Promise<void>((resolve) => collector.close(() => resolve()));
+    }
+});
+
+it('shuts down cleanly when the local telemetry collector rejects exports', async () => {
+    let received = 0;
+    const collector = http.createServer((request, response) => {
+        received += 1;
+        request.resume();
+        request.on('end', () => {
+            response.statusCode = 503;
+            response.end('unavailable');
+        });
+    });
+    await new Promise<void>((resolve) =>
+        collector.listen(0, '127.0.0.1', resolve),
+    );
+    const address = collector.address();
+    if (!address || typeof address === 'string')
+        throw new Error('Missing collector port');
+    try {
+        await productionApi({
+            enableOtel: true,
+            otelSampler: 'always_on',
+            otelEndpoint: `http://127.0.0.1:${address.port}`,
+            shutdownGraceMs: 3000,
+            otelExportTimeoutMs: 250,
+        });
+        const response = await fetch(`${api.url}/readyz`);
+        expect(response.status).toBe(200);
+        await api.stop();
+        expect(api.running).toBe(false);
+        expect(received).toBeGreaterThan(0);
+    } finally {
+        collector.closeAllConnections();
+        await new Promise<void>((resolve) => collector.close(() => resolve()));
+    }
+});
 
 beforeAll(async () => {
     png = await sharp({

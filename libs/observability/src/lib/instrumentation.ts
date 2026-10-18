@@ -3,6 +3,8 @@ import {
     DiagConsoleLogger,
     DiagLogLevel,
     context,
+    metrics,
+    propagation,
     trace,
 } from '@opentelemetry/api';
 import { NodeSDK } from '@opentelemetry/sdk-node';
@@ -12,7 +14,14 @@ import {
 } from '@opentelemetry/resources';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base';
+import {
+    AlwaysOffSampler,
+    AlwaysOnSampler,
+    ConsoleSpanExporter,
+    ParentBasedSampler,
+    TraceIdRatioBasedSampler,
+    type Sampler,
+} from '@opentelemetry/sdk-trace-base';
 import { loadObservabilityConfig, type ObservabilityConfig } from './config.js';
 
 /**
@@ -20,15 +29,34 @@ import { loadObservabilityConfig, type ObservabilityConfig } from './config.js';
  */
 const kTelemetry = Symbol.for('observability.bootstrap.state');
 type TelemetryState = {
-    initialized: boolean;
+    starting?: Promise<TelemetryController>;
+    controller?: TelemetryController;
     enabled: boolean;
-    sdk?: NodeSDK | undefined;
-    cfg?: ObservabilityConfig;
+    diagnosticsInitialized: boolean;
 };
+type TelemetryController = { enabled: boolean; shutdown: () => Promise<void> };
 
 const g = globalThis as Record<string | symbol, unknown>;
-if (!g[kTelemetry]) g[kTelemetry] = { initialized: false, enabled: false };
+if (!g[kTelemetry])
+    g[kTelemetry] = { enabled: false, diagnosticsInitialized: false };
 const state = g[kTelemetry] as TelemetryState;
+
+function samplerFromConfig(cfg: ObservabilityConfig): Sampler {
+    switch (cfg.sampler) {
+        case 'always_on':
+            return new AlwaysOnSampler();
+        case 'always_off':
+            return new AlwaysOffSampler();
+        case 'parentbased_always_off':
+            return new ParentBasedSampler({ root: new AlwaysOffSampler() });
+        case 'parentbased_traceidratio':
+            return new ParentBasedSampler({
+                root: new TraceIdRatioBasedSampler(cfg.samplerArg),
+            });
+        case 'parentbased_always_on':
+            return new ParentBasedSampler({ root: new AlwaysOnSampler() });
+    }
+}
 
 /**
  * Initialize OpenTelemetry Node SDK with sensible defaults.
@@ -36,35 +64,44 @@ const state = g[kTelemetry] as TelemetryState;
  * @return - controller with a shutdown() to await for on process exit.
  */
 export async function initTelemetry(
-    configOverrides?: Partial<ObservabilityConfig>
-): Promise<{ enabled: boolean; shutdown: () => Promise<void> }> {
-    if (state.initialized) {
-        return {
-            enabled: state.enabled,
-            shutdown: async () => {
-                await state.sdk?.shutdown();
-            },
-        };
+    configOverrides?: Partial<ObservabilityConfig>,
+): Promise<TelemetryController> {
+    if (state.controller) return state.controller;
+    if (state.starting) return state.starting;
+    const starting = startTelemetry(configOverrides);
+    state.starting = starting;
+    try {
+        return await starting;
+    } finally {
+        if (state.starting === starting) state.starting = undefined;
     }
+}
 
+async function startTelemetry(
+    configOverrides?: Partial<ObservabilityConfig>,
+): Promise<TelemetryController> {
     const cfg = loadObservabilityConfig(configOverrides);
-    state.cfg = cfg;
-
-    // SDK internal diagnostics: quiet in prod, helpful in dev.
-    diag.setLogger(
-        new DiagConsoleLogger(),
-        cfg.environment === 'prod' ? DiagLogLevel.ERROR : DiagLogLevel.WARN
-    );
 
     if (!cfg.enabled) {
-        state.initialized = true;
         state.enabled = false;
-        return {
+        const controller: TelemetryController = {
             enabled: false,
             shutdown: async () => {
-                Promise.resolve();
+                if (state.controller === controller)
+                    state.controller = undefined;
             },
         };
+        state.controller = controller;
+        return controller;
+    }
+
+    // SDK diagnostics are process-global; registering more than once emits a warning.
+    if (!state.diagnosticsInitialized) {
+        diag.setLogger(
+            new DiagConsoleLogger(),
+            cfg.environment === 'prod' ? DiagLogLevel.ERROR : DiagLogLevel.WARN,
+        );
+        state.diagnosticsInitialized = true;
     }
 
     const resource = defaultResource().merge(
@@ -72,7 +109,7 @@ export async function initTelemetry(
             'service.name': cfg.serviceName,
             'service.version': cfg.serviceVersion,
             'deployment.environment': cfg.environment,
-        })
+        }),
     );
 
     // Choose exporter: OTLP HTTP (preferred); fallback to console in dev if endpoint looks local.
@@ -95,36 +132,41 @@ export async function initTelemetry(
     const sdk = new NodeSDK({
         resource,
         traceExporter: exporter,
+        sampler: samplerFromConfig(cfg),
         // SDK 0.223 enables OTLP metrics by default; 0.203 required an explicit
         // exporter. Preserve that opt-in and avoid a new collector connection.
         metricReaders: process.env.OTEL_METRICS_EXPORTER?.split(',').some(
             (value) => value.trim(),
-        ) ? undefined : [],
+        )
+            ? undefined
+            : [],
         instrumentations,
     });
 
-    // Sampler: NodeSDK reads env OTEL_TRACES_* directly, but we also adapt here for programmatic control.
-    // When using ratio sampling, set OTEL_TRACES_SAMPLER(_ARG) via env for consistency across processes.
-    // (We intentionally defer to env to keep behavior consistent with other tooling.)
-
     await sdk.start();
 
-    state.sdk = sdk;
-    state.initialized = true;
     state.enabled = true;
-
-    return {
+    let stopping: Promise<void> | undefined;
+    const controller: TelemetryController = {
         enabled: true,
-        shutdown: async () => {
-            try {
-                await sdk.shutdown();
-            } finally {
-                state.initialized = false;
-                state.enabled = false;
-                state.sdk = undefined;
-            }
+        shutdown: () => {
+            stopping ??= sdk.shutdown().finally(() => {
+                if (state.controller === controller) {
+                    // NodeSDK.shutdown() flushes providers but leaves API globals
+                    // registered. Release them before another SDK can start.
+                    context.disable();
+                    propagation.disable();
+                    trace.disable();
+                    metrics.disable();
+                    state.controller = undefined;
+                    state.enabled = false;
+                }
+            });
+            return stopping;
         },
     };
+    state.controller = controller;
+    return controller;
 }
 
 /**

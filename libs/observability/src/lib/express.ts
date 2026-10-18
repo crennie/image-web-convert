@@ -9,6 +9,7 @@ import type pino from 'pino';
 import { randomUUID } from 'node:crypto';
 import { getTraceCorrelation } from './instrumentation.js';
 import { loadObservabilityConfig } from './config.js';
+import { safeErrorSummary } from './safe-error.js';
 
 /**
  * HTTP logging middleware (pino-http) with trace correlation and stable request ids.
@@ -21,9 +22,20 @@ export async function logContext(baseLogger: pino.Logger): Promise<HttpLogger> {
 
     return pinoHttp({
         logger: httpLogger,
-        // Respect an incoming X-Request-Id if present, else create one
-        genReqId: (req) =>
-            (req.headers['x-request-id'] as string | undefined) ?? randomUUID(),
+        serializers: {
+            req: (req) => ({ id: req.id, method: req.method }),
+            res: (res) => ({ statusCode: res.statusCode }),
+            err: safeErrorSummary,
+        },
+        // Only reflect a short printable identifier; reject arrays and control characters.
+        genReqId: (req) => {
+            const supplied = req.headers['x-request-id'];
+            return typeof supplied === 'string' &&
+                supplied.length <= 128 &&
+                /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(supplied)
+                ? supplied
+                : randomUUID();
+        },
 
         // Merge correlation fields into every log line.
         customProps: () => {

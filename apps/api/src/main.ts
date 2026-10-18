@@ -1,11 +1,12 @@
-import { initTelemetry } from '@image-web-convert/observability';
+import {
+    initTelemetry,
+    safeErrorSummary,
+} from '@image-web-convert/observability';
 
 (async () => {
     const { loadEnv } = await import('./env.js');
     const env = loadEnv();
-    if (env.ENABLE_OTEL) {
-        await initTelemetry();
-    }
+    const telemetry = env.ENABLE_OTEL ? await initTelemetry() : undefined;
     const http = await import('node:http');
     const { createApp } = await import('./app.js');
     const { createConversionRuntime } = await import(
@@ -46,12 +47,23 @@ import { initTelemetry } from '@image-web-convert/observability';
                 server.close((err) => (err ? reject(err) : resolve())),
             );
             void Promise.all([httpClosed, conversions.stop()])
-                .then(([, result]) => {
+                .then(async ([, result]) => {
+                    try {
+                        await telemetry?.shutdown();
+                    } catch (error) {
+                        console.error(
+                            'Telemetry shutdown failed:',
+                            safeErrorSummary(error),
+                        );
+                    }
                     clearTimeout(fallback);
                     process.exit(result.drained && !fatal ? 0 : 1);
                 })
                 .catch((err) => {
-                    console.error('Error during shutdown:', err);
+                    console.error(
+                        'Error during shutdown:',
+                        safeErrorSummary(err),
+                    );
                     process.exit(1);
                 });
         };
@@ -68,7 +80,7 @@ import { initTelemetry } from '@image-web-convert/observability';
     }
 
     main().catch((err) => {
-        console.error('Fatal startup error:', err);
+        console.error('Fatal startup error:', safeErrorSummary(err));
         process.exit(1);
     });
 })();
