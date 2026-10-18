@@ -166,6 +166,9 @@ export async function startApi(
         uploadTotalMs?: number;
         shutdownGraceMs?: number;
         enableOtel?: boolean;
+        otelSampler?: string;
+        otelEndpoint?: string;
+        otelExportTimeoutMs?: number;
     } = {},
 ) {
     const storage = path.join(directory, 'uploads');
@@ -175,7 +178,12 @@ export async function startApi(
         UPLOAD_TMP_DIR: incoming,
         OTEL_LOG_FILE: path.join(directory, 'app.log'),
         ENABLE_OTEL: options.enableOtel ? 'true' : 'false',
-        OTEL_TRACES_SAMPLER: 'always_off',
+        OTEL_TRACES_SAMPLER: options.otelSampler ?? 'always_off',
+        OTEL_EXPORTER_OTLP_ENDPOINT:
+            options.otelEndpoint ?? 'http://127.0.0.1:4318',
+        OTEL_EXPORTER_OTLP_TIMEOUT: String(
+            options.otelExportTimeoutMs ?? 10000,
+        ),
         OTEL_METRICS_EXPORTER: 'none',
         OTEL_LOGS_EXPORTER: 'none',
         SESSION_TTL_MINUTES: '15',
@@ -230,6 +238,9 @@ export async function startApi(
                 server.child.exitCode === null &&
                 server.child.signalCode === null
             );
+        },
+        signal(signal: NodeJS.Signals) {
+            return server.child.kill(signal);
         },
         storage,
         incoming,

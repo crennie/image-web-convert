@@ -48,7 +48,14 @@ import {
             );
             void Promise.all([httpClosed, conversions.stop()])
                 .then(async ([, result]) => {
-                    await telemetry?.shutdown();
+                    try {
+                        await telemetry?.shutdown();
+                    } catch (error) {
+                        console.error(
+                            'Telemetry shutdown failed:',
+                            safeErrorSummary(error),
+                        );
+                    }
                     clearTimeout(fallback);
                     process.exit(result.drained && !fatal ? 0 : 1);
                 })
