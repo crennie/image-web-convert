@@ -321,6 +321,22 @@ describe('backend conversion scheduling', () => {
         expect(rt.diagnostics().blockedSessions).toEqual([]);
     });
 
+    it('fails startup readiness when session discovery has an unlabelled stat failure', async () => {
+        await seed('session-a', 1, 0);
+        const info = conversionStoragePaths('session-a', root).info;
+        const stat = fs.stat.bind(fs);
+        vi.spyOn(fs, 'stat').mockImplementation(async (target) => {
+            if (target === info) throw new Error('Unlabelled disk failure');
+            return stat(target);
+        });
+        const rt = runtime();
+        await expect(rt.start()).rejects.toThrow(
+            'Unable to inspect conversion session',
+        );
+        expect(rt.isReady()).toBe(false);
+        expect(rt.diagnostics().blockedSessions).toEqual([]);
+    });
+
     it('fails startup readiness when committed evidence has an unlabelled read failure', async () => {
         const operation = await seed('session-a', 1);
         await store.update('session-a', operation.id, (current) =>

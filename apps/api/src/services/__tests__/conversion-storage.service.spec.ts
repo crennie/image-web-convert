@@ -11,6 +11,7 @@ import { conversionStoragePaths } from '../storage.paths';
 import {
     createConversionOperation,
     conversionSnapshot,
+    ConversionTransitionError,
     finishConversionFile,
     rejectConversionUpload,
     requestConversionStop,
@@ -144,6 +145,42 @@ describe('durable conversion records', () => {
         });
     });
 
+    it('tags an unlabelled session discovery stat failure as storage I/O', async () => {
+        await create(1);
+        const stat = fs.stat.bind(fs);
+        vi.spyOn(fs, 'stat').mockImplementation(async (target) => {
+            if (target === locations.info)
+                throw new Error('Unlabelled disk failure');
+            return stat(target);
+        });
+        const failure = await store.listSessions().then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Unlabelled disk failure' },
+        });
+    });
+
+    it('keeps a malformed session discovery path isolated from storage I/O', async () => {
+        await create(1);
+        const stat = fs.stat.bind(fs);
+        vi.spyOn(fs, 'stat').mockImplementation(async (target) => {
+            if (target === locations.info)
+                throw Object.assign(new Error('Invalid path'), {
+                    code: 'ENOTDIR',
+                });
+            return stat(target);
+        });
+        const failure = await store.listSessions().then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(failure).toBeInstanceOf(ConversionStorageError);
+        expect(isStorageIoFailure(failure)).toBe(false);
+    });
+
     it('keeps conversion directories and artifacts private, including reused directories', async () => {
         for (const directory of [
             root,
@@ -232,6 +269,40 @@ describe('durable conversion records', () => {
             otherStore.create({ ...first.operation, id: 'second-operation' }),
         ).rejects.toMatchObject({ type: 'conversion_conflict' });
         expect((await store.read(sid)).operation.id).toBe(oid);
+    });
+
+    it('tags an unlabelled existing-operation stat failure without creating a record', async () => {
+        const stat = fs.stat.bind(fs);
+        const spy = vi.spyOn(fs, 'stat').mockImplementation(async (target) => {
+            if (target === locations.info)
+                throw new Error('Unlabelled disk failure');
+            return stat(target);
+        });
+        const failure = await create(1).then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Unlabelled disk failure' },
+        });
+        spy.mockRestore();
+        await absent(locations.info);
+    });
+
+    it('tags an unlabelled operation-directory sync failure without publishing a record', async () => {
+        vi.spyOn(fs, 'open').mockRejectedValueOnce(
+            new Error('Unlabelled disk failure'),
+        );
+        const failure = await create(1).then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Unlabelled disk failure' },
+        });
+        await absent(locations.info);
     });
 
     it('distinguishes corrupt state and I/O errors from not-found', async () => {
@@ -429,6 +500,122 @@ describe('staged upload ownership', () => {
         expect((await upload('file-0')).operation.status).toBe('queued');
     });
 
+    it('tags an unlabelled upload copy failure without accepting the file', async () => {
+        await create(1);
+        const source = await requestFile();
+        vi.spyOn(fs, 'copyFile').mockRejectedValueOnce(
+            new Error('Unlabelled disk failure'),
+        );
+        const failure = await store
+            .acceptUpload(sid, oid, 'file-0', source)
+            .then(
+                () => null,
+                (error: unknown) => error,
+            );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Unlabelled disk failure' },
+        });
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'awaiting_upload',
+        );
+        await absent(source);
+        await absent(locations.input('file-0'));
+    });
+
+    it.each(['stage', 'source'] as const)(
+        'waits for both upload cleanup paths when %s removal fails',
+        async (failurePath) => {
+            await create(1);
+            const source = await requestFile();
+            const unlink = fs.unlink.bind(fs);
+            const spy = vi
+                .spyOn(fs, 'unlink')
+                .mockImplementation(async (target) => {
+                    const selected =
+                        failurePath === 'source'
+                            ? target === source
+                            : String(target).startsWith(
+                                  `${locations.staging}${path.sep}`,
+                              );
+                    if (selected) throw new Error('Unlabelled disk failure');
+                    return unlink(target);
+                });
+            const failure = await store
+                .acceptUpload(sid, oid, 'file-0', source)
+                .then(
+                    () => null,
+                    (error: unknown) => error,
+                );
+            expect(isStorageIoFailure(failure)).toBe(true);
+            expect(failure).toMatchObject({
+                cause: { message: 'Unlabelled disk failure' },
+            });
+            spy.mockRestore();
+            expect((await store.read(sid)).operation.files[0].status).toBe(
+                'uploaded',
+            );
+            expect(await fs.readFile(locations.input('file-0'), 'utf8')).toBe(
+                'data',
+            );
+            if (failurePath === 'stage') await absent(source);
+            else expect(await fs.readdir(locations.staging)).toEqual([]);
+        },
+    );
+
+    it('keeps request cancellation separate from storage I/O after staging', async () => {
+        await create(1);
+        const source = await requestFile();
+        const failure = await store
+            .acceptUpload(sid, oid, 'file-0', source, () => {
+                throw new ConversionTransitionError(
+                    'upload_error',
+                    'Request cancelled',
+                );
+            })
+            .then(
+                () => null,
+                (error: unknown) => error,
+            );
+        expect(failure).toMatchObject({ type: 'upload_error' });
+        expect(isStorageIoFailure(failure)).toBe(false);
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'awaiting_upload',
+        );
+        await absent(source);
+        await absent(locations.input('file-0'));
+    });
+
+    it('holds upload ownership until both cleanup paths settle', async () => {
+        await create(1);
+        const source = await requestFile();
+        const unlink = fs.unlink.bind(fs);
+        let entered!: () => void;
+        let release!: () => void;
+        const cleaning = new Promise<void>((resolve) => {
+            entered = resolve;
+        });
+        const held = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        vi.spyOn(fs, 'unlink').mockImplementation(async (target) => {
+            if (String(target).startsWith(`${locations.staging}${path.sep}`)) {
+                entered();
+                await held;
+            }
+            return unlink(target);
+        });
+        const first = store.acceptUpload(sid, oid, 'file-0', source);
+        await cleaning;
+        const duplicate = await requestFile();
+        await expect(
+            store.acceptUpload(sid, oid, 'file-0', duplicate),
+        ).rejects.toMatchObject({ type: 'upload_in_progress' });
+        await fs.unlink(duplicate);
+        release();
+        expect((await first).operation.files[0].status).toBe('uploaded');
+    });
+
     it('rejects duplicate concurrent slot uploads without blocking cancellation during copy', async () => {
         await create(1);
         const copy = fs.copyFile.bind(fs);
@@ -495,6 +682,35 @@ describe('staged upload ownership', () => {
         await absent(locations.input('file-0'));
         expect((await upload('file-0')).operation.status).toBe('queued');
     });
+
+    it('tags an unlabelled promotion acknowledgement failure and recovers the orphan', async () => {
+        await create(1);
+        const rename = fs.rename.bind(fs);
+        const spy = vi
+            .spyOn(fs, 'rename')
+            .mockImplementation(async (source, target) => {
+                await rename(source, target);
+                if (target === locations.input('file-0'))
+                    throw new Error('Unlabelled disk failure');
+            });
+        const failure = await upload('file-0').then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Unlabelled disk failure' },
+        });
+        spy.mockRestore();
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'awaiting_upload',
+        );
+        expect(await fs.readFile(locations.input('file-0'), 'utf8')).toBe(
+            'data',
+        );
+        await store.recoverAfterRestart(sid);
+        await absent(locations.input('file-0'));
+    });
 });
 
 describe('per-file commits and recovery', () => {
@@ -551,6 +767,36 @@ describe('per-file commits and recovery', () => {
             );
         },
     );
+
+    it('tags an unlabelled output rename failure without publishing a receipt', async () => {
+        await ready(1);
+        await start();
+        const spy = vi
+            .spyOn(fs, 'rename')
+            .mockImplementation(async (_, target) => {
+                if (target === locations.output('file-0', 'image/webp'))
+                    throw new Error('Unlabelled disk failure');
+                throw new Error('Unexpected rename');
+            });
+        const failure = await store
+            .commitOutput(sid, oid, 'file-0', processed())
+            .then(
+                () => null,
+                (error: unknown) => error,
+            );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Unlabelled disk failure' },
+        });
+        spy.mockRestore();
+        await absent(locations.receipt('file-0'));
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'processing',
+        );
+        expect(
+            (await store.recoverAfterRestart(sid)).operation.files[0].status,
+        ).toBe('failed');
+    });
 
     it('waits for an in-flight publication before acknowledging an upload replay', async () => {
         await ready(1);
@@ -689,6 +935,36 @@ describe('per-file commits and recovery', () => {
         );
     });
 
+    it('tags an unlabelled receipt rename failure and recovers its published commit', async () => {
+        await ready(1);
+        await start();
+        const rename = fs.rename.bind(fs);
+        const spy = vi
+            .spyOn(fs, 'rename')
+            .mockImplementation(async (source, target) => {
+                await rename(source, target);
+                if (target === locations.receipt('file-0'))
+                    throw new Error('Unlabelled disk failure');
+            });
+        const failure = await store
+            .commitOutput(sid, oid, 'file-0', processed())
+            .then(
+                () => null,
+                (error: unknown) => error,
+            );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Unlabelled disk failure' },
+        });
+        spy.mockRestore();
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'processing',
+        );
+        expect(
+            (await store.recoverAfterRestart(sid)).operation.files[0].status,
+        ).toBe('completed');
+    });
+
     it('recovers a receipt after its directory sync reports failure', async () => {
         await ready(1);
         await start();
@@ -740,6 +1016,32 @@ describe('per-file commits and recovery', () => {
         );
     });
 
+    it('tags an unlabelled pending-receipt stat failure as storage I/O', async () => {
+        await ready(1);
+        await start();
+        const stat = fs.stat.bind(fs);
+        vi.spyOn(fs, 'stat').mockImplementation(async (target) => {
+            if (target === locations.receipt('file-0'))
+                throw new Error('Unlabelled disk failure');
+            return stat(target);
+        });
+        const failure = await store
+            .update(sid, oid, (operation) =>
+                requestConversionStop(operation, 'user_cancelled', clock),
+            )
+            .then(
+                () => null,
+                (error: unknown) => error,
+            );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Unlabelled disk failure' },
+        });
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'processing',
+        );
+    });
+
     it('keeps completed state when input cleanup fails and cleans it on restart', async () => {
         await ready(1);
         await start();
@@ -763,6 +1065,97 @@ describe('per-file commits and recovery', () => {
         expect((await store.completedOutput(sid, oid, 'file-0')).meta.id).toBe(
             'file-0',
         );
+    });
+
+    it('tags unlabelled post-commit input cleanup failure without losing output', async () => {
+        await ready(1);
+        await start();
+        const unlink = fs.unlink.bind(fs);
+        const spy = vi
+            .spyOn(fs, 'unlink')
+            .mockImplementation(async (target) => {
+                if (target === locations.input('file-0'))
+                    throw new Error('Unlabelled disk failure');
+                return unlink(target);
+            });
+        const failure = await store
+            .commitOutput(sid, oid, 'file-0', processed())
+            .then(
+                () => null,
+                (error: unknown) => error,
+            );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Unlabelled disk failure' },
+        });
+        spy.mockRestore();
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'completed',
+        );
+        await store.recoverAfterRestart(sid);
+        await absent(locations.input('file-0'));
+        expect((await store.completedOutput(sid, oid, 'file-0')).meta.id).toBe(
+            'file-0',
+        );
+    });
+
+    it('tags unlabelled output staging cleanup failure after commit', async () => {
+        await ready(1);
+        await start();
+        const unlink = fs.unlink.bind(fs);
+        const spy = vi
+            .spyOn(fs, 'unlink')
+            .mockImplementation(async (target) => {
+                if (
+                    String(target).startsWith(`${locations.staging}${path.sep}`)
+                )
+                    throw new Error('Unlabelled disk failure');
+                return unlink(target);
+            });
+        const failure = await store
+            .commitOutput(sid, oid, 'file-0', processed())
+            .then(
+                () => null,
+                (error: unknown) => error,
+            );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Unlabelled disk failure' },
+        });
+        spy.mockRestore();
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'completed',
+        );
+        expect((await store.completedOutput(sid, oid, 'file-0')).meta.id).toBe(
+            'file-0',
+        );
+    });
+
+    it('tags unlabelled settled-input cleanup failure and permits retry', async () => {
+        await ready(1);
+        await start();
+        await store.commitOutput(sid, oid, 'file-0', processed());
+        await fs.writeFile(locations.input('file-0'), 'orphan');
+        const unlink = fs.unlink.bind(fs);
+        const spy = vi
+            .spyOn(fs, 'unlink')
+            .mockImplementation(async (target) => {
+                if (target === locations.input('file-0'))
+                    throw new Error('Unlabelled disk failure');
+                return unlink(target);
+            });
+        const failure = await store.pruneSettledInputs(sid).then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Unlabelled disk failure' },
+        });
+        expect((await store.read(sid)).operation.status).toBe('completed');
+        spy.mockRestore();
+        await store.pruneSettledInputs(sid);
+        await absent(locations.input('file-0'));
     });
 
     it('keeps active input through cancellation, then commits success and preserves it on restart', async () => {
@@ -876,6 +1269,51 @@ describe('per-file commits and recovery', () => {
             expect((await upload('file-1')).operation.status).toBe('queued');
         },
     );
+
+    it('tags an unlabelled accepted-input read failure without failing the file', async () => {
+        await ready(1);
+        const lstat = fs.lstat.bind(fs);
+        vi.spyOn(fs, 'lstat').mockImplementation(async (target) => {
+            if (target === locations.input('file-0'))
+                throw new Error('Unlabelled disk failure');
+            return lstat(target);
+        });
+        const failure = await store.recoverAfterRestart(sid).then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Unlabelled disk failure' },
+        });
+        expect((await store.read(sid)).operation.files[0].status).toBe(
+            'uploaded',
+        );
+    });
+
+    it('tags unlabelled recovery cleanup failure and permits retry', async () => {
+        await create(1);
+        await fs.writeFile(locations.staged('abandoned'), 'partial');
+        const unlink = fs.unlink.bind(fs);
+        const failureSpy = vi
+            .spyOn(fs, 'unlink')
+            .mockImplementation(async (target) => {
+                if (target === locations.staged('abandoned'))
+                    throw new Error('Unlabelled disk failure');
+                return unlink(target);
+            });
+        const failure = await store.recoverAfterRestart(sid).then(
+            () => null,
+            (error: unknown) => error,
+        );
+        expect(isStorageIoFailure(failure)).toBe(true);
+        expect(failure).toMatchObject({
+            cause: { message: 'Unlabelled disk failure' },
+        });
+        failureSpy.mockRestore();
+        await store.recoverAfterRestart(sid);
+        expect(await fs.readdir(locations.staging)).toEqual([]);
+    });
 
     it('expires unstarted work but restores a pre-expiry commit before applying expiry', async () => {
         await ready();
