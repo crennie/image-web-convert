@@ -91,7 +91,7 @@
         "eslint-plugin-jsx-a11y": "6.10.2",
         "eslint-plugin-playwright": "2.12.1",
         "eslint-plugin-react": "7.37.5",
-        "eslint-plugin-react-hooks": "5.2.0",
+        "eslint-plugin-react-hooks": "^7.1.1",
         "jiti": "2.6.0",
         "jsdom": "27.4.0",
         "nx": "23.3.0",

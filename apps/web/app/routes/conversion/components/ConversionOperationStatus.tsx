@@ -19,6 +19,25 @@ import {
     isTerminal,
 } from '../conversionViewModel';
 
+function DownloadIcon({
+    target,
+    downloading,
+    downloadTarget,
+}: {
+    target: string;
+    downloading: boolean;
+    downloadTarget: string | null;
+}) {
+    return downloading && downloadTarget === target ? (
+        <FaSpinner
+            className="size-4 shrink-0 motion-safe:animate-spin"
+            aria-hidden="true"
+        />
+    ) : (
+        <FaDownload className="size-4 shrink-0" aria-hidden="true" />
+    );
+}
+
 export function ConversionOperationStatus({
     operation,
     uploads,
@@ -44,7 +63,10 @@ export function ConversionOperationStatus({
     onCancel: () => void;
     onDownload: (result: ConversionOutput | string[]) => void;
 }) {
-    const [expanded, setExpanded] = useState(true);
+    const [listState, setListState] = useState({
+        allSucceeded: false,
+        expanded: true,
+    });
     const [downloadTarget, setDownloadTarget] = useState<string | null>(null);
     const listId = useId();
     const listRef = useRef<HTMLDivElement>(null);
@@ -53,26 +75,20 @@ export function ConversionOperationStatus({
         operation.files.length > 0 &&
         isTerminal(operation) &&
         operation.files.every((file) => file.status === 'completed');
+    if (listState.allSucceeded !== allSucceeded)
+        setListState({ allSucceeded, expanded: !allSucceeded });
+    const expanded =
+        listState.allSucceeded === allSucceeded
+            ? listState.expanded
+            : !allSucceeded;
     useEffect(() => {
-        if (allSucceeded) {
-            if (listRef.current?.contains(document.activeElement))
-                toggleRef.current?.focus();
-            setExpanded(false);
-        } else setExpanded(true);
-    }, [allSucceeded]);
+        if (!expanded && listRef.current?.contains(document.activeElement))
+            toggleRef.current?.focus();
+    }, [expanded]);
     const download = (result: ConversionOutput | string[]) => {
         setDownloadTarget(Array.isArray(result) ? 'zip' : result.meta.id);
         onDownload(result);
     };
-    const DownloadIcon = ({ target }: { target: string }) =>
-        downloading && downloadTarget === target ? (
-            <FaSpinner
-                className="size-4 shrink-0 motion-safe:animate-spin"
-                aria-hidden="true"
-            />
-        ) : (
-            <FaDownload className="size-4 shrink-0" aria-hidden="true" />
-        );
     const finished = isTerminal(operation);
     const outputs = completedDownloads(operation);
     const pendingCounts = [
@@ -168,7 +184,12 @@ export function ConversionOperationStatus({
                 type="button"
                 aria-expanded={expanded}
                 aria-controls={listId}
-                onClick={() => setExpanded((value) => !value)}
+                onClick={() =>
+                    setListState((value) => ({
+                        ...value,
+                        expanded: !value.expanded,
+                    }))
+                }
                 className="flex min-h-11 items-center justify-between gap-3 text-left font-semibold"
             >
                 Files ({operation.files.length})
@@ -321,6 +342,8 @@ export function ConversionOperationStatus({
                                     >
                                         <DownloadIcon
                                             target={file.output.meta.id}
+                                            downloading={downloading}
+                                            downloadTarget={downloadTarget}
                                         />
                                     </Button>
                                 )}
@@ -350,7 +373,11 @@ export function ConversionOperationStatus({
                             download(outputs.map((output) => output.meta.id))
                         }
                     >
-                        <DownloadIcon target="zip" />
+                        <DownloadIcon
+                            target="zip"
+                            downloading={downloading}
+                            downloadTarget={downloadTarget}
+                        />
                         Download completed images as ZIP
                     </Button>
                 )}
