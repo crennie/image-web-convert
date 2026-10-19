@@ -739,6 +739,18 @@ On Node 24.22.0/npm 11.19.1 Linux ARM64, a plain `npm ci --no-audit --no-fund` i
 
 Remaining PF-13 work: assess Router 8 prerequisites and the other frontend/test/lint families, inspect coverage behavior and peer compatibility, install matching Playwright binaries if its version changes, and run the required full CI-equivalent and three-browser validation after the family upgrades. This checkpoint does not claim PF-13 completion or a fresh browser result.
 
+## PF-13 React prerequisite checkpoint (2026-10-19)
+
+**Status: in progress.** React and React DOM move together from 19.1.1 to 19.3.1, with `@types/react` and `@types/react-dom` aligned at 19.3.0. This satisfies the React 19.2.7 minimum in the [Router 8 upgrade guide](https://reactrouter.com/upgrading/v7) without changing Router in the same slice. The lockfile changes only those four packages and their expected `scheduler` and `csstype` dependencies. Router 8 still needs its v7 future flags adopted and verified; `apps/web/app/entry.server.tsx` also imports the `AppLoadContext` type removed in v8. Keep Router 7 until those changes and their SSR/browser checks are ready together.
+
+Validation used repository-local Node 24.22.0/npm 11.19.1 on Linux ARM64. Plain `npm ci --no-audit --no-fund` and `npm ls --all --json` passed with no peer errors. `npm run ci:hook` passed **33/33 Nx tasks** with zero cache hits, including lint, typecheck, unit/process tests, builds, real browser E2E and mocked browser integration across Chromium, Firefox, and WebKit. `npm run check:use-cases` passed **94/94 covered**; changed-file Prettier and `git diff --check` passed. No Playwright version or browser binary changed in this slice. PF-13 remains open for Router 8, the other tool families, coverage review, and a final clean-install/full-suite run after those upgrades.
+
+## PF-13 Router 8 flag checkpoint (2026-10-19)
+
+**Status: in progress.** On Router 7.18.4, the web framework configuration now enables the five [documented Router 8 future flags](https://reactrouter.com/upgrading/v7): middleware, split route modules, Vite Environment API, pass-through requests, and trailing-slash-aware data requests. The app has no route loaders/actions that inspect request URLs and no custom `.data` proxy, cache, or rewrite rule; the existing `/api` proxy is separate. No dependency or lockfile changes were made in this flag slice beyond the preceding React checkpoint.
+
+Validation on Node 24.22.0/npm 11.19.1 Linux ARM64: web build, typecheck, and **110/110** unit tests passed; web lint passed with one existing test warning. The production-build browser targets passed **33/33** real E2E and **69/69** mocked integration cases across Chromium, Firefox, and WebKit. The use-case inventory passed **94/94 covered**. Router 8 package migration remains next: align all four Router packages, replace the removed `AppLoadContext` type in the SSR entry, and rerun typegen, build, peer-tree, SSR, and browser checks. Other PF-13 tool families and final clean-install validation remain open.
+
 ## Dated dependency inventory (2026-10-16)
 
 Registry metadata was queried with `npm outdated --package-lock-only --json`; full and `--omit=dev` audits used `npm audit --package-lock-only --ignore-scripts --json`. Audit exits were 1 because findings exist. Counts refer to affected package entries, including parent propagation, not unique CVEs or demonstrated exploits.
