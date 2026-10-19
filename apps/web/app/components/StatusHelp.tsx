@@ -28,6 +28,7 @@ export function StatusHelp({
         undefined,
     );
     const trigger = useRef<HTMLButtonElement>(null);
+    const [open, setOpen] = useState(false);
     const hide = () => {
         hideTimer.current = setTimeout(() => {
             if (document.activeElement !== trigger.current) setOpen(false);
@@ -63,7 +64,6 @@ export function StatusHelp({
         updatePosition();
         setOpen(true);
     };
-    const [open, setOpen] = useState(false);
     const Icon =
         tone === 'success'
             ? FaCheckCircle
