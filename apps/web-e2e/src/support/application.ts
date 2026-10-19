@@ -57,7 +57,7 @@ async function startApplication(
     try {
         if (realApi) api = await startApi(storage, outputDir, controlledApi);
         web = await startNodeServer({
-            entry: path.join(root, 'node_modules/@react-router/serve/bin.js'),
+            entry: path.join(root, 'node_modules/@react-router/serve/bin.cjs'),
             args: [path.join(root, 'apps/web/build/server/index.js')],
             cwd: path.join(root, 'apps/web'),
             log: path.join(outputDir, 'web.log'),
