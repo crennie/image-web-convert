@@ -20,6 +20,8 @@ type Application = {
     interruptUploads(): void;
     resumeUploads(): void;
     readonly uploadInterrupted: boolean;
+    dropCancellations(): void;
+    readonly cancellationDropped: boolean;
 };
 
 async function close(server: Server) {
@@ -42,6 +44,8 @@ async function startApplication(
     let gateway: Server | undefined;
     let interruptUpload = false;
     let interruptedOnServer = false;
+    let dropCancellation = false;
+    let cancellationDropped = false;
     async function stop() {
         const results = await Promise.allSettled([
             ...(gateway?.listening ? [close(gateway)] : []),
@@ -67,6 +71,16 @@ async function startApplication(
         gateway = createServer((incoming, outgoing) => {
             const isApi =
                 incoming.url === '/api' || incoming.url?.startsWith('/api/');
+            if (
+                dropCancellation &&
+                incoming.method === 'POST' &&
+                incoming.url?.endsWith('/cancel')
+            ) {
+                cancellationDropped = true;
+                incoming.destroy();
+                outgoing.destroy();
+                return;
+            }
             const port = isApi ? api?.port : web?.port;
             if (!port) {
                 outgoing
@@ -149,6 +163,13 @@ async function startApplication(
             },
             get uploadInterrupted() {
                 return interruptedOnServer;
+            },
+            dropCancellations: () => {
+                dropCancellation = true;
+                cancellationDropped = false;
+            },
+            get cancellationDropped() {
+                return cancellationDropped;
             },
         };
     } catch (error) {
