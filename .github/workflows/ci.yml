@@ -37,12 +37,6 @@ jobs:
                   filter: tree:0
                   fetch-depth: 0
 
-            # This enables task distribution via Nx Cloud
-            # Run this command as early as possible, before dependencies are installed
-            # Learn more at https://nx.dev/ci/reference/nx-cloud-cli#npx-nxcloud-startcirun
-            # Uncomment this line to enable task distribution
-            # - run: npx nx start-ci-run --distribute-on="3 linux-medium-js" --stop-agents-after="e2e-ci"
-
             # Cache node_modules
             - uses: actions/setup-node@v4
               with:
@@ -53,9 +47,6 @@ jobs:
             - run: npx playwright install --with-deps
             - run: npm run check:use-cases
 
-            # Prepend any command with "nx-cloud record --" to record its logs to Nx Cloud
-            # - run: npx nx-cloud record -- echo Hello World
-            # When you enable task distribution, run the e2e-ci task instead of e2e
             - run: npm run ci:hook
             - name: Retain browser test diagnostics
               if: failure()
@@ -67,6 +58,3 @@ jobs:
                       apps/api-e2e/test-output/lifecycle/
                   if-no-files-found: ignore
                   retention-days: 7
-            # Nx Cloud recommends fixes for failures to help you get CI green faster. Learn more: https://nx.dev/ci/features/self-healing-ci
-            - run: node tools/nx.mjs fix-ci
-              if: always()

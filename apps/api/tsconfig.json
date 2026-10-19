@@ -4,15 +4,6 @@
     "include": [],
     "references": [
         {
-            "path": "../../libs/schemas"
-        },
-        {
-            "path": "../../libs/node-shared"
-        },
-        {
-            "path": "../../libs/observability"
-        },
-        {
             "path": "./tsconfig.app.json"
         },
         {
