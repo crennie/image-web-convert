@@ -88,7 +88,7 @@ function setupSharp(meta: any, bufferResult: { data: Buffer; info: { width: numb
 
 describe("processImageToMimeType (unit)", () => {
     beforeEach(() => {
-        vi.clearAllMocks();
+        vi.resetAllMocks();
     });
     afterEach(() => {
         vi.restoreAllMocks();

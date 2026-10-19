@@ -43,7 +43,7 @@ jobs:
                   node-version: 24.22.0
                   cache: 'npm'
 
-            - run: npm ci --legacy-peer-deps
+            - run: npm ci
             - run: npx playwright install --with-deps
             - run: npm run check:use-cases
 

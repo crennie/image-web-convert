@@ -14,11 +14,11 @@ native-codec and filesystem check. Install the locked
 dependencies and start the frontend and API with:
 
 ```sh
-npm ci --legacy-peer-deps
+npm ci
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run dev
 ```
 
-The install flag matches CI's peer-dependency resolution. The frontend runs at
+The frontend runs at
 `http://localhost:4200`; the API defaults to port 4201. Run commands from the
 repository root.
 
@@ -289,7 +289,7 @@ a test-only same-origin reverse proxy for `/api`. It never reuses a running dev
 server. Each test owns temporary storage under `tmp/browser-tests`, dynamically
 allocated ports, readiness checks, and process/data cleanup.
 
-Install the locked dependencies with `npm ci --legacy-peer-deps`, matching CI.
+Install the locked dependencies with `npm ci`, matching CI.
 The devcontainer image installs Chromium, Firefox, and WebKit plus their system
 libraries using the Playwright version in the root `package-lock.json`. Browsers
 are available to the `vscode` user through

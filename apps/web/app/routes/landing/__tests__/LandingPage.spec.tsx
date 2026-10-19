@@ -38,7 +38,7 @@ function reRenderPage(component: RenderResult) {
 
 describe('LandingPage', () => {
     beforeEach(() => {
-        vi.restoreAllMocks();
+        vi.clearAllMocks();
     });
 
     it('renders the hero title, subtitle, and description', () => {
