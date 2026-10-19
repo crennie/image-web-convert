@@ -15,7 +15,7 @@
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "check:use-cases": "node tools/check-use-case-inventory.mjs",
-        "ci:hook": "node tools/nx.mjs run-many -t lint test build typecheck e2e browser-integration --cloud=false --no-cloud"
+        "ci:hook": "node tools/nx.mjs run-many -t lint test build typecheck e2e browser-integration --parallel=1 --cloud=false --no-cloud"
     },
     "private": true,
     "dependencies": {
@@ -61,7 +61,7 @@
         "@nx/web": "23.3.0",
         "@nx/webpack": "23.3.0",
         "@nx/workspace": "23.3.0",
-        "@playwright/test": "^1.55.1",
+        "@playwright/test": "1.64.1",
         "@pmmmwh/react-refresh-webpack-plugin": "^0.6.1",
         "@react-router/dev": "8.4.0",
         "@svgr/webpack": "^8.1.0",

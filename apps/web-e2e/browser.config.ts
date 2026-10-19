@@ -22,9 +22,9 @@ export function browserConfig(suite: 'e2e' | 'integration', realApi: boolean) {
         retries: 0,
         timeout: 30_000,
         expect: { timeout: 10_000 },
-        // The 66-case integration suite takes about 262 seconds alongside
-        // the real browser suite in CI; allow bounded scheduling headroom.
-        globalTimeout: suite === 'integration' ? 360_000 : 300_000,
+        // With Playwright 1.64, 62 of 69 integration cases ran in 360 seconds
+        // on Linux ARM64; leave time for the remaining WebKit cases and teardown.
+        globalTimeout: suite === 'integration' ? 480_000 : 300_000,
         use: {
             realApi,
             actionTimeout: 10_000,

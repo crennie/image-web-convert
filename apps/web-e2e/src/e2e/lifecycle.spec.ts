@@ -96,10 +96,9 @@ test('continues processing if page-exit cancellation never reaches the server', 
         await image('next.png'),
     ]);
     await expect.poll(() => api.held).toBe(true);
-    const attempted = page.waitForRequest('**/conversions/*/cancel');
-    await page.route('**/conversions/*/cancel', (route) => route.abort());
+    application.dropCancellations();
     await page.goto('/');
-    await attempted;
+    await expect.poll(() => application.cancellationDropped).toBe(true);
     await api.release();
     await expect
         .poll(async () => (await api.readOperation(operation.sessionId)).status)
