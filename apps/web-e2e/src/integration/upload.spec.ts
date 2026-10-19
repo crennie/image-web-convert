@@ -23,17 +23,20 @@ const sessionResponse = {
         maxTotalBytes: 500_000_000,
     },
 };
+
 async function chooseFiles(page: Page, files: ImageFixture | ImageFixture[]) {
     const chooser = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: 'Choose images' }).click();
     await (await chooser).setFiles(files);
 }
+
 test.beforeEach(async ({ page }) => {
     await page.route('**/api/sessions', (route) =>
         route.fulfill({ status: 200, json: sessionResponse }),
     );
     await page.goto('/conversion');
 });
+
 test('visible keyboard accessible upload control invokes the file chooser', async ({
     page,
 }) => {
@@ -47,6 +50,7 @@ test('visible keyboard accessible upload control invokes the file chooser', asyn
         page.getByText(firstImage.name, { exact: true }),
     ).toBeVisible();
 });
+
 test('selected file becomes pending and visible', async ({ page }) => {
     await expect(page.getByText(/files? ready to upload/i)).toHaveCount(0);
     await expect(
@@ -91,6 +95,7 @@ test('manifest rejection offers a new batch instead of retrying the rejected int
         page.getByRole('button', { name: 'Retry batch creation' }),
     ).toHaveCount(0);
 });
+
 test('multiple selected files remain pending', async ({ page }) => {
     await chooseFiles(page, [firstImage, secondImage]);
     await expect(
@@ -101,6 +106,7 @@ test('multiple selected files remain pending', async ({ page }) => {
     ).toBeVisible();
     await expect(page.getByText('2 files ready to upload.')).toBeVisible();
 });
+
 test('a pending file can be removed without removing the others', async ({
     page,
 }) => {
@@ -116,6 +122,7 @@ test('a pending file can be removed without removing the others', async ({
     ).toBeVisible();
     await expect(page.getByText('1 file ready to upload.')).toBeVisible();
 });
+
 test('route creates a manifest, uploads slots, polls and downloads progressive results', async ({
     page,
 }) => {

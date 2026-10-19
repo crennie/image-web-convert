@@ -81,7 +81,7 @@ export async function verifyImage(bytes: Buffer) {
         height: 24,
     });
     const decoded = await sharp(bytes).removeAlpha().raw().toBuffer();
-    expect(decoded.length).toBe(32 * 24 * 3);
+    expect(decoded).toHaveLength(32 * 24 * 3);
     expect(Math.abs(decoded[0] - 20)).toBeLessThanOrEqual(5);
     expect(Math.abs(decoded[1] - 80)).toBeLessThanOrEqual(5);
     expect(Math.abs(decoded[2] - 160)).toBeLessThanOrEqual(5);

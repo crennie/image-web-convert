@@ -771,6 +771,14 @@ The first full `ci:hook` run reported 30 succeeded, one failed (`api:typecheck`)
 
 On repository-local Node 24.22.0/Linux ARM64, web/UI builds, typechecks and unit tests passed, including 110/110 web tests. The built web client and SSR server compiled with Vite 7.3.7; the client CSS artifact was emitted. The focused built-browser theme suite passed 15/15 across Chromium, Firefox and WebKit, covering light/dark themes at 375px and 1280px plus SSR privacy/font behavior. Plain `npm ci --no-audit --no-fund`, `npm ls --all --json`, the use-case inventory (94/94 covered), and `git diff --check` passed. The production-filtered lockfile audit still reports the one high Lodash finding assigned to PF-14. This slice did not rerun the full CI hook; its final green run remains a PF-13 acceptance gate after the remaining tool families.
 
+## PF-13 TypeScript and ESLint core checkpoint (2026-10-19)
+
+**Status: in progress.** TypeScript moves from 5.9.2 to 5.9.3; ESLint and `@eslint/js` move together from 9.36.0 to 9.39.5; `typescript-eslint` moves from 8.45.0 to 8.71.2; and `eslint-plugin-playwright` moves from 2.2.2 to 2.12.1. The lockfile changes only these direct dev tools and their lint/compiler transitive dependencies. The newer Playwright rules exposed spacing warnings in existing test files and a Buffer length assertion that was changed to the equivalent `toHaveLength` matcher. No rule was suppressed, and web-E2E lint then passed without warnings.
+
+On repository-local Node 24.22.0/Linux ARM64, all eight project lint and typecheck targets passed with zero errors; the two existing UI and one web warnings remain. All six build targets passed, including API Webpack and Router client/SSR builds. One real Chromium E2E conversion/download case passed after the test assertion edit. Plain `npm ci --no-audit --no-fund`, `npm ls --all --json`, the use-case inventory (94/94 covered), changed-file Prettier and `git diff --check` passed. The production-filtered audit remains at the one high Lodash finding assigned to PF-14.
+
+npm marks ESLint 9.39.5 deprecated; the installed `eslint-plugin-react` 7.37.5 peer range stops at ESLint 9, while `typescript-eslint` 8.71.2 requires TypeScript below 6.1. These are current compatibility ceilings, not claims that the newer ESLint or TypeScript majors are unneeded. Evaluate the React lint-plugin migration and remaining Babel/Webpack/browser families separately; PF-13 still requires a final green full CI-equivalent run.
+
 ## Dated dependency inventory (2026-10-16)
 
 Registry metadata was queried with `npm outdated --package-lock-only --json`; full and `--omit=dev` audits used `npm audit --package-lock-only --ignore-scripts --json`. Audit exits were 1 because findings exist. Counts refer to affected package entries, including parent propagation, not unique CVEs or demonstrated exploits.
