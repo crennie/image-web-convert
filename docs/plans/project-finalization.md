@@ -787,6 +787,12 @@ The first full `ci:hook --parallel=2` run failed: one web unit case exceeded its
 
 Plain `npm ci --no-audit --no-fund`, `npm ls --all --json`, use-case inventory **94/94**, changed-file Prettier and `git diff --check` passed on Linux ARM64 with repository-local Node 24.22.0 and container npm 10.9.4. The production-filtered audit still exits 1 with one high Lodash finding assigned to PF-14. Local commit: `PF-13: update Playwright browser family`. PF-13 remains open for the React lint-plugin, Babel/Webpack, remaining frontend/test-tool compatibility decisions, and final closure review; this checkpoint does not assert that every direct package has a disposition.
 
+## PF-13 Webpack CLI checkpoint (2026-10-19)
+
+**Status: in progress.** The development-only `webpack-cli` declaration moves from 6.0.1 to 7.2.3. Nx 23.3.0 accepts CLI 7 with the retained Webpack 5 line; its Webpack plugin still requires webpack-dev-server 5, so that package remains at 5.2.7. Webpack itself is already at the current 5.112.0 release. The lockfile removes CLI 6's separate helper packages and changes only its development dependency tree. The pruned API production manifest still contains the same 17 runtime dependencies and no Webpack CLI.
+
+On Linux ARM64 with repository-local Node 24.22.0, plain `npm ci --no-audit --no-fund`, `npm ls --all --json`, and a subsequent `npm ci --dry-run --ignore-scripts --no-audit --no-fund` passed. `api:build` passed all four tasks; `api:prune` passed all seven tasks; `api:test` passed all four tasks, with three prerequisite tasks served from cache. The use-case inventory passed **94/94 covered**. This slice changes the build tool only; the prior Playwright checkpoint supplies the last complete browser run, and a final full run remains required after PF-13's remaining package decisions. Babel 8 is not yet compatible with the installed Babel 7 peer graph; the React lint-plugin and remaining direct-package disposition review remain open. No production dependency changed.
+
 ## Dated dependency inventory (2026-10-16)
 
 Registry metadata was queried with `npm outdated --package-lock-only --json`; full and `--omit=dev` audits used `npm audit --package-lock-only --ignore-scripts --json`. Audit exits were 1 because findings exist. Counts refer to affected package entries, including parent propagation, not unique CVEs or demonstrated exploits.
