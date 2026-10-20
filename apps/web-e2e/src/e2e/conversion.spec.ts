@@ -124,6 +124,66 @@ test('converts the complete batch and downloads decoded images and ZIP contents'
     );
 });
 
+test('keeps download feedback visible through held image and ZIP responses', async ({
+    page,
+}) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await submit(page, [await image('feedback.png')]);
+    await expect(page.getByRole('status')).toContainText(
+        'Operation: completed',
+    );
+    await page.getByRole('button', { name: 'Files (1)' }).click();
+    const imageDownload = imageButton(page, 'feedback.png');
+    const zipDownload = page.getByRole('button', {
+        name: 'Download completed images as ZIP',
+    });
+    let releaseImage!: () => void;
+    const imageHeld = new Promise<void>((resolve) => (releaseImage = resolve));
+    await page.route('**/api/sessions/*/files/*', async (route) => {
+        await imageHeld;
+        await route.fulfill({ status: 503, body: 'Temporarily unavailable' });
+    });
+    await imageDownload.click();
+    await expect(imageDownload).toHaveAttribute('aria-busy', 'true');
+    await expect(imageDownload).toBeDisabled();
+    await expect(zipDownload).toBeDisabled();
+    await expect(
+        page
+            .getByRole('status')
+            .filter({ hasText: 'Preparing image download' }),
+    ).toBeVisible();
+    await expect
+        .poll(() =>
+            imageDownload
+                .locator('svg')
+                .evaluate((icon) => getComputedStyle(icon).animationName),
+        )
+        .toBe('none');
+    releaseImage();
+    await expect(page.getByRole('alert')).toContainText('Download failed');
+    await expect(imageDownload).toBeEnabled();
+    await expect(zipDownload).toBeEnabled();
+
+    let releaseZip!: () => void;
+    const zipHeld = new Promise<void>((resolve) => (releaseZip = resolve));
+    await page.route('**/api/sessions/*/files/download', async (route) => {
+        await zipHeld;
+        await route.continue();
+    });
+    await zipDownload.click();
+    await expect(zipDownload).toHaveAttribute('aria-busy', 'true');
+    await expect(zipDownload).toBeDisabled();
+    await expect(imageDownload).toBeDisabled();
+    await expect(
+        page.getByRole('status').filter({ hasText: 'Preparing ZIP download' }),
+    ).toBeVisible();
+    const saved = page.waitForEvent('download');
+    releaseZip();
+    expect((await saved).suggestedFilename()).toBe('images.zip');
+    await expect(zipDownload).toBeEnabled();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
 test('uses the selected JPEG format for the manifest and downloaded image', async ({
     page,
 }, info) => {

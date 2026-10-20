@@ -96,6 +96,57 @@ test('manifest rejection offers a new batch instead of retrying the rejected int
     ).toHaveCount(0);
 });
 
+test('Back and Forward protect an unresolved batch creation', async ({
+    page,
+}) => {
+    await page.goto('/');
+    await page.getByRole('link', { name: 'Convert Files' }).click();
+    let releaseCreation!: () => void;
+    const creationHeld = new Promise<void>(
+        (resolve) => (releaseCreation = resolve),
+    );
+    await page.route(
+        '**/api/sessions/e2e-session/conversions',
+        async (route) => {
+            await creationHeld;
+            await route
+                .fulfill({ status: 503, json: { type: 'unavailable' } })
+                .catch(() => undefined);
+        },
+    );
+    await chooseFiles(page, firstImage);
+    await page.getByRole('button', { name: 'Start conversion' }).click();
+    await expect(page.getByRole('status')).toContainText(
+        'Creating conversion batch',
+    );
+    await page.evaluate(() => history.back());
+    const warning = page.getByRole('dialog', {
+        name: 'Leave this conversion?',
+    });
+    await expect(warning).toBeVisible();
+    const stay = warning.getByRole('button', { name: 'Stay on this batch' });
+    await expect(stay).toBeFocused();
+    await stay.click();
+    await expect(warning).toBeHidden();
+    await expect(page).toHaveURL(/\/conversion$/);
+    await expect(page.getByRole('status')).toContainText(
+        'Creating conversion batch',
+    );
+    await page.evaluate(() => history.back());
+    await expect(warning).toBeVisible();
+    await warning.getByRole('button', { name: 'Leave conversion' }).click();
+    await expect(page).toHaveURL('/');
+    releaseCreation();
+    await page.evaluate(() => history.forward());
+    await expect(page).toHaveURL(/\/conversion$/);
+    await expect(
+        page.getByRole('button', { name: 'Choose images' }),
+    ).toBeVisible();
+    await expect(page.getByRole('status')).not.toContainText(
+        'Creating conversion batch',
+    );
+});
+
 test('multiple selected files remain pending', async ({ page }) => {
     await chooseFiles(page, [firstImage, secondImage]);
     await expect(
@@ -387,6 +438,8 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     await expect(
         page.getByRole('button', { name: 'Cancel conversion' }),
     ).toBeEnabled();
+    await icon.focus();
+    await expect(icon).toBeFocused();
     finishBatch = true;
     await expect(page.getByRole('status')).toContainText(
         'Operation: completed',
@@ -401,6 +454,12 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     const restart = page.getByRole('button', { name: 'Start new batch' });
     await expect(zip).toBeEnabled();
     await expect(restart).toBeEnabled();
+    const files = page.getByRole('button', { name: /Files \(/ });
+    await expect(files).toHaveAttribute('aria-expanded', 'false');
+    await expect(files).toBeFocused();
+    await expect(icon).toBeHidden();
+    await files.press('Tab');
+    await expect(zip).toBeFocused();
     // Font loading and the final operation render can move both buttons.
     // Compare their settled positions while retaining the strict alignment limit.
     await expect
@@ -423,16 +482,42 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     expect(restartBox.x + restartBox.width).toBeGreaterThan(
         panelBox.x + panelBox.width * 0.9,
     );
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await restart.focus();
-    const files = page.getByRole('button', { name: /Files \(/ });
-    await expect(files).toHaveAttribute('aria-expanded', 'false');
     await files.click();
     await expect(row).toBeVisible();
+    expect(
+        await files.evaluate((button) => {
+            const list = document.getElementById(
+                button.getAttribute('aria-controls') ?? '',
+            );
+            return list && getComputedStyle(list).transitionDuration;
+        }),
+    ).toBe('0s');
     const help = row.getByRole('button', { name: 'completed', exact: true });
     await help.scrollIntoViewIfNeeded();
     await help.focus();
     await expect(page.getByRole('tooltip')).toBeVisible();
     await help.press('Escape');
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await files.focus();
+    await help.hover();
+    await expect(help).toHaveAttribute('aria-describedby', /.+/);
+    await expect(page.getByRole('tooltip')).toBeVisible();
+    await files.hover();
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await expect(help).not.toHaveAttribute('aria-describedby', /.+/);
+    await page.setViewportSize({ width: 375, height: 667 });
+    await help.hover();
+    const tooltipBox = await page
+        .getByRole('tooltip')
+        .boundingBox()
+        .then(requiredBounds);
+    expect(tooltipBox.x).toBeGreaterThanOrEqual(0);
+    expect(tooltipBox.x + tooltipBox.width).toBeLessThanOrEqual(375);
+    expect(tooltipBox.y).toBeGreaterThanOrEqual(0);
+    expect(tooltipBox.y + tooltipBox.height).toBeLessThanOrEqual(667);
+    await page.evaluate(() => window.dispatchEvent(new Event('scroll')));
     await expect(page.getByRole('tooltip')).toHaveCount(0);
     await files.click();
     await restart.press('Enter');
