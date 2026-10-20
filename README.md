@@ -352,13 +352,15 @@ environment setting; production defaults above are unchanged.
 
 For a bounded Linux resource check, build the API and run `npm run soak:api`.
 It runs six real upload/conversion/image/ZIP/expiry cycles in one production API
-process, preserving the three-sessions-per-minute issuance limit. Each cycle
-prints process RSS, CPU ticks, open descriptors, retained upload bytes, and the
-slowest of five readiness probes. Set `SOAK_ROUNDS=3` for a quick smoke run or
+process, preserving the three-sessions-per-minute issuance limit. Every third
+cycle converts a 12 MP PNG; the others use a tiny PNG. Each cycle prints process
+RSS, CPU ticks, open descriptors, retained upload bytes, and readiness latency
+during conversion and after expiry. Set `SOAK_ROUNDS=3` for a quick smoke run or
 up to 30 for a longer run. It keeps failure diagnostics under ignored
 `tmp/finalization-pf15/`; successful runs remove their storage and logs. The
-RSS and descriptor guards detect large regressions in this tiny-image workload;
-they are not production capacity limits or a native decoder timeout guarantee.
+RSS and descriptor guards detect large regressions after decoder cache warmup;
+readiness latency is a coarse event-loop signal, not a direct delay measurement.
+These limits are not production capacity limits or a native decoder timeout guarantee.
 
 Both browser targets run Chromium, Firefox, and WebKit with one worker and no
 retries. To verify only Chromium in a constrained environment, append
