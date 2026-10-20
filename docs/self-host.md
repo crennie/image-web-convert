@@ -129,8 +129,9 @@ for the measured fixtures. The API also accepts `APP_VERSION` (health output),
 (default `logs/app.log` relative to the API working directory). When telemetry
 is enabled, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_SAMPLER`,
 `OTEL_TRACES_SAMPLER_ARG`, `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER`,
-`OTEL_ENVIRONMENT`, `OTEL_SERVICE_NAME`, `OTEL_ENABLE`, and `LOG_LEVEL` control
-the optional OpenTelemetry SDK; leave it disabled unless a collector is set up.
+`OTEL_ENVIRONMENT`, `OTEL_SERVICE_NAME`, `OTEL_ENABLE`, `LOG_LEVEL`, and
+`LOG_PRETTY` control the optional OpenTelemetry SDK; leave it disabled unless a
+collector is set up.
 
 Keep the storage and log directories readable only by the service account.
 Session bearer tokens are held in browser memory and sent with API calls;

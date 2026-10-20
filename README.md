@@ -7,7 +7,8 @@ downloads completed images.
 
 For a production install, follow the [self-host guide](docs/self-host.md). See
 the [architecture documentation](docs/architecture/README.md) for system
-boundaries and design decisions.
+boundaries and design decisions. The [private release candidate record](docs/release-candidate.md)
+lists validated versions, automated evidence, and rollback steps.
 
 ## Try it locally
 

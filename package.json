@@ -9,6 +9,7 @@
         "dev": "node tools/nx.mjs run-many --targets=dev,serve -p web api",
         "build": "node tools/nx.mjs run-many -t build",
         "test": "node tools/nx.mjs run-many -t test",
+        "coverage:api": "cd apps/api && ../../node_modules/.bin/vitest run --coverage --coverage.reporter=text-summary --coverage.reporter=json-summary",
         "typecheck": "node tools/nx.mjs run-many -t typecheck",
         "lint": "node tools/nx.mjs run-many -t lint",
         "lint:fix": "node tools/nx.mjs run-many -t lint -- --fix",
