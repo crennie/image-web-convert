@@ -30,7 +30,7 @@
         "react-router": "8.4.0"
     },
     "devDependencies": {
-        "@babel/core": "^7.28.4",
+        "@babel/core": "^8.0.7",
         "@babel/preset-react": "^7.29.7",
         "@eslint/js": "9.39.5",
         "@nx/devkit": "23.3.0",
