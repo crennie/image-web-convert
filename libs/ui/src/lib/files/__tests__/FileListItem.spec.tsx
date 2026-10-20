@@ -1,9 +1,19 @@
-import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
+import {
+    render,
+    screen,
+    act,
+    waitFor,
+    fireEvent,
+} from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { FileListItem, type FileItem } from '../FileListItem';
 
 // Util for creating mock items
-function makeItem(id: string, name = `file-${id}.jpg`, type = 'image/jpeg'): FileItem {
+function makeItem(
+    id: string,
+    name = `file-${id}.jpg`,
+    type = 'image/jpeg',
+): FileItem {
     const file = new File([new Uint8Array([1, 2, 3])], name, { type });
     return { id, file, previewUrl: 'about:blank' };
 }
@@ -41,7 +51,9 @@ describe('FileListItem', () => {
         const item = makeItem('a', 'removable.jpg');
         const onRemove = vi.fn();
 
-        const { getByRole } = render(<FileListItem item={item} showRemove onRemove={onRemove} />);
+        const { getByRole } = render(
+            <FileListItem item={item} showRemove onRemove={onRemove} />,
+        );
 
         await user.click(getByRole('button'));
 
@@ -54,7 +66,9 @@ describe('FileListItem', () => {
         const item = makeItem('a', 'dl.jpg');
         const onDownload = vi.fn().mockResolvedValue(undefined);
 
-        render(<FileListItem item={item} showDownload onDownload={onDownload} />);
+        render(
+            <FileListItem item={item} showDownload onDownload={onDownload} />,
+        );
 
         // The download button contains the download icon (FaDownload) initially
         const buttons = screen.getAllByRole('button');
@@ -72,10 +86,12 @@ describe('FileListItem', () => {
 
         // Promise we control to simulate a long download
         let resolve!: () => void;
-        const p = new Promise<void>(r => (resolve = r));
+        const p = new Promise<void>((r) => (resolve = r));
         const onDownload = vi.fn().mockReturnValue(p);
 
-        const { getByRole } = render(<FileListItem item={item} showDownload onDownload={onDownload} />);
+        const { getByRole } = render(
+            <FileListItem item={item} showDownload onDownload={onDownload} />,
+        );
 
         // First click -> starts download, shows spinner
         await user.click(getByRole('button'));
@@ -104,7 +120,7 @@ describe('FileListItem', () => {
         const onDownload = vi.fn().mockResolvedValue(undefined);
 
         const { container } = render(
-            <FileListItem item={item} showDownload onDownload={onDownload} />
+            <FileListItem item={item} showDownload onDownload={onDownload} />,
         );
 
         // The clickable container is the root of FileCardLayout; query by class pattern
@@ -123,7 +139,7 @@ describe('FileListItem', () => {
         expect(box1.className).not.toMatch(/cursor-pointer/);
 
         const { container: c2 } = render(
-            <FileListItem item={item} showDownload onDownload={vi.fn()} />
+            <FileListItem item={item} showDownload onDownload={vi.fn()} />,
         );
         const box2 = c2.querySelector('.bg-muted') as HTMLElement;
         expect(box2.className).toMatch(/cursor-pointer/);

@@ -15,9 +15,8 @@ describe('observability configuration', () => {
             vi.stubEnv('NODE_ENV', mode);
             vi.stubEnv('OTEL_TRACES_SAMPLER', sampler);
             vi.stubEnv('LOG_LEVEL', level);
-            const { loadObservabilityConfig } = await import(
-                '../lib/config.js'
-            );
+            const { loadObservabilityConfig } =
+                await import('../lib/config.js');
             expect(loadObservabilityConfig()).toMatchObject({
                 sampler,
                 logLevel: level,

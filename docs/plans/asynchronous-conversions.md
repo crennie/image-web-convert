@@ -46,20 +46,20 @@ plan. Follow repository instructions and inspect current code before editing.
 
 Recheck these files before implementing their corresponding phase:
 
-| Concern | Files |
-| --- | --- |
-| Workflow UI | `apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx` |
-| Upload selection and transport | `apps/web/app/routes/conversion/components/ConversionSelection.tsx`, `apps/web/app/routes/conversion/api/conversionUploadTransport.ts` |
-| Authoritative progress | `apps/web/app/routes/conversion/components/ConversionOperationStatus.tsx`, `apps/web/app/routes/conversion/conversionViewModel.ts` |
-| Session and downloads | `libs/ui/src/lib/session/SessionContext.tsx`, `libs/ui/src/lib/file-download/` |
-| API routing | `apps/api/src/api/index.ts`, `apps/api/src/routes/`, `apps/api/src/controllers/` |
-| Current orchestration | `apps/api/src/services/conversion-runtime.service.ts` |
-| Conversion | `apps/api/src/services/image.service.ts`, `apps/api/src/services/image.config.ts` |
-| Persistence | `apps/api/src/services/conversion-storage.service.ts`, `storage.paths.ts`, `sessions.service.ts`; `storage.service.ts` retains legacy metadata reads |
-| Lifecycle and limits | `apps/api/src/main.ts`, `app.ts`, `env.ts` |
-| Contracts | `libs/schemas/src/lib/api/api.ts`, `apiError.ts` |
-| Server integration | `apps/api-e2e/src/api/api.spec.ts` |
-| Browser tests | `apps/web-e2e/src/e2e/`, `apps/web-e2e/src/integration/`, `apps/web-e2e/playwright.config.ts` |
+| Concern                        | Files                                                                                                                                                |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workflow UI                    | `apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx`                                                                             |
+| Upload selection and transport | `apps/web/app/routes/conversion/components/ConversionSelection.tsx`, `apps/web/app/routes/conversion/api/conversionUploadTransport.ts`               |
+| Authoritative progress         | `apps/web/app/routes/conversion/components/ConversionOperationStatus.tsx`, `apps/web/app/routes/conversion/conversionViewModel.ts`                   |
+| Session and downloads          | `libs/ui/src/lib/session/SessionContext.tsx`, `libs/ui/src/lib/file-download/`                                                                       |
+| API routing                    | `apps/api/src/api/index.ts`, `apps/api/src/routes/`, `apps/api/src/controllers/`                                                                     |
+| Current orchestration          | `apps/api/src/services/conversion-runtime.service.ts`                                                                                                |
+| Conversion                     | `apps/api/src/services/image.service.ts`, `apps/api/src/services/image.config.ts`                                                                    |
+| Persistence                    | `apps/api/src/services/conversion-storage.service.ts`, `storage.paths.ts`, `sessions.service.ts`; `storage.service.ts` retains legacy metadata reads |
+| Lifecycle and limits           | `apps/api/src/main.ts`, `app.ts`, `env.ts`                                                                                                           |
+| Contracts                      | `libs/schemas/src/lib/api/api.ts`, `apiError.ts`                                                                                                     |
+| Server integration             | `apps/api-e2e/src/api/api.spec.ts`                                                                                                                   |
+| Browser tests                  | `apps/web-e2e/src/e2e/`, `apps/web-e2e/src/integration/`, `apps/web-e2e/playwright.config.ts`                                                        |
 
 The retired upload service used `Promise.allSettled`, sealed the entire session,
 and rolled back accepted outputs if the final session write failed. The completed
@@ -125,12 +125,12 @@ Rules:
 
 Keep `POST /api/sessions` and existing authenticated file/meta/ZIP endpoints.
 
-| Method and path | Contract |
-| --- | --- |
-| `POST /api/sessions/:sid/conversions` | Manifest, options, client creation request ID; 201 plus operation snapshot and slots. Same request ID and intent returns existing operation; conflicting intent is 409. |
-| `GET /api/sessions/:sid/conversions/:operationId` | 200 authoritative snapshot, including per-file outcomes and output references; no mutation required to advance work. |
-| `PUT /api/sessions/:sid/conversions/:operationId/files/:fileId` | Exactly one multipart file; acknowledge after durable acceptance, without awaiting conversion. |
-| `POST /api/sessions/:sid/conversions/:operationId/cancel` | Idempotent cancellation command; return current snapshot, including pending cancellation when relevant. |
+| Method and path                                                 | Contract                                                                                                                                                                |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/sessions/:sid/conversions`                           | Manifest, options, client creation request ID; 201 plus operation snapshot and slots. Same request ID and intent returns existing operation; conflicting intent is 409. |
+| `GET /api/sessions/:sid/conversions/:operationId`               | 200 authoritative snapshot, including per-file outcomes and output references; no mutation required to advance work.                                                    |
+| `PUT /api/sessions/:sid/conversions/:operationId/files/:fileId` | Exactly one multipart file; acknowledge after durable acceptance, without awaiting conversion.                                                                          |
+| `POST /api/sessions/:sid/conversions/:operationId/cancel`       | Idempotent cancellation command; return current snapshot, including pending cancellation when relevant.                                                                 |
 
 Authenticate and validate slot identity before multipart parsing where possible;
 recheck state before committing staged bytes. Reject simultaneous uploads to the
@@ -153,17 +153,17 @@ outcomes are data in a successful status GET, not HTTP 207.
 Initial defaults below are implementation targets, configurable and validated
 in `env.ts`. Verify converter-specific options against the installed version.
 
-| Setting | Initial policy |
-| --- | --- |
-| Existing session file/byte/TTL limits | Keep current defaults: 20 files, 20,000,000 bytes/file, 500,000,000 bytes/session, 15 minutes. |
-| Active conversion files | One globally. Raising concurrency is a later measured change. |
-| Active nonterminal operations | Default 3 globally; reject excess creation with a typed capacity error. Count persisted operations during startup. |
-| Simultaneous upload requests | Default 2 globally, with one per slot; browser also sends at most 2. Reject excess admission before parsing bytes. |
-| Upload idle timeout | Default 60 seconds without incoming bytes; abort/clean request staging, leave slot retryable. |
-| Upload total deadline | Default 5 minutes, additionally bounded by session expiry; handle independently of idle timeout. |
-| Per-file conversion deadline | Default 120 seconds from converter invocation; cooperative deadline semantics below. |
-| Pixel and dimension limits | Preserve existing 200,000,000-pixel input limit and 8192 output dimension; centralize configurable limits and test enforcement. |
-| Shutdown grace | Keep an explicit bounded grace period (initially 10 seconds); stop admissions/claims and wait for active work before exit when possible. |
+| Setting                               | Initial policy                                                                                                                           |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Existing session file/byte/TTL limits | Keep current defaults: 20 files, 20,000,000 bytes/file, 500,000,000 bytes/session, 15 minutes.                                           |
+| Active conversion files               | One globally. Raising concurrency is a later measured change.                                                                            |
+| Active nonterminal operations         | Default 3 globally; reject excess creation with a typed capacity error. Count persisted operations during startup.                       |
+| Simultaneous upload requests          | Default 2 globally, with one per slot; browser also sends at most 2. Reject excess admission before parsing bytes.                       |
+| Upload idle timeout                   | Default 60 seconds without incoming bytes; abort/clean request staging, leave slot retryable.                                            |
+| Upload total deadline                 | Default 5 minutes, additionally bounded by session expiry; handle independently of idle timeout.                                         |
+| Per-file conversion deadline          | Default 120 seconds from converter invocation; cooperative deadline semantics below.                                                     |
+| Pixel and dimension limits            | Preserve existing 200,000,000-pixel input limit and 8192 output dimension; centralize configurable limits and test enforcement.          |
+| Shutdown grace                        | Keep an explicit bounded grace period (initially 10 seconds); stop admissions/claims and wait for active work before exit when possible. |
 
 These limits bound admitted work, not exact RAM consumption, CPU percentage, or
 network bytes per second. Do not add traffic shaping or infer unlimited
@@ -278,8 +278,7 @@ The user-visible changes are:
 - Retryable upload and polling problems have distinct presentation from backend
   conversion failures. No separate start-processing button is added.
 
-The default sequence remains backend/contracts first and UI integration in phase
-5. If a requested phase includes an early UI slice, build it in this new component
+The default sequence remains backend/contracts first and UI integration in phase 5. If a requested phase includes an early UI slice, build it in this new component
 against shared snapshot fixtures or available endpoints, with component tests.
 Do not turn a fixture/demo into a second frontend workflow state machine, wire
 incomplete behavior into the active route, or expand a backend-only phase into UI
@@ -444,7 +443,7 @@ Transport contract and implementation details:
 1. Obtain a session with the existing session API/context. Freeze the selected
    batch intent on submit, generate one creation `requestId`, and retain it for
    retries. POST `{ requestId, options: { outputMime }, files: [{ clientId, name,
-   sizeBytes }] }`. Output MIME is the only public conversion option currently.
+sizeBytes }] }`. Output MIME is the only public conversion option currently.
    Parse the direct response with `ApiConversionOperationSchema`; there is no
    outer `operation` property. Map local files to server slots by `clientId`, not
    display name or request completion order.
@@ -477,7 +476,7 @@ Transport contract and implementation details:
 7. Render completed result rows from `file.output.meta` and server URLs, even
    without local File objects. Downloads require authenticated fetch/blob
    handling rather than unauthenticated links. ZIP requests use `{ ids,
-   archiveName? }` with completed IDs only. Respect session expiry and revoke
+archiveName? }` with completed IDs only. Respect session expiry and revoke
    preview/download object URLs. Do not expose credentials in URLs or persist
    them for reload recovery.
 8. A session can own only one operation. A deliberate new batch must use a fresh
@@ -650,116 +649,115 @@ Suggested continuation prompt:
   upload components. Updated phases 5 and 6 to respect that boundary. All phases
   remain pending; documentation only.
 - 2026-09-08: Completed phase 1 (contracts and transitions).
-  - Added `libs/schemas/src/lib/api/conversions.ts` and its public exports:
-    strict creation intent, server slot IDs, discriminated file states, operation
-    snapshots, per-file errors, stop reasons, and counts. Extended the existing
-    API error union without changing legacy contracts.
-  - Added `apps/api/src/services/conversions.service.ts`: pure creation,
-    upload acceptance/permanent rejection, file start/finish, stop requests,
-    derived counts, and explicit public snapshot projection. Inputs are not
-    mutated. Backend processing defaults and effective session limits are
-    copied into application state; snapshots omit these internal fields.
-  - Readiness resolves automatically in upload transitions. Cancellation keeps
-    active work nonterminal and preserves its eventual success. Timeout/expiry
-    rejects late uncommitted success only after invocation settlement. Accepted
-    upload acknowledgement is replayable even after ordinary batch completion;
-    stopped/expired operations still reject uploads. Processing status remains
-    stable between files once an operation has started.
-  - Added 47 tests (15 schema, 32 service) covering manifest limits/IDs, byte
-    validation, association, readiness, outcomes, immutable transitions,
-    cancellation, timeout/expiry, snapshots, and future multi-file processing
-    representation. Existing schema/API tests remain passing.
-  - Restored existing locked dependencies with
-    `npm ci --cache /workspaces/image-web-convert/.npm-cache --no-audit --no-fund`;
-    moved the temporary npm cache into ignored `node_modules/.npm-cache` after
-    installation. No dependency manifests or lockfiles changed.
-  - Initial validation:
-    `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false ./node_modules/.bin/nx run-many -t test typecheck -p @image-web-convert/schemas @image-web-convert/api`.
-    Tests passed; API typechecking exposed narrowing errors in the new throwing
-    helper. Fixed the helper declaration. Nx also emitted an unconnected-cloud
-    warning, so subsequent checks explicitly disabled cloud usage.
-  - Intermediate validation:
-    `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t typecheck lint -p @image-web-convert/schemas @image-web-convert/api`
-    passed after that fix.
-  - Final validation:
-    `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck lint -p @image-web-convert/schemas @image-web-convert/api`.
-    Passed: 25 schema tests, 120 API tests, both project typechecks/lints, and
-    dependent schema/library builds. Lint retained two existing
-    `no-explicit-any` warnings in `files.service.spec.ts` (lines 235 and 272).
-    Changed TypeScript files were formatted with the installed Prettier.
-    `git diff --check` passed; final review found no route, UI, dependency, or
-    unrelated runtime edits.
-  - No scope deviation: persistence, locking, ID generation, request idempotency
-    coordination, worker scheduling, timers, and routes remain future phases.
-    The transition functions accept caller-supplied IDs/time and do no I/O.
-  - Next action: phase 2, durable operation/input storage and per-file commit
-    reconciliation. Persist transition results before scheduling work or
-    acknowledging uploads; add internal input references in that phase.
+    - Added `libs/schemas/src/lib/api/conversions.ts` and its public exports:
+      strict creation intent, server slot IDs, discriminated file states, operation
+      snapshots, per-file errors, stop reasons, and counts. Extended the existing
+      API error union without changing legacy contracts.
+    - Added `apps/api/src/services/conversions.service.ts`: pure creation,
+      upload acceptance/permanent rejection, file start/finish, stop requests,
+      derived counts, and explicit public snapshot projection. Inputs are not
+      mutated. Backend processing defaults and effective session limits are
+      copied into application state; snapshots omit these internal fields.
+    - Readiness resolves automatically in upload transitions. Cancellation keeps
+      active work nonterminal and preserves its eventual success. Timeout/expiry
+      rejects late uncommitted success only after invocation settlement. Accepted
+      upload acknowledgement is replayable even after ordinary batch completion;
+      stopped/expired operations still reject uploads. Processing status remains
+      stable between files once an operation has started.
+    - Added 47 tests (15 schema, 32 service) covering manifest limits/IDs, byte
+      validation, association, readiness, outcomes, immutable transitions,
+      cancellation, timeout/expiry, snapshots, and future multi-file processing
+      representation. Existing schema/API tests remain passing.
+    - Restored existing locked dependencies with
+      `npm ci --cache /workspaces/image-web-convert/.npm-cache --no-audit --no-fund`;
+      moved the temporary npm cache into ignored `node_modules/.npm-cache` after
+      installation. No dependency manifests or lockfiles changed.
+    - Initial validation:
+      `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false ./node_modules/.bin/nx run-many -t test typecheck -p @image-web-convert/schemas @image-web-convert/api`.
+      Tests passed; API typechecking exposed narrowing errors in the new throwing
+      helper. Fixed the helper declaration. Nx also emitted an unconnected-cloud
+      warning, so subsequent checks explicitly disabled cloud usage.
+    - Intermediate validation:
+      `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t typecheck lint -p @image-web-convert/schemas @image-web-convert/api`
+      passed after that fix.
+    - Final validation:
+      `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck lint -p @image-web-convert/schemas @image-web-convert/api`.
+      Passed: 25 schema tests, 120 API tests, both project typechecks/lints, and
+      dependent schema/library builds. Lint retained two existing
+      `no-explicit-any` warnings in `files.service.spec.ts` (lines 235 and 272).
+      Changed TypeScript files were formatted with the installed Prettier.
+      `git diff --check` passed; final review found no route, UI, dependency, or
+      unrelated runtime edits.
+    - No scope deviation: persistence, locking, ID generation, request idempotency
+      coordination, worker scheduling, timers, and routes remain future phases.
+      The transition functions accept caller-supplied IDs/time and do no I/O.
+    - Next action: phase 2, durable operation/input storage and per-file commit
+      reconciliation. Persist transition results before scheduling work or
+      acknowledging uploads; add internal input references in that phase.
 - 2026-09-09: Completed phase 2 (durable storage and per-file commits), after
   committing phase 1 locally as `3a4e2d5` at the user's request.
-  - Added `conversion-storage.schema.ts` and `conversion-storage.service.ts`
-    under `apps/api/src/services/`, and operation-owned paths in
-    `storage.paths.ts`. The store exposes create/read/update, upload acceptance,
-    output/failure commits, verified completed-output lookup, and explicit
-    startup recovery. Records are validated on read/write; malformed records and
-    storage I/O failures are distinct from operation-not-found errors.
-  - Input staging copies into the destination filesystem, validates actual
-    bytes, records a fingerprint, and atomically publishes acceptance. Request
-    cleanup cannot delete accepted input. Per-session mutation locks are shared
-    across store instances in one process; per-file claims reject simultaneous
-    duplicate upload/output writes. Large input copies and output staging run
-    outside the mutation lock, with lifecycle rechecks before publication.
-  - Snapshots and JSON artifacts use temporary-write, file sync, rename, and
-    directory sync. Per-file commit receipts resolve the crash boundary between
-    output/metadata publication and operation-state persistence. A failed later
-    commit never rolls back earlier successes. Snapshot failures after receipt
-    publication block further mutations until recovery, avoiding accidental
-    rollback or contradictory cancellation of an already published result.
-  - Recovery verifies committed artifacts, restores complete pending commits at
-    their original completion time, marks interrupted conversions failed, keeps
-    valid uploaded siblings, handles missing/corrupt input, honors stop/expiry,
-    and removes abandoned staging/partial artifacts after durable settlement.
-    Added the application transition `failUploadedConversionFile` so missing
-    input can fail before conversion without inventing a processing timestamp.
-  - During resumed review, fixed a receipt/snapshot publication race: initial
-    reads used for mutations now share the publication lock before checking for
-    interrupted commits. An ordinary in-flight publication is not a crash.
-  - Added 36 real-filesystem integration tests, including a real Sharp
-    conversion, write failures at output/metadata/receipt/snapshot boundaries,
-    input cleanup failure, cross-filesystem staging strategy, concurrent final
-    uploads, upload replay during publication, cancellation/timeout races,
-    restart reconciliation, corrupted artifacts, and preservation of successes.
-    Tests use isolated temporary directories inside the repository.
-  - Validation passed:
-    `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck lint -p @image-web-convert/api @image-web-convert/schemas`.
-    156 API tests and 25 schema tests passed; typechecking/lint passed with only
-    the same two pre-existing `no-explicit-any` warnings in
-    `files.service.spec.ts`. The 35-test initial storage suite also passed before
-    the final race regression was added.
-  - A focused rerun initially used unsupported Vitest option `--testFile`
-    through Nx and failed at CLI parsing (no tests ran). Corrected command:
-    `./node_modules/.bin/vitest run --config apps/api/vite.config.ts conversion-storage.service.spec.ts`.
-    All 36 storage tests passed after the final test synchronization adjustment.
-  - Existing HTTP flow validation passed:
-    `TMPDIR=/workspaces/image-web-convert/apps/api/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`.
-    API production build and all 3 existing server E2E tests passed. TMPDIR kept
-    integration-test files within the workspace. Changed TypeScript files were
-    formatted; final diff/whitespace review passed.
-  - Scope/implementation detail: a small per-file receipt was added to make
-    multi-file publication recoverable without a database. Directory fsync is
-    exercised on the current Linux filesystem; this is not a guarantee for
-    every OS/filesystem. The original synchronous services/routes/UI and
-    dependency manifests remain unchanged.
-  - Next action: phase 3, scheduler/resource limits/lifecycle wiring. Call
-    `recoverAfterRestart` only before accepting requests or running converters;
-    recovery is not safe against live conversion work. The startup coordinator
-    must catch/report or quarantine invalid sessions independently, discover
-    pending operations, and schedule remaining uploaded files (including a
-    recovered `processing` operation with no active invocation). No scheduler,
-    automatic startup scan, periodic expiry sweeper, or new endpoints are wired
-    yet. Phase 4 must use the completed-output gate for new-operation downloads;
-    preserve legacy sealed-session download behavior until that cutover.
-
+    - Added `conversion-storage.schema.ts` and `conversion-storage.service.ts`
+      under `apps/api/src/services/`, and operation-owned paths in
+      `storage.paths.ts`. The store exposes create/read/update, upload acceptance,
+      output/failure commits, verified completed-output lookup, and explicit
+      startup recovery. Records are validated on read/write; malformed records and
+      storage I/O failures are distinct from operation-not-found errors.
+    - Input staging copies into the destination filesystem, validates actual
+      bytes, records a fingerprint, and atomically publishes acceptance. Request
+      cleanup cannot delete accepted input. Per-session mutation locks are shared
+      across store instances in one process; per-file claims reject simultaneous
+      duplicate upload/output writes. Large input copies and output staging run
+      outside the mutation lock, with lifecycle rechecks before publication.
+    - Snapshots and JSON artifacts use temporary-write, file sync, rename, and
+      directory sync. Per-file commit receipts resolve the crash boundary between
+      output/metadata publication and operation-state persistence. A failed later
+      commit never rolls back earlier successes. Snapshot failures after receipt
+      publication block further mutations until recovery, avoiding accidental
+      rollback or contradictory cancellation of an already published result.
+    - Recovery verifies committed artifacts, restores complete pending commits at
+      their original completion time, marks interrupted conversions failed, keeps
+      valid uploaded siblings, handles missing/corrupt input, honors stop/expiry,
+      and removes abandoned staging/partial artifacts after durable settlement.
+      Added the application transition `failUploadedConversionFile` so missing
+      input can fail before conversion without inventing a processing timestamp.
+    - During resumed review, fixed a receipt/snapshot publication race: initial
+      reads used for mutations now share the publication lock before checking for
+      interrupted commits. An ordinary in-flight publication is not a crash.
+    - Added 36 real-filesystem integration tests, including a real Sharp
+      conversion, write failures at output/metadata/receipt/snapshot boundaries,
+      input cleanup failure, cross-filesystem staging strategy, concurrent final
+      uploads, upload replay during publication, cancellation/timeout races,
+      restart reconciliation, corrupted artifacts, and preservation of successes.
+      Tests use isolated temporary directories inside the repository.
+    - Validation passed:
+      `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck lint -p @image-web-convert/api @image-web-convert/schemas`.
+      156 API tests and 25 schema tests passed; typechecking/lint passed with only
+      the same two pre-existing `no-explicit-any` warnings in
+      `files.service.spec.ts`. The 35-test initial storage suite also passed before
+      the final race regression was added.
+    - A focused rerun initially used unsupported Vitest option `--testFile`
+      through Nx and failed at CLI parsing (no tests ran). Corrected command:
+      `./node_modules/.bin/vitest run --config apps/api/vite.config.ts conversion-storage.service.spec.ts`.
+      All 36 storage tests passed after the final test synchronization adjustment.
+    - Existing HTTP flow validation passed:
+      `TMPDIR=/workspaces/image-web-convert/apps/api/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`.
+      API production build and all 3 existing server E2E tests passed. TMPDIR kept
+      integration-test files within the workspace. Changed TypeScript files were
+      formatted; final diff/whitespace review passed.
+    - Scope/implementation detail: a small per-file receipt was added to make
+      multi-file publication recoverable without a database. Directory fsync is
+      exercised on the current Linux filesystem; this is not a guarantee for
+      every OS/filesystem. The original synchronous services/routes/UI and
+      dependency manifests remain unchanged.
+    - Next action: phase 3, scheduler/resource limits/lifecycle wiring. Call
+      `recoverAfterRestart` only before accepting requests or running converters;
+      recovery is not safe against live conversion work. The startup coordinator
+      must catch/report or quarantine invalid sessions independently, discover
+      pending operations, and schedule remaining uploaded files (including a
+      recovered `processing` operation with no active invocation). No scheduler,
+      automatic startup scan, periodic expiry sweeper, or new endpoints are wired
+      yet. Phase 4 must use the completed-output gate for new-operation downloads;
+      preserve legacy sealed-session download behavior until that cutover.
 
 ### Phase 3 completion — 2026-09-09
 
@@ -801,13 +799,13 @@ Suggested continuation prompt:
   between nominal 10 ms timer samples were 10/1238/14 ms respectively. These are
   observations, not performance guarantees; HEIC noticeably delays HTTP/timers.
 - Validation passed:
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test lint -p @image-web-convert/api`
-    — 191 tests, including 24 runtime tests and a real-encoder smoke test;
-    lint has only the two existing `files.service.spec.ts` warnings.
-  - `./node_modules/.bin/tsc --build apps/api/tsconfig.json --emitDeclarationOnly --force`
-    — production and test TypeScript checked without relying on Nx cache.
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true TMPDIR=/workspaces/image-web-convert/tmp ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
-    — production API build and four HTTP tests, including readiness gating.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test lint -p @image-web-convert/api`
+      — 191 tests, including 24 runtime tests and a real-encoder smoke test;
+      lint has only the two existing `files.service.spec.ts` warnings.
+    - `./node_modules/.bin/tsc --build apps/api/tsconfig.json --emitDeclarationOnly --force`
+      — production and test TypeScript checked without relying on Nx cache.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true TMPDIR=/workspaces/image-web-convert/tmp ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
+      — production API build and four HTTP tests, including readiness gating.
 - Next action: phase 4. Wire authenticated commands to runtime methods and shared
   snapshots. `createOperation` currently returns a stored record; implement
   HTTP creation idempotency before admission for retries. Acquire `beginUpload`
@@ -819,7 +817,6 @@ Suggested continuation prompt:
   Existing legacy upload/download routes and UI remain unchanged: their old
   concurrency is not governed by this scheduler during migration. No new HTTP
   endpoints or frontend workflow were added in phase 3.
-
 
 ### Phase 4 completion — 2026-09-09
 
@@ -834,8 +831,7 @@ Suggested continuation prompt:
 - Creation uses the shared manifest contract (`requestId`, `options.outputMime`,
   ordered `files` with `clientId`, `name`, `sizeBytes`). Server-generated slot IDs
   appear in the snapshot. A matching request ID plus normalized manifest/options
-  returns the existing operation before capacity checks; conflicting intent is
-  409. A simultaneous creation/legacy claim can return retryable 409
+  returns the existing operation before capacity checks; conflicting intent is 409. A simultaneous creation/legacy claim can return retryable 409
   `upload_in_progress`. The common local session claim plus durable operation
   detection prevents legacy processing from sharing an operation's session.
 - Upload accepts exactly one multipart file (any field name), with no additional
@@ -873,31 +869,29 @@ Suggested continuation prompt:
   close so expiry cleanup cannot remove files during downloads. Sessions without
   an operation continue through the legacy sealed-session controllers.
 - Validation passed:
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx test @image-web-convert/api`
-    — 213 tests, including 22 new real-HTTP tests with injected converters for
-    deterministic races, retries, limits, cancellation, partial downloads/ZIPs,
-    polling budget, failed storage, abort cleanup, failed ZIP stream closure, and
-    startup request cleanup.
-  - `./node_modules/.bin/tsc --build apps/api/tsconfig.json --emitDeclarationOnly --force`
-    — production and test TypeScript, without relying on Nx cache.
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx lint @image-web-convert/api`
-    — no errors; two existing warnings in `files.service.spec.ts`. Run lint after
-    tests: running both simultaneously can race ESLint's scan of temporary test
-    directories (observed ENOENT; sequential validation passes).
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true TMPDIR=/workspaces/image-web-convert/tmp ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
-    — production API build and all four existing HTTP lifecycle tests pass.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx test @image-web-convert/api`
+      — 213 tests, including 22 new real-HTTP tests with injected converters for
+      deterministic races, retries, limits, cancellation, partial downloads/ZIPs,
+      polling budget, failed storage, abort cleanup, failed ZIP stream closure, and
+      startup request cleanup.
+    - `./node_modules/.bin/tsc --build apps/api/tsconfig.json --emitDeclarationOnly --force`
+      — production and test TypeScript, without relying on Nx cache.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx lint @image-web-convert/api`
+      — no errors; two existing warnings in `files.service.spec.ts`. Run lint after
+      tests: running both simultaneously can race ESLint's scan of temporary test
+      directories (observed ENOENT; sequential validation passes).
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true TMPDIR=/workspaces/image-web-convert/tmp ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
+      — production API build and all four existing HTTP lifecycle tests pass.
 - Next action: phase 5, the new operation UI and dedicated transport/polling hooks.
   Reuse the contracts/URLs above, send at most two uploads, render backend
   snapshots and real network byte progress, and preserve the existing UI
   components as stipulated. No frontend files or dependencies changed in phase 4.
-
 
 - 2026-09-09 handoff review: Expanded phase 5 with exact API/transport contracts,
   source anchors, session/retry/revision rules, cutover boundaries, and validation
   expectations for a fresh session. Corrected the earlier polling-budget example
   to the implemented 240 requests/minute/IP. Documentation only in this handoff;
   no UI implementation or additional test execution.
-
 
 ### Phase 5 completion — 2026-09-16
 
@@ -973,20 +967,20 @@ Suggested continuation prompt:
   before hydration; the production readiness guard fixed it, and subsequent runs
   passed. No failed checks were hidden or unrelated code changed to satisfy them.
 - Final validation passed:
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck -p @image-web-convert/web @image-web-convert/ui`
-    — 55 web and 49 UI tests; both project typechecks and dependencies passed.
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t lint -p @image-web-convert/web @image-web-convert/ui @image-web-convert/web-e2e`
-    — no errors or new warnings. Existing warnings: `root.tsx` explicit any,
-    and two unnecessary escapes in legacy `FileDownload.tsx`.
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx build @image-web-convert/web`
-    — client/server builds passed. Existing landing-page sourcemap/directive
-    diagnostics and tool environment warnings remain.
-  - `PLAYWRIGHT_HTML_OPEN=never PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/playwright test --config apps/web-e2e/playwright.config.ts --project chromium --reporter line`
-    — all five mocked browser tests passed.
-  - `./node_modules/.bin/tsc --build apps/web-e2e/tsconfig.json --emitDeclarationOnly`
-    — E2E fixture/config typechecking passed.
-  - Changed code was formatted with installed Prettier; final diff and
-    `git diff --check` passed, with no backend or legacy workflow edits.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck -p @image-web-convert/web @image-web-convert/ui`
+      — 55 web and 49 UI tests; both project typechecks and dependencies passed.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t lint -p @image-web-convert/web @image-web-convert/ui @image-web-convert/web-e2e`
+      — no errors or new warnings. Existing warnings: `root.tsx` explicit any,
+      and two unnecessary escapes in legacy `FileDownload.tsx`.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx build @image-web-convert/web`
+      — client/server builds passed. Existing landing-page sourcemap/directive
+      diagnostics and tool environment warnings remain.
+    - `PLAYWRIGHT_HTML_OPEN=never PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/playwright test --config apps/web-e2e/playwright.config.ts --project chromium --reporter line`
+      — all five mocked browser tests passed.
+    - `./node_modules/.bin/tsc --build apps/web-e2e/tsconfig.json --emitDeclarationOnly`
+      — E2E fixture/config typechecking passed.
+    - Changed code was formatted with installed Prettier; final diff and
+      `git diff --check` passed, with no backend or legacy workflow edits.
 - Remaining work: phase 6 real-browser/API lifecycle verification and deliberate
   legacy retirement. No real-backend browser tests or legacy endpoint removal were
   undertaken in phase 5. Firefox/WebKit browser execution remains unverified in
@@ -1009,14 +1003,14 @@ Suggested continuation prompt:
   accidental idle timeout cannot satisfy it. Teardown checks `{ drained: true }`
   before removing and reusing storage instead of ignoring incomplete shutdown.
 - Validation passed:
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx test @image-web-convert/api`
-    — all 213 tests, including all 22 HTTP tests.
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx typecheck @image-web-convert/api`
-    — passed.
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx lint @image-web-convert/api`
-    — passed with the two existing `files.service.spec.ts` warnings.
-  - Prettier and `git diff --check` passed. The CI runner itself has not been
-    rerun locally; the next verification is the normal GitHub Actions run.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx test @image-web-convert/api`
+      — all 213 tests, including all 22 HTTP tests.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx typecheck @image-web-convert/api`
+      — passed.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx lint @image-web-convert/api`
+      — passed with the two existing `files.service.spec.ts` warnings.
+    - Prettier and `git diff --check` passed. The CI runner itself has not been
+      rerun locally; the next verification is the normal GitHub Actions run.
 
 ### Phase 5.5 / 6 planning review — 2026-09-22
 
@@ -1077,35 +1071,35 @@ Suggested continuation prompt:
   `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright ./node_modules/.bin/playwright install chromium firefox webkit`.
   No production dependencies, lockfile, or OS packages changed.
 - Validation passed:
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t build -p @image-web-convert/web @image-web-convert/api`
-    and subsequent web rebuilds — both applications and prerequisite libraries
-    build. The existing landing sourcemap/UI directive diagnostics remain.
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck -p @image-web-convert/web @image-web-convert/ui @image-web-convert/web-e2e`
-    — 55 web and 49 UI tests, plus selected/dependent typechecks.
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test -p @image-web-convert/api @image-web-convert/schemas @image-web-convert/node-shared @image-web-convert/observability`
-    — 213 API, 25 schemas, 9 node-shared, and 1 observability tests. Together with
-    web/UI this is 352 passing unit/integration tests.
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t lint typecheck`
-    — all eight projects pass; only existing warnings in API files-service tests,
-    legacy FileDownload, and web root remain. No new lint warnings.
-  - `TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
-    — all four existing API E2E tests pass.
-  - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/web-e2e -- --project=chromium`
-    — real browser/API smoke passes (7.9 seconds including harness).
-  - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t e2e browser-integration -p @image-web-convert/web-e2e -- --project=chromium`
-    — repeated real smoke and all five mocked browser tests pass; no stale storage
-    remains. The Nx `--` separator is required to forward Playwright's `--project`.
-  - Changed code/configuration and README pass Prettier checks; final diff review
-    and `git diff --check` pass.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t build -p @image-web-convert/web @image-web-convert/api`
+      and subsequent web rebuilds — both applications and prerequisite libraries
+      build. The existing landing sourcemap/UI directive diagnostics remain.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test typecheck -p @image-web-convert/web @image-web-convert/ui @image-web-convert/web-e2e`
+      — 55 web and 49 UI tests, plus selected/dependent typechecks.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t test -p @image-web-convert/api @image-web-convert/schemas @image-web-convert/node-shared @image-web-convert/observability`
+      — 213 API, 25 schemas, 9 node-shared, and 1 observability tests. Together with
+      web/UI this is 352 passing unit/integration tests.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t lint typecheck`
+      — all eight projects pass; only existing warnings in API files-service tests,
+      legacy FileDownload, and web root remain. No new lint warnings.
+    - `TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
+      — all four existing API E2E tests pass.
+    - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/web-e2e -- --project=chromium`
+      — real browser/API smoke passes (7.9 seconds including harness).
+    - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t e2e browser-integration -p @image-web-convert/web-e2e -- --project=chromium`
+      — repeated real smoke and all five mocked browser tests pass; no stale storage
+      remains. The Nx `--` separator is required to forward Playwright's `--project`.
+    - Changed code/configuration and README pass Prettier checks; final diff review
+      and `git diff --check` pass.
 - Explicit execution limitations:
-  - `CI=true PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/web-e2e`
-    — final full-matrix attempt: Chromium passes, Firefox and WebKit fail at
-    browser launch because required native libraries are absent. The command
-    correctly exits nonzero; no silent skips or reduced CI matrix. This is local
-    execution with CI settings, not a hosted GitHub Actions run.
-  - Hosted CI has not been run or observed. The existing workflow already installs
-    browser system dependencies; its next normal run must confirm the complete
-    matrix and artifact upload. No remote writes were performed.
+    - `CI=true PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/web-e2e`
+      — final full-matrix attempt: Chromium passes, Firefox and WebKit fail at
+      browser launch because required native libraries are absent. The command
+      correctly exits nonzero; no silent skips or reduced CI matrix. This is local
+      execution with CI settings, not a hosted GitHub Actions run.
+    - Hosted CI has not been run or observed. The existing workflow already installs
+      browser system dependencies; its next normal run must confirm the complete
+      matrix and artifact upload. No remote writes were performed.
 - Phase 5.5 is complete under its local Chromium/configured-CI gate. Phase 6 has
   not started: no legacy upload retirement, new lifecycle scenarios, or broad
   lifecycle README rewrite. Wait for explicit user approval before phase 6.
@@ -1174,30 +1168,30 @@ Suggested continuation prompt:
   removed. A repeat browser run revealed Chromium's automatic PUT resend behavior;
   the deterministic persistent transport fault above fixed the test assumption.
 - Validation passed:
-  - `TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true npm test`
-    — 360 tests: API 213, web 55, UI 49, schemas 25, node-shared 9, observability 1,
-    API process integration 8. Existing real PNG/HEIC/AVIF runtime smoke coverage
-    remains included. No legacy shared component tests were removed.
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t lint typecheck`
-    — all eight projects pass, no new warnings. Existing warnings remain in
-    files-service tests, legacy FileDownload, and web root.
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true npm run build`
-    — all six build targets pass; Nx reused validated build artifacts. Earlier
-    dependency builds also executed successfully; existing sourcemap/directive
-    and tool-environment diagnostics remain.
-  - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
-    — eight process tests pass, including the updated target's prerequisite build.
-  - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/web-e2e -- --project=chromium`
-    — all six real browser scenarios pass with the final interruption handling.
-  - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t e2e browser-integration -p @image-web-convert/web-e2e -- --project=chromium`
-    — all five mocked browser-integration checks passed; this earlier combined
-    run exposed the interruption-test assumption, corrected and rerun as above.
-  - Changed code/configuration and README pass Prettier; CI YAML parses, failure
-    artifact paths include both suites, and final diff/whitespace checks pass.
-  - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp ./node_modules/.bin/playwright test --config apps/web-e2e/playwright.config.ts --project chromium --grep 'interrupted upload' --repeat-each=3 --output apps/web-e2e/test-output/interruption-repeat --reporter line`
-    — three additional interruption/retry executions pass in 22 seconds, without
-    Playwright retries. Both `tmp/browser-tests` and `tmp/api-lifecycle` are empty
-    after final success/failure runs, confirming owned-storage cleanup.
+    - `TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true npm test`
+      — 360 tests: API 213, web 55, UI 49, schemas 25, node-shared 9, observability 1,
+      API process integration 8. Existing real PNG/HEIC/AVIF runtime smoke coverage
+      remains included. No legacy shared component tests were removed.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t lint typecheck`
+      — all eight projects pass, no new warnings. Existing warnings remain in
+      files-service tests, legacy FileDownload, and web root.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true npm run build`
+      — all six build targets pass; Nx reused validated build artifacts. Earlier
+      dependency builds also executed successfully; existing sourcemap/directive
+      and tool-environment diagnostics remain.
+    - `NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/api-e2e`
+      — eight process tests pass, including the updated target's prerequisite build.
+    - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx e2e @image-web-convert/web-e2e -- --project=chromium`
+      — all six real browser scenarios pass with the final interruption handling.
+    - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t e2e browser-integration -p @image-web-convert/web-e2e -- --project=chromium`
+      — all five mocked browser-integration checks passed; this earlier combined
+      run exposed the interruption-test assumption, corrected and rerun as above.
+    - Changed code/configuration and README pass Prettier; CI YAML parses, failure
+      artifact paths include both suites, and final diff/whitespace checks pass.
+    - `PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp ./node_modules/.bin/playwright test --config apps/web-e2e/playwright.config.ts --project chromium --grep 'interrupted upload' --repeat-each=3 --output apps/web-e2e/test-output/interruption-repeat --reporter line`
+      — three additional interruption/retry executions pass in 22 seconds, without
+      Playwright retries. Both `tmp/browser-tests` and `tmp/api-lifecycle` are empty
+      after final success/failure runs, confirming owned-storage cleanup.
 - Full-matrix limitation, explicitly not a passing full-browser run:
   `CI=true PLAYWRIGHT_BROWSERS_PATH=/workspaces/image-web-convert/node_modules/.cache/ms-playwright TMPDIR=/workspaces/image-web-convert/tmp NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false NX_NO_CLOUD=true ./node_modules/.bin/nx run-many -t e2e -p @image-web-convert/api-e2e @image-web-convert/web-e2e`
   passes all eight API tests and all six Chromium cases. All twelve Firefox/WebKit

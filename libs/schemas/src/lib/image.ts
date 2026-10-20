@@ -31,8 +31,7 @@ export function isOutputMimeType(x: string): x is OutputMimeType {
 
 export const MIME_TO_EXT: Record<
     (
-        | typeof ALLOWED_IMAGE_MIME_CONST
-        | typeof ALLOWED_OUTPUT_MIME_CONST
+        typeof ALLOWED_IMAGE_MIME_CONST | typeof ALLOWED_OUTPUT_MIME_CONST
     )[number],
     readonly string[]
 > = {

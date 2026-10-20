@@ -9,9 +9,8 @@ import {
     const telemetry = env.ENABLE_OTEL ? await initTelemetry() : undefined;
     const http = await import('node:http');
     const { createApp } = await import('./app.js');
-    const { createConversionRuntime } = await import(
-        './services/conversion-runtime.service.js'
-    );
+    const { createConversionRuntime } =
+        await import('./services/conversion-runtime.service.js');
 
     async function main() {
         let shutdownOnFault: () => void = () => undefined;
@@ -25,9 +24,8 @@ import {
         const server = http.createServer(app);
 
         // Recovery and scheduler ownership must precede accepting requests.
-        const { recoverConversionRequestStaging } = await import(
-            './controllers/conversion-upload.http.js'
-        );
+        const { recoverConversionRequestStaging } =
+            await import('./controllers/conversion-upload.http.js');
         const { UPLOAD_TMP_DIR } = await import('./services/storage.paths.js');
         await recoverConversionRequestStaging(UPLOAD_TMP_DIR);
         await conversions.start();

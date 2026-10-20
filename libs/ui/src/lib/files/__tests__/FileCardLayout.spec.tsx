@@ -6,7 +6,7 @@ describe('FileCardLayout', () => {
         render(
             <FileCardLayout>
                 <span>child</span>
-            </FileCardLayout>
+            </FileCardLayout>,
         );
         const box = screen.getByText('child').closest('div');
         expect(box).toBeInTheDocument();
@@ -24,7 +24,7 @@ describe('FileCardLayout', () => {
         render(
             <FileCardLayout className="extra-class">
                 <span>child</span>
-            </FileCardLayout>
+            </FileCardLayout>,
         );
         const box = screen.getByText('child').closest('div');
         if (!box) return;
@@ -36,7 +36,7 @@ describe('FileCardLayout', () => {
         render(
             <FileCardLayout id="card-1" title="card">
                 <span>child</span>
-            </FileCardLayout>
+            </FileCardLayout>,
         );
         const box = screen.getByTitle('card');
         expect(box).toHaveAttribute('id', 'card-1');

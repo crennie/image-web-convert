@@ -1,21 +1,21 @@
-import sharp from "sharp";
-import { fileTypeFromFile } from "file-type";
-import { readFile } from "node:fs/promises";
-import heicConvert from "heic-convert";
-import { processImageToMimeType } from "../image.service";
+import sharp from 'sharp';
+import { fileTypeFromFile } from 'file-type';
+import { readFile } from 'node:fs/promises';
+import heicConvert from 'heic-convert';
+import { processImageToMimeType } from '../image.service';
 
 // ---- Module mocks ----
-vi.mock("sharp", () => {
+vi.mock('sharp', () => {
     const sharpMock = vi.fn();
     return { default: sharpMock };
 });
 
-vi.mock("file-type", () => ({
+vi.mock('file-type', () => ({
     fileTypeFromFile: vi.fn(),
 }));
 
-vi.mock("node:fs/promises", async (importOriginal) => {
-    const actual = await importOriginal<typeof import("node:fs/promises")>();
+vi.mock('node:fs/promises', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('node:fs/promises')>();
     // Provide BOTH shapes, wired to the SAME spy
     const readFileSpy = vi.fn();
     return {
@@ -28,24 +28,30 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     };
 });
 
-vi.mock("heic-convert", () => ({
+vi.mock('heic-convert', () => ({
     default: vi.fn(),
 }));
 
 // Your config + schemas — provide deterministic defaults for tests
-vi.mock("../image.config", () => ({
+vi.mock('../image.config', () => ({
     DEFAULT_IMG_OPTS: {
         limitInputPixels: 268435456, // 16K x 16K
         maxDimension: 4096,
         quality: 80,
         effort: 4,
-        normalizeColorSpace: "srgb",
-        animatedPolicy: "reject",
+        normalizeColorSpace: 'srgb',
+        animatedPolicy: 'reject',
     },
 }));
 
-vi.mock("@image-web-convert/schemas", () => ({
-    ALLOWED_IMAGE_MIME: new Set(["image/png", "image/jpeg", "image/heic", "image/heif", "image/gif"]),
+vi.mock('@image-web-convert/schemas', () => ({
+    ALLOWED_IMAGE_MIME: new Set([
+        'image/png',
+        'image/jpeg',
+        'image/heic',
+        'image/heif',
+        'image/gif',
+    ]),
 }));
 
 const mockedSharp = vi.mocked(sharp);
@@ -55,7 +61,6 @@ const mockedHeicConvert = vi.mocked(heicConvert);
 
 // ---- helpers to build chainable sharp mocks ----
 function makeSharpChain() {
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const chain: any = {};
     chain.rotate = vi.fn(() => chain);
@@ -69,7 +74,11 @@ function makeSharpChain() {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function setupSharp(meta: any, bufferResult: { data: Buffer; info: { width: number; height: number } }, preflight = false) {
+function setupSharp(
+    meta: any,
+    bufferResult: { data: Buffer; info: { width: number; height: number } },
+    preflight = false,
+) {
     const metaChain = makeSharpChain();
     metaChain.metadata.mockResolvedValue(meta);
 
@@ -86,7 +95,7 @@ function setupSharp(meta: any, bufferResult: { data: Buffer; info: { width: numb
     return { metaChain, pipeChain };
 }
 
-describe("processImageToMimeType (unit)", () => {
+describe('processImageToMimeType (unit)', () => {
     beforeEach(() => {
         vi.resetAllMocks();
     });
@@ -94,101 +103,125 @@ describe("processImageToMimeType (unit)", () => {
         vi.restoreAllMocks();
     });
 
-    it("throws for unsupported or unrecognized image type (no file-type result)", async () => {
+    it('throws for unsupported or unrecognized image type (no file-type result)', async () => {
         mockedFT.mockResolvedValueOnce(undefined);
 
         await expect(
-            processImageToMimeType({ outputMime: 'image/webp',inputPath: "/tmp/unknown.bin" })
+            processImageToMimeType({
+                outputMime: 'image/webp',
+                inputPath: '/tmp/unknown.bin',
+            }),
         ).rejects.toThrow(/Unsupported or unrecognized image type/);
 
         expect(mockedSharp).not.toHaveBeenCalled();
     });
 
-    it("throws for recognized but disallowed mime", async () => {
-        mockedFT.mockResolvedValueOnce({ mime: "image/bmp", ext: '.bmp' }); // not in allowed Set
+    it('throws for recognized but disallowed mime', async () => {
+        mockedFT.mockResolvedValueOnce({ mime: 'image/bmp', ext: '.bmp' }); // not in allowed Set
 
         await expect(
-            processImageToMimeType({ outputMime: 'image/webp',inputPath: "/tmp/foo.bmp" })
+            processImageToMimeType({
+                outputMime: 'image/webp',
+                inputPath: '/tmp/foo.bmp',
+            }),
         ).rejects.toThrow(/Unsupported or unrecognized image type: image\/bmp/);
 
         expect(mockedSharp).not.toHaveBeenCalled();
     });
 
-    it("HEIC: converts via heic-convert, then processes with sharp; returns expected shape", async () => {
-        const inputPath = "./unit_test.heic";
-        const sniff = { mime: "image/heic", ext: '.heic' };
+    it('HEIC: converts via heic-convert, then processes with sharp; returns expected shape', async () => {
+        const inputPath = './unit_test.heic';
+        const sniff = { mime: 'image/heic', ext: '.heic' };
         const heicBuffer = Buffer.from([1, 2, 3, 4]);
-        const converted = Buffer.from("jpegdata"); // heic-convert result consumed by sharp
+        const converted = Buffer.from('jpegdata'); // heic-convert result consumed by sharp
         mockedFT.mockResolvedValueOnce(sniff);
         mockedReadFile.mockResolvedValueOnce(heicBuffer);
         //mockedHeicConvert.mockResolvedValueOnce(converted);
 
         const convertedAb = converted.buffer.slice(
             converted.byteOffset,
-            converted.byteOffset + converted.byteLength
+            converted.byteOffset + converted.byteLength,
         );
 
         mockedHeicConvert.mockResolvedValueOnce(convertedAb as ArrayBuffer);
 
         const meta = { width: 500, height: 300, hasAlpha: false, pages: 1 };
-        const out = { data: Buffer.from([9, 9, 9]), info: { width: 400, height: 240 } };
+        const out = {
+            data: Buffer.from([9, 9, 9]),
+            info: { width: 400, height: 240 },
+        };
         const { metaChain, pipeChain } = setupSharp(meta, out, true);
 
-        const result = await processImageToMimeType({ outputMime: 'image/webp',inputPath });
+        const result = await processImageToMimeType({
+            outputMime: 'image/webp',
+            inputPath,
+        });
 
         // file-type + heic path
         expect(mockedFT).toHaveBeenCalledWith(inputPath);
         expect(mockedReadFile).toHaveBeenCalledWith(inputPath);
         expect(mockedHeicConvert).toHaveBeenCalledWith(
-            expect.objectContaining({ format: "JPEG", quality: 0.9 })
+            expect.objectContaining({ format: 'JPEG', quality: 0.9 }),
         );
 
         // Sharp inspects the HEIC header before heic-convert runs.
         expect(mockedSharp).toHaveBeenNthCalledWith(
             1,
             inputPath,
-            expect.objectContaining({ limitInputPixels: 268435456, failOn: 'error' })
+            expect.objectContaining({
+                limitInputPixels: 268435456,
+                failOn: 'error',
+            }),
         );
         // Then Sharp inspects and encodes the converted buffer.
         expect(mockedSharp).toHaveBeenNthCalledWith(
             2,
             convertedAb,
-            expect.objectContaining({ animated: false, failOn: "error", limitInputPixels: 268435456 })
+            expect.objectContaining({
+                animated: false,
+                failOn: 'error',
+                limitInputPixels: 268435456,
+            }),
         );
         expect(mockedSharp).toHaveBeenNthCalledWith(
             3,
             convertedAb,
-            expect.objectContaining({ animated: false, limitInputPixels: 268435456 })
+            expect.objectContaining({
+                animated: false,
+                limitInputPixels: 268435456,
+            }),
         );
 
         // pipeline calls
         expect(metaChain.metadata).toHaveBeenCalledTimes(2);
         expect(pipeChain.rotate).toHaveBeenCalledTimes(1);
-        expect(pipeChain.toColourspace).toHaveBeenCalledWith("srgb");
+        expect(pipeChain.toColourspace).toHaveBeenCalledWith('srgb');
         // default maxDimension=4096 -> resize called
         expect(pipeChain.resize).toHaveBeenCalledWith({
             width: 4096,
             height: 4096,
-            fit: "inside",
+            fit: 'inside',
             withoutEnlargement: true,
             fastShrinkOnLoad: true,
         });
         expect(pipeChain.webp).toHaveBeenCalledWith({ quality: 80, effort: 4 });
-        expect(pipeChain.toBuffer).toHaveBeenCalledWith({ resolveWithObject: true });
+        expect(pipeChain.toBuffer).toHaveBeenCalledWith({
+            resolveWithObject: true,
+        });
 
         // return shape
-        expect(result.outputMime).toBe("image/webp");
+        expect(result.outputMime).toBe('image/webp');
         expect(result.buffer).toEqual(out.data);
         expect(result.info).toEqual({
             width: 400,
             height: 240,
             sizeBytes: out.data.byteLength,
-            colorSpace: "srgb",
+            colorSpace: 'srgb',
             animated: false,
             exifStripped: true,
         });
         expect(result.inputMeta).toEqual({
-            mime: "image/heic",
+            mime: 'image/heic',
             width: 500,
             height: 300,
             hasAlpha: false,
@@ -196,18 +229,19 @@ describe("processImageToMimeType (unit)", () => {
         });
     });
 
-    it("HEIC: if convert throws, fails without retrying the original input", async () => {
-        const inputPath = "./unit_test.heic";
-        mockedFT.mockResolvedValueOnce({ mime: "image/heic", ext: '.heic' });
+    it('HEIC: if convert throws, fails without retrying the original input', async () => {
+        const inputPath = './unit_test.heic';
+        mockedFT.mockResolvedValueOnce({ mime: 'image/heic', ext: '.heic' });
         mockedReadFile.mockResolvedValueOnce(Buffer.from([7, 7, 7]));
-        mockedHeicConvert.mockRejectedValueOnce(new Error("convert fail"));
+        mockedHeicConvert.mockRejectedValueOnce(new Error('convert fail'));
 
         const header = makeSharpChain();
         header.metadata.mockResolvedValue({ width: 100, height: 50 });
         mockedSharp.mockImplementationOnce(() => header);
 
-        await expect(processImageToMimeType({ outputMime: 'image/webp',inputPath }))
-            .rejects.toThrow('HEIC decoding failed');
+        await expect(
+            processImageToMimeType({ outputMime: 'image/webp', inputPath }),
+        ).rejects.toThrow('HEIC decoding failed');
         expect(mockedSharp).toHaveBeenCalledTimes(1);
     });
 
@@ -220,7 +254,10 @@ describe("processImageToMimeType (unit)", () => {
             { data: Buffer.from([1]), info: { width: 2, height: 2 } },
             true,
         );
-        await processImageToMimeType({ inputPath: './alpha.heic', outputMime: 'image/webp' });
+        await processImageToMimeType({
+            inputPath: './alpha.heic',
+            outputMime: 'image/webp',
+        });
         expect(mockedHeicConvert).toHaveBeenCalledWith(
             expect.objectContaining({ format: 'PNG' }),
         );
@@ -231,55 +268,70 @@ describe("processImageToMimeType (unit)", () => {
         const header = makeSharpChain();
         header.metadata.mockResolvedValue({ width: 5000, height: 5000 });
         mockedSharp.mockImplementationOnce(() => header);
-        await expect(processImageToMimeType({
-            inputPath: './large.heic', outputMime: 'image/webp',
-            options: { limitInputPixels: 20_000_000 },
-        })).rejects.toThrow('Image dimensions exceed the input pixel limit');
+        await expect(
+            processImageToMimeType({
+                inputPath: './large.heic',
+                outputMime: 'image/webp',
+                options: { limitInputPixels: 20_000_000 },
+            }),
+        ).rejects.toThrow('Image dimensions exceed the input pixel limit');
         expect(mockedReadFile).not.toHaveBeenCalled();
         expect(mockedHeicConvert).not.toHaveBeenCalled();
     });
 
-    it("PNG (non-HEIC): does not call heic-convert and processes straight through", async () => {
-        const inputPath = "/tmp/a.png";
-        mockedFT.mockResolvedValueOnce({ mime: "image/png", ext: '.png' });
+    it('PNG (non-HEIC): does not call heic-convert and processes straight through', async () => {
+        const inputPath = '/tmp/a.png';
+        mockedFT.mockResolvedValueOnce({ mime: 'image/png', ext: '.png' });
 
         const meta = { width: 800, height: 600, hasAlpha: true, pages: 1 };
-        const out = { data: Buffer.from([3, 3, 3, 3]), info: { width: 800, height: 600 } };
+        const out = {
+            data: Buffer.from([3, 3, 3, 3]),
+            info: { width: 800, height: 600 },
+        };
         setupSharp(meta, out);
 
-        const result = await processImageToMimeType({ outputMime: 'image/webp',inputPath });
+        const result = await processImageToMimeType({
+            outputMime: 'image/webp',
+            inputPath,
+        });
 
         expect(mockedHeicConvert).not.toHaveBeenCalled();
         expect(mockedReadFile).not.toHaveBeenCalled();
         expect(mockedSharp).toHaveBeenCalledTimes(2);
-        expect(result.inputMeta.mime).toBe("image/png");
+        expect(result.inputMeta.mime).toBe('image/png');
     });
 
     it("rejects animated inputs when animatedPolicy='reject'", async () => {
-        mockedFT.mockResolvedValueOnce({ mime: "image/png", ext: '.png' });
+        mockedFT.mockResolvedValueOnce({ mime: 'image/png', ext: '.png' });
 
         const meta = { width: 10, height: 10, hasAlpha: false, pages: 2 }; // animated
         const out = { data: Buffer.from([1]), info: { width: 10, height: 10 } };
         setupSharp(meta, out);
 
         await expect(
-            processImageToMimeType({ outputMime: 'image/webp', inputPath: "/tmp/anim.gif" })
+            processImageToMimeType({
+                outputMime: 'image/webp',
+                inputPath: '/tmp/anim.gif',
+            }),
         ).rejects.toThrow(/Animated images are not supported/);
 
         // should have only created baseSharp for metadata; pipeline never runs
         expect(mockedSharp).toHaveBeenCalledTimes(1);
     });
 
-    it("honors maxDimension=0 (no resize call)", async () => {
-        mockedFT.mockResolvedValueOnce({ mime: "image/jpeg", ext: '.jpg' });
+    it('honors maxDimension=0 (no resize call)', async () => {
+        mockedFT.mockResolvedValueOnce({ mime: 'image/jpeg', ext: '.jpg' });
 
         const meta = { width: 1200, height: 800, hasAlpha: false, pages: 1 };
-        const out = { data: Buffer.from([5, 5, 5]), info: { width: 1200, height: 800 } };
+        const out = {
+            data: Buffer.from([5, 5, 5]),
+            info: { width: 1200, height: 800 },
+        };
         const { pipeChain } = setupSharp(meta, out);
 
         const result = await processImageToMimeType({
             outputMime: 'image/webp',
-            inputPath: "/tmp/pic.jpg",
+            inputPath: '/tmp/pic.jpg',
             options: { maxDimension: 0 },
         });
 
@@ -288,23 +340,31 @@ describe("processImageToMimeType (unit)", () => {
         expect(result.info.height).toBe(800);
     });
 
-    it("applies quality/effort/limitInputPixels/colourspace from config & overrides", async () => {
-        mockedFT.mockResolvedValueOnce({ mime: "image/png", ext: '.png' });
+    it('applies quality/effort/limitInputPixels/colourspace from config & overrides', async () => {
+        mockedFT.mockResolvedValueOnce({ mime: 'image/png', ext: '.png' });
 
         const meta = { width: 2000, height: 1500, hasAlpha: false, pages: 1 };
-        const out = { data: Buffer.from([8, 8]), info: { width: 1024, height: 768 } };
+        const out = {
+            data: Buffer.from([8, 8]),
+            info: { width: 1024, height: 768 },
+        };
         const { pipeChain } = setupSharp(meta, out);
 
         await processImageToMimeType({
             outputMime: 'image/webp',
-            inputPath: "/tmp/p.png",
+            inputPath: '/tmp/p.png',
             timeoutSeconds: 2,
-            options: { maxDimension: 1024, quality: 95, effort: 6, normalizeColorSpace: "srgb" },
+            options: {
+                maxDimension: 1024,
+                quality: 95,
+                effort: 6,
+                normalizeColorSpace: 'srgb',
+            },
         });
 
-        expect(pipeChain.toColourspace).toHaveBeenCalledWith("srgb");
+        expect(pipeChain.toColourspace).toHaveBeenCalledWith('srgb');
         expect(pipeChain.resize).toHaveBeenCalledWith(
-            expect.objectContaining({ width: 1024, height: 1024 })
+            expect.objectContaining({ width: 1024, height: 1024 }),
         );
         expect(pipeChain.webp).toHaveBeenCalledWith({ quality: 95, effort: 6 });
         expect(pipeChain.timeout).toHaveBeenCalledWith({ seconds: 2 });

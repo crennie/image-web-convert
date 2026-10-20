@@ -45,13 +45,11 @@ beforeAll(async () => {
     process.env.RATE_LIMIT_MAX = '100';
     process.env.SESSION_PER_FILE_BYTES = '100000';
     ({ createApp } = await import('../app'));
-    ({ createConversionRuntime: createRuntime } = await import(
-        '../services/conversion-runtime.service'
-    ));
+    ({ createConversionRuntime: createRuntime } =
+        await import('../services/conversion-runtime.service'));
     ({ create: createSession } = await import('../services/sessions.service'));
-    ({ processImageToMimeType: realConvert } = await import(
-        '../services/image.service'
-    ));
+    ({ processImageToMimeType: realConvert } =
+        await import('../services/image.service'));
     const buffer = await sharp({
         create: { width: 4, height: 3, channels: 3, background: 'red' },
     })
@@ -560,9 +558,8 @@ it('enforces manifest and actual per-file byte limits', async () => {
 it('keeps storage failures retryable and checks transport validity immediately before publication', async () => {
     const session = await createSession();
     const op = await operation(session, 1);
-    const { ConversionStorageError } = await import(
-        '../services/conversion-storage.service'
-    );
+    const { ConversionStorageError } =
+        await import('../services/conversion-storage.service');
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const accept = vi
         .spyOn(runtime, 'acceptUpload')
@@ -574,9 +571,8 @@ it('keeps storage failures retryable and checks transport validity immediately b
     const storage = await import('../services/conversion-storage.service');
     const source = path.join(directory, 'deadline-source');
     await fs.writeFile(source, bytes);
-    const { ConversionTransitionError } = await import(
-        '../services/conversions.service'
-    );
+    const { ConversionTransitionError } =
+        await import('../services/conversions.service');
     await expect(
         storage
             .createConversionStorage({ root })
@@ -631,9 +627,8 @@ it('retires legacy uploads while preserving sealed-session and creation claim gu
     expect(legacy.status).toBe(404);
     expect(convert).not.toHaveBeenCalled();
     const other = await createSession();
-    const { readSessionInfo, writeSessionInfo } = await import(
-        '../services/sessions.service'
-    );
+    const { readSessionInfo, writeSessionInfo } =
+        await import('../services/sessions.service');
     const info = await readSessionInfo(other.sid);
     await writeSessionInfo(other.sid, {
         ...info,
@@ -641,9 +636,8 @@ it('retires legacy uploads while preserving sealed-session and creation claim gu
     });
     expect((await create(other, intent(1))).status).toBe(409);
     const fresh = await createSession();
-    const { claimSessionWork } = await import(
-        '../services/session-work.service'
-    );
+    const { claimSessionWork } =
+        await import('../services/session-work.service');
     const release = claimSessionWork(fresh.sid);
     try {
         expect((await create(fresh, intent(1))).status).toBe(409);
@@ -656,9 +650,8 @@ it('retires legacy uploads while preserving sealed-session and creation claim gu
 it('rejects expired-session requests without receiving bytes', async () => {
     const session = await createSession();
     const op = await operation(session, 1);
-    const { readSessionInfo, writeSessionInfo } = await import(
-        '../services/sessions.service'
-    );
+    const { readSessionInfo, writeSessionInfo } =
+        await import('../services/sessions.service');
     const info = await readSessionInfo(session.sid);
     await writeSessionInfo(session.sid, {
         ...info,
@@ -683,9 +676,8 @@ it('bounds multipart framing before parsing and leaves oversized transport retry
 });
 
 it('removes only abandoned conversion request directories during startup cleanup', async () => {
-    const { recoverConversionRequestStaging } = await import(
-        '../controllers/conversion-upload.http'
-    );
+    const { recoverConversionRequestStaging } =
+        await import('../controllers/conversion-upload.http');
     const staging = await fs.mkdtemp(path.join(temp, 'conversion-'));
     await fs.writeFile(path.join(staging, 'request.multipart'), 'incomplete');
     await fs.writeFile(path.join(temp, 'legacy-upload'), 'keep');

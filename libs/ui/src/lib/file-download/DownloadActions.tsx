@@ -1,15 +1,18 @@
 'use callback';
 
-import { startTransition, useCallback, useState } from "react";
-import { Button } from "../Button";
-import Spinner from "../Spinner";
-import { FaDownload } from "react-icons/fa";
+import { startTransition, useCallback, useState } from 'react';
+import { Button } from '../Button';
+import Spinner from '../Spinner';
+import { FaDownload } from 'react-icons/fa';
 
 interface DownloadActionsProps {
     onDownload: () => Promise<void>;
     disabled?: boolean;
 }
-export function DownloadActions({ onDownload, disabled }: DownloadActionsProps) {
+export function DownloadActions({
+    onDownload,
+    disabled,
+}: DownloadActionsProps) {
     const [showDownloadLoader, setShowDownloadLoader] = useState(false);
 
     // Add loading animation during download
@@ -22,19 +25,22 @@ export function DownloadActions({ onDownload, disabled }: DownloadActionsProps) 
 
     return (
         <div className="flex">
-            <Button type="button" variant="primary" className="w-fit flex justify-between items-center gap-2 flex-nowrap"
+            <Button
+                type="button"
+                variant="primary"
+                className="w-fit flex justify-between items-center gap-2 flex-nowrap"
                 onClick={handleDownload}
                 disabled={disabled || showDownloadLoader}
             >
                 Download Converted Files (.zip)
-
-                {
-                    showDownloadLoader ? <Spinner className="size-6 shrink-0 relative -right-3" />
-                        : <FaDownload className="size-6 shrink-0 relative -right-3" />
-                }
+                {showDownloadLoader ? (
+                    <Spinner className="size-6 shrink-0 relative -right-3" />
+                ) : (
+                    <FaDownload className="size-6 shrink-0 relative -right-3" />
+                )}
             </Button>
         </div>
-    )
+    );
 }
 
 export default DownloadActions;

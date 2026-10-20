@@ -17,14 +17,14 @@ in the subsequent backend cleanup. Sealed-session download compatibility remains
 
 ## Scope corrections from repository review
 
-| Step | Current evidence | Remaining scope |
-| --- | --- | --- |
-| 7: upload ownership | `uploads.service.ts` already defines neutral `UploadInput`, owns counts/sealing, and rolls back outputs on session-write failure. The legacy controller maps multipart inputs. | Audit existing guarantees; apply ownership principles to the active operation boundary where needed. Do not rebuild the retired batch workflow. |
-| 8: ZIP separation | `files.service.ts` uses Node `Writable`, not Express; controllers own responses. `writeZip` has error/close handling and tests. | Review and harden coordinated finalization/output settlement, teardown, and collision-safe archive names. |
-| 9: upload claims | Legacy batch claims and shared session claims exist. Active runtime owns slot upload admission and operation creation coordination. | Verify concurrency and release behavior at the active application boundary, preserving parallel uploads to different slots. |
-| 10: cosmetic progress | Legacy exports are already `useCosmeticProgress` and `CosmeticProgress`. The active route renders `ConversionOperationPanel`, with actual upload bytes and backend snapshots. | Audit retained cosmetic components only; preserve actual active progress and status. |
-| 11: README | README already describes asynchronous operations, limits, storage, recovery, and real E2E testing. | Targeted corrections after the preceding audit/fixes; no synchronous lifecycle rewrite. |
-| 12: API E2E | Eight real API process cases and six real browser cases already exist, plus five mocked browser integration cases. | Extend representative failure coverage using the existing harness; keep real E2E required in CI. |
+| Step                  | Current evidence                                                                                                                                                               | Remaining scope                                                                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 7: upload ownership   | `uploads.service.ts` already defines neutral `UploadInput`, owns counts/sealing, and rolls back outputs on session-write failure. The legacy controller maps multipart inputs. | Audit existing guarantees; apply ownership principles to the active operation boundary where needed. Do not rebuild the retired batch workflow. |
+| 8: ZIP separation     | `files.service.ts` uses Node `Writable`, not Express; controllers own responses. `writeZip` has error/close handling and tests.                                                | Review and harden coordinated finalization/output settlement, teardown, and collision-safe archive names.                                       |
+| 9: upload claims      | Legacy batch claims and shared session claims exist. Active runtime owns slot upload admission and operation creation coordination.                                            | Verify concurrency and release behavior at the active application boundary, preserving parallel uploads to different slots.                     |
+| 10: cosmetic progress | Legacy exports are already `useCosmeticProgress` and `CosmeticProgress`. The active route renders `ConversionOperationPanel`, with actual upload bytes and backend snapshots.  | Audit retained cosmetic components only; preserve actual active progress and status.                                                            |
+| 11: README            | README already describes asynchronous operations, limits, storage, recovery, and real E2E testing.                                                                             | Targeted corrections after the preceding audit/fixes; no synchronous lifecycle rewrite.                                                         |
+| 12: API E2E           | Eight real API process cases and six real browser cases already exist, plus five mocked browser integration cases.                                                             | Extend representative failure coverage using the existing harness; keep real E2E required in CI.                                                |
 
 The supplied 83-test count and historical coverage percentages are obsolete.
 Re-measure during implementation rather than treating them as a baseline. The
@@ -360,7 +360,7 @@ limits. Do not claim historical counts or unobserved CI runs as fresh results.
 ### Step 9 completion — 2026-09-24
 
 - At the user's request, committed steps 7–8 as `53c629d` (`Centralize conversion
-  ownership and harden ZIP downloads`) and confirmed a clean tree before step 9.
+ownership and harden ZIP downloads`) and confirmed a clean tree before step 9.
   No push. Step 9 changes remain uncommitted.
 - Audited application creation admission, runtime per-slot transport claims,
   storage acceptance claims, and controller cleanup. The existing design already
@@ -475,7 +475,7 @@ limits. Do not claim historical counts or unobserved CI runs as fresh results.
   request, and conversion staging after settlement. Invalid-token assertions in
   the existing lifecycle case now also use shared error schemas.
 - Direct `api-e2e:e2e` passes all 15 cases. Full root `npm run lint`, `npm run
-  typecheck`, `npm test`, and `npm run build` pass. Root tests total 389: API 232,
+typecheck`, `npm test`, and `npm run build` pass. Root tests total 389: API 232,
   web 55, UI 52, schemas 25, node-shared 9, observability 1, API E2E 15. Nx reused
   valid local cache results for unchanged tasks; API E2E remains uncached.
 - API coverage command succeeds (unchanged API source, cached instrumented result):

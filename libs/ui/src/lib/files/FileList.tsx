@@ -1,4 +1,4 @@
-import { FileListItem, FileItem } from "./FileListItem";
+import { FileListItem, FileItem } from './FileListItem';
 
 interface FileListProps {
     items: FileItem[];
@@ -8,15 +8,27 @@ interface FileListProps {
     onDownload?: (item: FileItem) => Promise<void>;
 }
 
-export function FileList({ items, showRemove=false, showDownload=false, onRemove, onDownload }: FileListProps) {
+export function FileList({
+    items,
+    showRemove = false,
+    showDownload = false,
+    onRemove,
+    onDownload,
+}: FileListProps) {
     return (
         <>
-            {items.map(item => (
-                <FileListItem key={item.id} item={item} showRemove={showRemove} onRemove={onRemove}
-                    showDownload={showDownload} onDownload={onDownload} />
+            {items.map((item) => (
+                <FileListItem
+                    key={item.id}
+                    item={item}
+                    showRemove={showRemove}
+                    onRemove={onRemove}
+                    showDownload={showDownload}
+                    onDownload={onDownload}
+                />
             ))}
         </>
-    )
+    );
 }
 
 export default FileList;

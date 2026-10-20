@@ -3,7 +3,11 @@ import { FileList } from '../FileList';
 import type { FileItem } from '../FileListItem';
 
 // Minimal helper to create a FileItem
-function makeItem(id: string, name = `file-${id}.jpg`, type = 'image/jpeg'): FileItem {
+function makeItem(
+    id: string,
+    name = `file-${id}.jpg`,
+    type = 'image/jpeg',
+): FileItem {
     const file = new File([new Uint8Array([1, 2, 3])], name, { type });
     return { id, file, previewUrl: 'about:blank' };
 }
@@ -14,7 +18,7 @@ describe('FileList', () => {
         render(<FileList items={items} />);
 
         // Each filename appears once
-        items.forEach(i => {
+        items.forEach((i) => {
             expect(screen.getByText(i.file.name)).toBeInTheDocument();
         });
     });
@@ -31,11 +35,11 @@ describe('FileList', () => {
                 showDownload
                 onRemove={onRemove}
                 onDownload={onDownload}
-            />
+            />,
         );
 
         // Buttons (from FileListItem) will be covered in FileListItem tests; here we just sanity-check filenames render
-        items.forEach(i => {
+        items.forEach((i) => {
             expect(screen.getByText(i.file.name)).toBeInTheDocument();
         });
     });

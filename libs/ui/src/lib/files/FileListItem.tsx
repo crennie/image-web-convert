@@ -1,18 +1,18 @@
 'use client';
 
-import { useCallback, useState } from "react";
-import { FileCardLayout } from "./FileCardLayout";
-import { Button } from "../Button";
-import { FaDownload, FaTimes } from "react-icons/fa";
-import Spinner from "../Spinner";
-import { cn } from "../utils";
+import { useCallback, useState } from 'react';
+import { FileCardLayout } from './FileCardLayout';
+import { Button } from '../Button';
+import { FaDownload, FaTimes } from 'react-icons/fa';
+import Spinner from '../Spinner';
+import { cn } from '../utils';
 
 export type FileItem = {
     id: string;
     file: File;
     previewUrl?: string;
     errors?: string[];
-}
+};
 
 interface FileListItemProps {
     item: FileItem;
@@ -51,51 +51,63 @@ export function FileListItem({
         }
     }, [item, onDownload, showDownloadLoader]);
 
-    const cardClickProps = showDownload && typeof onDownload === 'function' ?
-        { onClick: handleDownloadClick } : {};
+    const cardClickProps =
+        showDownload && typeof onDownload === 'function'
+            ? { onClick: handleDownloadClick }
+            : {};
     return (
         <FileCardLayout
-            className={cn("bg-muted", showDownload && onDownload ? "cursor-pointer" : null)}
+            className={cn(
+                'bg-muted',
+                showDownload && onDownload ? 'cursor-pointer' : null,
+            )}
             {...cardClickProps}
         >
             {isLoading ? <>LOADING...</> : null}
             {!isLoading ? (
                 <>
                     {showRemove ? (
-                        <Button variant="ghost" className="absolute right-2 top-2 text-destructive"
+                        <Button
+                            variant="ghost"
+                            className="absolute right-2 top-2 text-destructive"
                             aria-label={`Remove ${item.file.name}`}
                             onClick={() => onRemove?.(item)}
                         >
                             <FaTimes className="size-8" />
-                        </Button>) : null
-                    }
+                        </Button>
+                    ) : null}
                     {showDownload ? (
-                        <Button variant="ghost" className="absolute right-2 top-2 text-blue-500"
-                            onClick={e => {
+                        <Button
+                            variant="ghost"
+                            className="absolute right-2 top-2 text-blue-500"
+                            onClick={(e) => {
                                 e.stopPropagation(); // prevents bubbling to the card handler
                                 void handleDownloadClick();
                             }}
                         >
-                            {
-                                showDownloadLoader ? <Spinner className="size-8 text-blue-500" />
-                                    : <FaDownload className="size-8" />
-                            }
-                        </Button>) : null
-                    }
-                    {previewOk ?
+                            {showDownloadLoader ? (
+                                <Spinner className="size-8 text-blue-500" />
+                            ) : (
+                                <FaDownload className="size-8" />
+                            )}
+                        </Button>
+                    ) : null}
+                    {previewOk ? (
                         <img
                             onError={handleImgError}
-                            src={item.previewUrl} alt={item.file.name} /> :
+                            src={item.previewUrl}
+                            alt={item.file.name}
+                        />
+                    ) : (
                         <>No preview available</>
-                    }
+                    )}
                     <div className="bg-background rounded-t-lg absolute bottom-0 max-w-[80%] truncate px-3">
                         {item.file.name}
                     </div>
                 </>
-            ) : null
-            }
-        </FileCardLayout >
-    )
+            ) : null}
+        </FileCardLayout>
+    );
 }
 
 export default FileListItem;

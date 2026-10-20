@@ -6,7 +6,7 @@ describe('PageLayout', () => {
         render(
             <PageLayout>
                 <p>_content_</p>
-            </PageLayout>
+            </PageLayout>,
         );
         // <main> has implicit role="main"
         expect(screen.getByRole('main')).toBeInTheDocument();
