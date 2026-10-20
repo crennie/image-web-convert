@@ -63,6 +63,11 @@ export default defineConfig(() => ({
                 "*.config.{js,ts,mjs,cjs}",
                 "**/*.config.{js,ts,mjs,cjs}",
 
+                // Test support and styles are not application logic
+                "**/__tests__/**",
+                "app/testUtils.tsx",
+                "**/*.css",
+
                 // React router
                 ".react-router/**",
                 "app/entry.client.tsx",

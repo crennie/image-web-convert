@@ -5,7 +5,7 @@
         "lib": ["DOM", "DOM.Iterable"],
         "types": [
             "vitest/globals",
-            "@testing-library/jest-dom",
+            "@testing-library/jest-dom/vitest",
             "vitest/importMeta",
             "vite/client",
             "node",
