@@ -30,6 +30,21 @@ async function chooseFiles(page: Page, files: ImageFixture | ImageFixture[]) {
     await (await chooser).setFiles(files);
 }
 
+async function holdCreation(page: Page) {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route(
+        '**/api/sessions/e2e-session/conversions',
+        async (route) => {
+            await held;
+            await route
+                .fulfill({ status: 503, json: { type: 'unavailable' } })
+                .catch(() => undefined);
+        },
+    );
+    return release;
+}
+
 test.beforeEach(async ({ page }) => {
     await page.route('**/api/sessions', (route) =>
         route.fulfill({ status: 200, json: sessionResponse }),
@@ -101,19 +116,7 @@ test('Back and Forward protect an unresolved batch creation', async ({
 }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Convert Files' }).click();
-    let releaseCreation!: () => void;
-    const creationHeld = new Promise<void>(
-        (resolve) => (releaseCreation = resolve),
-    );
-    await page.route(
-        '**/api/sessions/e2e-session/conversions',
-        async (route) => {
-            await creationHeld;
-            await route
-                .fulfill({ status: 503, json: { type: 'unavailable' } })
-                .catch(() => undefined);
-        },
-    );
+    const releaseCreation = await holdCreation(page);
     await chooseFiles(page, firstImage);
     await page.getByRole('button', { name: 'Start conversion' }).click();
     await expect(page.getByRole('status')).toContainText(
@@ -145,7 +148,6 @@ test('Back and Forward protect an unresolved batch creation', async ({
     await expect(warning).toBeVisible();
     await warning.getByRole('button', { name: 'Leave conversion' }).click();
     await expect(page).toHaveURL('/');
-    releaseCreation();
     await page.evaluate(() => history.forward());
     await expect(page).toHaveURL(/\/conversion$/);
     await expect(
@@ -154,22 +156,13 @@ test('Back and Forward protect an unresolved batch creation', async ({
     await expect(page.getByRole('status')).not.toContainText(
         'Creating conversion batch',
     );
+    releaseCreation();
 });
 
-test('reload dismissal keeps an unresolved creation', async ({ page }) => {
-    let releaseCreation!: () => void;
-    const creationHeld = new Promise<void>(
-        (resolve) => (releaseCreation = resolve),
-    );
-    await page.route(
-        '**/api/sessions/e2e-session/conversions',
-        async (route) => {
-            await creationHeld;
-            await route
-                .fulfill({ status: 503, json: { type: 'unavailable' } })
-                .catch(() => undefined);
-        },
-    );
+test('reload dismissal retains creation and acceptance starts a fresh page', async ({
+    page,
+}) => {
+    const releaseCreation = await holdCreation(page);
     await chooseFiles(page, firstImage);
     await page.getByRole('button', { name: 'Start conversion' }).click();
     await expect(page.getByRole('status')).toContainText(
@@ -186,6 +179,49 @@ test('reload dismissal keeps an unresolved creation', async ({ page }) => {
         'Creating conversion batch',
     );
 
+    const accepted = page.waitForEvent('dialog').then(async (dialog) => {
+        expect(dialog.type()).toBe('beforeunload');
+        await dialog.accept();
+    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await accepted;
+    releaseCreation();
+    await expect(
+        page.getByRole('button', { name: 'Choose images' }),
+    ).toBeVisible();
+    await expect(page.getByRole('status')).not.toContainText(
+        'Creating conversion batch',
+    );
+});
+
+test('tab-close dismissal retains creation and acceptance leaves', async ({
+    page,
+}) => {
+    const releaseCreation = await holdCreation(page);
+    await chooseFiles(page, firstImage);
+    await page.getByRole('button', { name: 'Start conversion' }).click();
+    await expect(page.getByRole('status')).toContainText(
+        'Creating conversion batch',
+    );
+
+    const dismissed = page.waitForEvent('dialog').then(async (dialog) => {
+        expect(dialog.type()).toBe('beforeunload');
+        await dialog.dismiss();
+    });
+    await page.close({ runBeforeUnload: true });
+    await dismissed;
+    expect(page.isClosed()).toBe(false);
+    await expect(page.getByRole('status')).toContainText(
+        'Creating conversion batch',
+    );
+
+    const accepted = page.waitForEvent('dialog').then(async (dialog) => {
+        expect(dialog.type()).toBe('beforeunload');
+        await dialog.accept();
+    });
+    await page.close({ runBeforeUnload: true });
+    await accepted;
+    await expect.poll(() => page.isClosed()).toBe(true);
     releaseCreation();
 });
 
@@ -561,6 +597,21 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     expect(tooltipBox.y + tooltipBox.height).toBeLessThanOrEqual(667);
     await page.evaluate(() => window.dispatchEvent(new Event('scroll')));
     await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await files.focus();
+    await help.focus();
+    await expect(page.getByRole('tooltip')).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 700 });
+    const resizedTooltip = await page
+        .getByRole('tooltip')
+        .boundingBox()
+        .then(requiredBounds);
+    expect(resizedTooltip.x).toBeGreaterThanOrEqual(0);
+    expect(resizedTooltip.x + resizedTooltip.width).toBeLessThanOrEqual(390);
+    expect(resizedTooltip.y).toBeGreaterThanOrEqual(0);
+    expect(resizedTooltip.y + resizedTooltip.height).toBeLessThanOrEqual(700);
+    await help.press('Escape');
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await expect(help).not.toHaveAttribute('aria-describedby', /.+/);
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     expect(
         await files.evaluate((button) => {
@@ -571,6 +622,23 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
         }),
     ).toBe('0.3s');
     await files.click();
+    await expect(files).toHaveAttribute('aria-expanded', 'false');
+    const zipAfterCollapse = page.getByRole('button', {
+        name: 'Download completed images as ZIP',
+    });
+    await zipAfterCollapse.scrollIntoViewIfNeeded();
+    const zipAfterCollapseBox = await zipAfterCollapse
+        .boundingBox()
+        .then(requiredBounds);
+    expect(zipAfterCollapseBox.y).toBeGreaterThanOrEqual(0);
+    expect(
+        zipAfterCollapseBox.y + zipAfterCollapseBox.height,
+    ).toBeLessThanOrEqual(700);
+    expect(
+        await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+    ).toBe(true);
     await restart.press('Enter');
     const dialog = page.getByRole('dialog', { name: 'Leave these results?' });
     await expect(dialog).toBeVisible();

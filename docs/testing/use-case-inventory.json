@@ -3051,8 +3051,8 @@
                     "id": "UC-095",
                     "actor": "Person",
                     "given": "Batch creation is unresolved",
-                    "when": "They dismiss the browser reload warning",
-                    "then": "The page retains the in-progress batch creation.",
+                    "when": "They dismiss, then accept the browser reload warning",
+                    "then": "Dismissal retains creation; acceptance opens a fresh selection page.",
                     "sources": [
                         "apps/web/app/routes/conversion/components/BatchNavigationGuard.tsx",
                         "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx"
@@ -3061,10 +3061,33 @@
                         {
                             "evidenceId": "E177",
                             "file": "apps/web-e2e/src/integration/upload.spec.ts",
-                            "name": "reload dismissal keeps an unresolved creation",
+                            "name": "reload dismissal retains creation and acceptance starts a fresh page",
                             "layer": "Mocked browser integration",
                             "environment": "Built browser with intercepted creation request in Chromium, Firefox, and WebKit",
-                            "asserts": "The browser presents a beforeunload dialog; dismissing it retains the creation state."
+                            "asserts": "The browser presents a beforeunload dialog; dismissal retains creation and acceptance reloads a fresh page."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-097",
+                    "actor": "Person",
+                    "given": "Batch creation is unresolved",
+                    "when": "They dismiss, then accept the tab-close warning",
+                    "then": "Dismissal retains creation; acceptance closes the tab.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/BatchNavigationGuard.tsx",
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E179",
+                            "file": "apps/web-e2e/src/integration/upload.spec.ts",
+                            "name": "tab-close dismissal retains creation and acceptance leaves",
+                            "layer": "Mocked browser integration",
+                            "environment": "Built browser with intercepted creation request in Chromium, Firefox, and WebKit",
+                            "asserts": "Dismissing beforeunload leaves the tab and creation state intact; accepting it closes the tab."
                         }
                     ],
                     "coverage": "covered",
