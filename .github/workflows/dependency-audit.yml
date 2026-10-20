@@ -1,0 +1,28 @@
+name: Dependency audit
+
+on:
+    schedule:
+        - cron: '17 6 * * 1'
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    audit:
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24.22.0
+                  cache: npm
+            - name: Test audit failure policy
+              run: node --test tools/check-audit-policy.test.mjs
+            - name: Query full and production lockfile advisories
+              run: |
+                  npm audit --package-lock-only --ignore-scripts --json > "$RUNNER_TEMP/full-audit.json" || true
+                  npm audit --omit=dev --package-lock-only --ignore-scripts --json > "$RUNNER_TEMP/production-audit.json" || true
+            - name: Enforce dated audit policy
+              run: node tools/check-audit-policy.mjs "$RUNNER_TEMP/full-audit.json" "$RUNNER_TEMP/production-audit.json"

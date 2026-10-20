@@ -337,7 +337,7 @@ replace CI logs. The following checks remain useful to close specific gaps:
 | Automatic collapse focus transfer | Browser integration now focuses an image download during processing, then verifies toggle focus and keyboard exclusion of the collapsed row after completion in all three engines.                                         |
 | Long-list layout                  | A 20-file success case checks ZIP reachability and page width after collapse, then reopens, scrolls the list, and scrolls again as it collapses. A two-file case also checks ZIP reachability during permitted animation.  |
 | Navigation variants               | Back/Forward stay/leave, reload dismissal/acceptance, and tab-close dismissal/acceptance during unresolved creation are covered in all three engines.                                                                      |
-| Screen-reader experience          | Verify announcements, tooltip descriptions and the second live region during download with an actual assistive technology.                                                                                                 |
+| Screen-reader experience          | PF-22 will verify announcements, tooltip descriptions and the second live region during download with actual assistive technology; this manual check is deferred.                                                          |
 | Download feedback in the browser  | Real-API browser tests now hold image and ZIP responses, verify busy/disabled state and reduced-motion spinner, then check error recovery and a completed ZIP download in all three engines.                               |
 
 For review, confirm that every changed contract above retains a test at the level

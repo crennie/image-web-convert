@@ -16,7 +16,7 @@
         "format:check": "prettier --check .",
         "check:use-cases": "node tools/check-use-case-inventory.mjs",
         "soak:api": "node tools/soak-api.mjs",
-        "ci:hook": "node tools/nx.mjs run-many -t lint test build typecheck e2e browser-integration --parallel=1 --cloud=false --no-cloud"
+        "ci:hook": "node tools/nx.mjs run-many -t lint test build typecheck e2e browser-integration --parallel=1"
     },
     "private": true,
     "dependencies": {

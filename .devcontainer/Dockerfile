@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1
 
-ARG NODE_VERSION=24.22.0
 ARG AGENT_BASE_IMAGE=local-agentic-dev/codex-agent:dev
 
-FROM node:${NODE_VERSION}-trixie AS node-runtime
+# Keep the first base image explicit so Dependabot can propose its updates.
+# Coordinate this pin with NODE_VERSION below and the devcontainer setup check.
+FROM node:24.22.0-trixie AS node-runtime
 
 # Match browser revisions to the repository's locked Playwright version. Keep
 # downloads in a separate stage so source changes do not invalidate this cache.
@@ -16,7 +17,7 @@ RUN set -eu; \
 
 FROM ${AGENT_BASE_IMAGE}
 
-ARG NODE_VERSION
+ARG NODE_VERSION=24.22.0
 
 USER root
 
