@@ -297,6 +297,9 @@ are available to the `vscode` user through
 when running tests. Rebuild the devcontainer after changing the Dockerfile or
 upgrading Playwright in the lockfile. Editing the Dockerfile does not install
 libraries into an already-running container.
+The image build verifies Node 24.22.0 and npm 11.19.1. On first creation, the
+container checks Node again and runs `npm ci` from the lockfile. If the running
+container still reports Node 22, rebuild it before relying on validation results.
 
 On a supported local machine or CI runner, install the matching browser binaries
 and system prerequisites once:
@@ -346,6 +349,16 @@ API tests use their own storage under `tmp/api-lifecycle`. Test APIs default to
 normal resource limits, with a 100 ms sweep and a 1000/minute general request
 budget. The aggregate-limit test lowers only its own byte budget via the existing
 environment setting; production defaults above are unchanged.
+
+For a bounded Linux resource check, build the API and run `npm run soak:api`.
+It runs six real upload/conversion/image/ZIP/expiry cycles in one production API
+process, preserving the three-sessions-per-minute issuance limit. Each cycle
+prints process RSS, CPU ticks, open descriptors, retained upload bytes, and the
+slowest of five readiness probes. Set `SOAK_ROUNDS=3` for a quick smoke run or
+up to 30 for a longer run. It keeps failure diagnostics under ignored
+`tmp/finalization-pf15/`; successful runs remove their storage and logs. The
+RSS and descriptor guards detect large regressions in this tiny-image workload;
+they are not production capacity limits or a native decoder timeout guarantee.
 
 Both browser targets run Chromium, Firefox, and WebKit with one worker and no
 retries. To verify only Chromium in a constrained environment, append

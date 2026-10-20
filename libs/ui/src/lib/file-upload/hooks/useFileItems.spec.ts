@@ -52,3 +52,21 @@ it('dismisses identical errors independently and permits new validation errors',
     act(() => result.current.addItems([invalid()]));
     expect(result.current.errors).toHaveLength(1);
 });
+it('revokes removed and remaining previews exactly once across reselection and unmount', () => {
+    vi.mocked(URL.createObjectURL)
+        .mockReturnValueOnce('blob:first')
+        .mockReturnValueOnce('blob:second')
+        .mockReturnValueOnce('blob:third');
+    const { result, unmount } = setup();
+    act(() =>
+        result.current.addItems([image('first.png'), image('second.png')]),
+    );
+    act(() => result.current.removeItem(result.current.items[0]));
+    act(() => result.current.addItems([image('third.png')]));
+    unmount();
+    expect(vi.mocked(URL.revokeObjectURL).mock.calls).toEqual([
+        ['blob:first'],
+        ['blob:second'],
+        ['blob:third'],
+    ]);
+});

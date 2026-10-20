@@ -16,6 +16,8 @@ RUN set -eu; \
 
 FROM ${AGENT_BASE_IMAGE}
 
+ARG NODE_VERSION
+
 USER root
 
 COPY --from=node-runtime /usr/local/ /usr/local/
@@ -46,7 +48,9 @@ ENV NX_DAEMON=false \
     NX_DISABLE_REMOTE_CACHE=true \
     NX_SKIP_NATIVE_FILE_CACHE=true
 
-RUN node --version \
+RUN test "$(node --version)" = "v${NODE_VERSION}" \
+    && test "$(npm --version)" = "11.19.1" \
+    && node --version \
     && npm --version \
     && python3 --version \
     && g++ --version

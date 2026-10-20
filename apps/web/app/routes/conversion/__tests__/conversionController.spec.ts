@@ -193,6 +193,23 @@ it('ignores creation from a disconnected batch and never cancels during cleanup'
     expect(services.cancelConversion).not.toHaveBeenCalled();
     expect(services.cancelOnPageExit).not.toHaveBeenCalled();
 });
+it('aborts active polling and clears session timers when disconnected', async () => {
+    vi.useFakeTimers();
+    const { controller, services, disconnect } = setup();
+    const pending = deferred<ApiConversionOperation>();
+    services.getConversion.mockReturnValue(pending.promise);
+    await controller.submit([local()], 'image/webp', async () => session);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(services.getConversion).toHaveBeenCalledOnce();
+    const signal = services.getConversion.mock.calls[0][2] as AbortSignal;
+    expect(signal.aborted).toBe(false);
+    disconnect();
+    expect(signal.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+    pending.resolve(snapshot());
+    await Promise.resolve();
+    expect(controller.getSnapshot().connected).toBe(false);
+});
 it('rejects older upload and cancel revisions after a newer polling snapshot', async () => {
     vi.useFakeTimers();
     const { controller, services, disconnect } = setup();
