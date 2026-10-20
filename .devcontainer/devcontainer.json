@@ -4,8 +4,10 @@
         "dockerfile": "Dockerfile",
         "context": "..",
         "args": {
-            "AGENT_BASE_IMAGE": "local-agentic-dev/codex-agent:dev"
+            "AGENT_BASE_IMAGE": "local-agentic-dev/codex-agent:dev",
+            "NODE_VERSION": "24.22.0"
         }
     },
-    "remoteUser": "vscode"
+    "remoteUser": "vscode",
+    "postCreateCommand": "node -e \"if (process.versions.node !== '24.22.0') throw new Error('Expected Node 24.22.0; rebuild the devcontainer')\" && npm ci"
 }
