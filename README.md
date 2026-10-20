@@ -1,24 +1,39 @@
 # Image Web Convert
 
-Image Web Convert is a small Nx monorepo for converting uploaded images to
-web-friendly formats. The Express API uses Sharp for conversion and the React
-Router frontend provides the browser workflow.
+Image Web Convert converts images to WebP, JPEG, PNG, or AVIF in a browser. It is
+intended for private, single-process self-hosting. The Express API stores
+short-lived conversion sessions on disk; the React Router app shows progress and
+downloads completed images.
 
-See the [architecture documentation](docs/architecture/README.md) for system boundaries, runtime behavior, design decisions, and quality requirements.
+For a production install, follow the [self-host guide](docs/self-host.md). See
+the [architecture documentation](docs/architecture/README.md) for system
+boundaries and design decisions. The [private release candidate record](docs/release-candidate.md)
+lists validated versions, automated evidence, and rollback steps.
 
-## Setup and development
+## Try it locally
 
-Use Node.js 24.22.0 with its bundled npm 11.19.1 (the validated versions).
-Linux ARM64 is the validated host platform; other platforms still need a clean
-native-codec and filesystem check. Install the locked
-dependencies and start the frontend and API with:
+Use Node.js 24.22.0 and npm 11.19.1. From the repository root:
 
 ```sh
 npm ci
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run dev
 ```
 
-The frontend runs at
+Open <http://localhost:4200/conversion>, choose images and an output format,
+then select **Start conversion**. Download individual completed images or a ZIP
+before the session expires. The browser must stay open while work is in progress;
+refreshing the page does not restore access to its session. The local API listens
+on port 4201. The validated host is Linux ARM64; other platforms need their own
+native-codec and filesystem check.
+
+![Selected synthetic images in the desktop conversion screen](docs/screenshots/selection-desktop.png)
+
+See the [screenshot gallery](docs/screenshots/README.md) for progress and result
+views, capture details, and mobile screenshots.
+
+## Setup and development
+
+Use the commands above to start development. The frontend runs at
 `http://localhost:4200`; the API defaults to port 4201. Run commands from the
 repository root.
 
@@ -32,10 +47,10 @@ NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false npm run build
 NX_SKIP_NATIVE_FILE_CACHE=true NX_DAEMON=false node tools/nx.mjs run @image-web-convert/api-e2e:e2e
 ```
 
-Nx Cloud may warn that this local workspace is unconnected; that does not
-prevent local commands from running.
-
-The npm scripts and `node tools/nx.mjs` launcher disable the Nx daemon and place plugin-worker sockets in a fresh owner-only directory under `tmp/`. Use this launcher for direct Nx commands while Nx 21 is retained; raw `npx nx` bypasses that local-user security mitigation. Plugin isolation remains enabled to keep build environments independent.
+The npm scripts and `node tools/nx.mjs` launcher disable the Nx daemon and place
+plugin-worker sockets in a fresh owner-only directory under `tmp/`. Use this
+launcher for direct Nx commands. Plugin isolation remains enabled to keep build
+environments independent.
 
 ### API URL configuration
 
