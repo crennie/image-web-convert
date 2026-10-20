@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { displayBytes, uiId } from '../../utils';
-import { FileItem } from '../../files/FileListItem';
+import { FileItem } from '../../files/FileItem';
 import { FileUploadConfig } from '../file-upload.config';
 import { getFileExt } from '@image-web-convert/schemas';
 

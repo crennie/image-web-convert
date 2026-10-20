@@ -1,5 +1,7 @@
 # Architecture cleanup: steps 7–12
 
+Historical plan: PF-18 subsequently removed the unused cosmetic progress and standalone upload/download UI. The current conversion route and its measured progress remain unchanged.
+
 Status: steps 7–12 implemented. Local API/Chromium validation passes; full
 Firefox/WebKit verification remains blocked by missing native host libraries.
 Hosted CI execution has not been observed.

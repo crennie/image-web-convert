@@ -2,8 +2,6 @@ import {
     ApiCreateSessionResponseSchema,
     ApiDownloadFilesRequestSchema,
     ApiErrorSchema,
-    ApiUploadsRequestSchema,
-    ApiUploadsResponseSchema,
     OutputMimeTypeSchema,
     UploadMetaSchema,
 } from '../index.js';
@@ -64,38 +62,6 @@ describe('public API schemas', () => {
         (mime) => expect(OutputMimeTypeSchema.parse(mime)).toBe(mime),
     );
 
-    it('parses successful and partial upload responses', () => {
-        const accepted = {
-            id: 'file-1',
-            url: '/files/file-1',
-            metaUrl: '/files/file-1/meta',
-            meta: uploadMeta,
-            clientId: 'client-1',
-        };
-
-        expect(
-            ApiUploadsResponseSchema.parse({
-                status: 'ok',
-                accepted: [accepted],
-                rejected: [],
-            }).accepted,
-        ).toHaveLength(1);
-
-        expect(
-            ApiUploadsResponseSchema.parse({
-                status: 'partial',
-                accepted: [accepted],
-                rejected: [
-                    {
-                        fileName: 'bad.bmp',
-                        error: 'Unsupported',
-                        clientId: 'client-2',
-                    },
-                ],
-            }).rejected,
-        ).toHaveLength(1);
-    });
-
     it('rejects malformed upload metadata', () => {
         expect(
             UploadMetaSchema.safeParse({
@@ -109,14 +75,7 @@ describe('public API schemas', () => {
         ).toBe(false);
     });
 
-    it('parses decoded upload and download request contracts', () => {
-        expect(
-            ApiUploadsRequestSchema.parse({
-                outputMime: 'image/avif',
-                clientIds: ['client-1'],
-            }),
-        ).toEqual({ outputMime: 'image/avif', clientIds: ['client-1'] });
-
+    it('parses the download request contract', () => {
         expect(
             ApiDownloadFilesRequestSchema.parse({
                 ids: ['file-1'],
@@ -130,13 +89,10 @@ describe('public API schemas', () => {
             'invalid_token',
             'session_not_found',
             'session_expired',
-            'session_used',
-            'invalid_output_mime',
-            'missing_files',
+            'upload_in_progress',
             'upload_error',
             'invalid_request',
             'file_not_found',
-            'session_not_ready',
             'upload_limit_exceeded',
         ];
 
@@ -151,12 +107,6 @@ describe('public API schemas', () => {
     it('rejects unknown errors and malformed request bodies', () => {
         expect(
             ApiErrorSchema.safeParse({ type: 'unknown_error' }).success,
-        ).toBe(false);
-        expect(
-            ApiUploadsRequestSchema.safeParse({
-                outputMime: 'image/gif',
-                clientIds: ['client-1'],
-            }).success,
         ).toBe(false);
         expect(
             ApiDownloadFilesRequestSchema.safeParse({ ids: [] }).success,

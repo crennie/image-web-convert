@@ -20,6 +20,8 @@ Image Web Convert lets a person upload a batch of images, convert them to a web-
 - [Independent file commits](decisions/ADR-002-commit-files-independently.md)
 - [Quality requirements](quality/requirements.md)
 
+The [decision records](decisions/) have unique IDs. ADR-003 and ADR-004 preserve the earlier asynchronous conversion and filesystem-state rationale. The [earlier recovery overview](dynamic/recover-conversions-background.md) is retained as background; the restart recovery view above describes current behavior.
+
 ## Current Architecture Summary
 
 The React Router frontend calls an Express API through `/api`. The API persists one immutable operation manifest per short-lived session, accepts each file into a separate slot, and processes ready operations in a process-local FIFO scheduler. Inputs, operation state, and independently committed outputs live on one filesystem root; startup recovery reconciles interrupted work before the API accepts requests.

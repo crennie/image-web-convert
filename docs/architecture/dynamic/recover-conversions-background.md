@@ -1,4 +1,6 @@
-# Recover conversion state after restart
+# Recovery design background
+
+This earlier overview is retained for design history. [Recover Conversion After Restart](recover-conversion.md) is the current recovery contract, including storage fault and file-mode behavior.
 
 **Scenario:** the API process restarts after an interrupted upload or conversion. The sequence describes startup before the service accepts requests.
 

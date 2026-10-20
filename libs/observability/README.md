@@ -1,11 +1,5 @@
-# observability
+# Observability library
 
-This library was generated with [Nx](https://nx.dev).
+API logging, request IDs, Express error translation, and optional OpenTelemetry setup. Configuration and redaction are implemented here; the API owns startup and bounded shutdown.
 
-## Building
-
-Run `nx build observability` to build the library.
-
-## Running unit tests
-
-Run `nx test observability` to execute the unit tests via [Vitest](https://vitest.dev/).
+Exports are in [`src/index.ts`](src/index.ts). From the repository root, run `node tools/nx.mjs test @image-web-convert/observability` or `node tools/nx.mjs build @image-web-convert/observability`.

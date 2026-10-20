@@ -1,5 +1,7 @@
 # Backend-owned asynchronous conversions: implementation plan
 
+Historical plan: paths and compatibility instructions below describe the migration at the time. PF-18 later retired the unused standalone upload/download UI and cosmetic progress; the current architecture is indexed in [the architecture overview](../architecture/README.md).
+
 Status: phases 1–6, including phase 5.5, complete.
 Local browser verification passed in Chromium; Firefox/WebKit cannot launch in
 this container, and hosted CI execution remains unverified (see execution log).

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import useValidation, { ValidateFilesRejected } from './useValidation';
-import { FileItem } from '../../files/FileListItem';
+import { FileItem } from '../../files/FileItem';
 import { FileUploadConfig } from '../file-upload.config';
 
 function rejectedErrorMsg(rejectedItem: ValidateFilesRejected) {

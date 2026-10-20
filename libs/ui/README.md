@@ -1,7 +1,5 @@
-# ui
+# UI library
 
-This library was generated with [Nx](https://nx.dev).
+Shared React components, session context, and file-selection hooks for the web app. The active conversion route uses `useFileItems`, `useDropzone`, and `FILE_UPLOAD_CONFIG`; it owns upload transport, progress, and downloads itself.
 
-## Running unit tests
-
-Run `nx test ui` to execute the unit tests via [Vitest](https://vitest.dev/).
+The public entry point is [`src/index.ts`](src/index.ts). Run unit tests with `node tools/nx.mjs test @image-web-convert/ui` from the repository root. Build with `node tools/nx.mjs build @image-web-convert/ui`.

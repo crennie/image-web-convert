@@ -1,5 +1,7 @@
 # Conversion selection UX plan
 
+Historical findings below compare the active route with legacy components that PF-18 subsequently retired. The shared file-selection hooks remain active.
+
 Scope: the empty and populated selection page before the user starts conversion.
 The findings below record the original repository review. Implementation is now
 complete; see the validation record at the end.
