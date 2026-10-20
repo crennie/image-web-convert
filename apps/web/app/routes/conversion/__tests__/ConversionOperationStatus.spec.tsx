@@ -3,6 +3,7 @@ import type { ComponentProps } from 'react';
 import type { ConversionFile } from '@image-web-convert/schemas';
 import type { UploadAttempt } from '../api/conversionUploadTransport';
 import { ConversionOperationStatus } from '../components/ConversionOperationStatus';
+import { StatusHelp } from '../../../components/StatusHelp';
 import { awaiting, completed, snapshot, time } from './conversionFixtures';
 
 function props(
@@ -426,4 +427,25 @@ it('keeps focused status help open through scroll and pointer exit, then dismiss
     expect(screen.getByRole('tooltip')).toBeVisible();
     fireEvent.keyDown(trigger, { key: 'Escape' });
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+});
+
+it('removes open status help and its pending hide timer on unmount', () => {
+    vi.useFakeTimers();
+    try {
+        const { unmount } = render(
+            <StatusHelp help="Conversion is ready">Ready</StatusHelp>,
+        );
+        const trigger = screen.getByRole('button', { name: 'Ready' });
+        const wrapper = trigger.parentElement;
+        if (!wrapper) throw new Error('Expected status help wrapper');
+        fireEvent.mouseEnter(wrapper);
+        expect(screen.getByRole('tooltip')).toBeVisible();
+        fireEvent.mouseLeave(wrapper);
+        expect(vi.getTimerCount()).toBeGreaterThan(0);
+        unmount();
+        expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+        expect(vi.getTimerCount()).toBe(0);
+    } finally {
+        vi.useRealTimers();
+    }
 });

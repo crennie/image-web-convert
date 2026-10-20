@@ -328,17 +328,17 @@ These are historical results, not fresh execution claims for future revisions.
 This document was added afterward; it does not provide a coverage percentage or
 replace CI logs. The following checks remain useful to close specific gaps:
 
-| Gap                               | Required verification                                                                                                                                                                        |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Cross-browser behavior            | Focused PF-16 cases now pass in all three engines; run the complete integration and real-API suites again for final release verification.                                                    |
-| New-control motion preferences    | Spinner and accordion reduced-motion behavior is now covered in all three browser engines. Retain it while adding broader mobile interaction checks.                                         |
-| Tooltip lifecycle                 | Focus, Escape, hover departure, scroll dismissal and narrow viewport placement are covered in browser integration. Add click/touch, resize and unmount cleanup checks.                       |
-| Generic modal variations          | Component tests cover absent, disabled, hidden and inert controls plus close/reopen/unmount. Native top-layer variations beyond the current confirmation dialog still need browser evidence. |
-| Automatic collapse focus transfer | Browser integration now focuses an image download during processing, then verifies toggle focus and keyboard exclusion of the collapsed row after completion in all three engines.           |
-| Long-list layout                  | A 20-file success case confirms ZIP is in the narrow viewport after collapse. Add permitted-motion animation and scroll behavior checks.                                                     |
-| Navigation variants               | Back/Forward stay/leave during unresolved creation is covered in all three engines. Reload/close acceptance and dismissal still need a browser/manual pass.                                  |
-| Screen-reader experience          | Verify announcements, tooltip descriptions and the second live region during download with an actual assistive technology.                                                                   |
-| Download feedback in the browser  | Real-API browser tests now hold image and ZIP responses, verify busy/disabled state and reduced-motion spinner, then check error recovery and a completed ZIP download in all three engines. |
+| Gap                               | Required verification                                                                                                                                                                                 |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cross-browser behavior            | Focused PF-16 cases now pass in all three engines; run the complete integration and real-API suites again for final release verification.                                                             |
+| New-control motion preferences    | Spinner and accordion reduced-motion behavior and the permitted accordion transition duration are covered in all three browser engines.                                                               |
+| Tooltip lifecycle                 | Focus, Escape, hover departure, scroll dismissal, resize placement, narrow viewport placement, and tap opening are covered in browsers. Component unmount clears its portal and timer.                |
+| Generic modal variations          | Component tests cover absent, disabled, hidden and inert controls plus close/reopen/unmount. Native top-layer focus is checked for the creation warning; other variations need browser evidence.      |
+| Automatic collapse focus transfer | Browser integration now focuses an image download during processing, then verifies toggle focus and keyboard exclusion of the collapsed row after completion in all three engines.                    |
+| Long-list layout                  | A 20-file success case confirms ZIP is in the narrow viewport after collapse. A two-file case checks ZIP reachability and page width during permitted animation; long-list scroll still needs review. |
+| Navigation variants               | Back/Forward stay/leave, reload dismissal/acceptance, and tab-close dismissal/acceptance during unresolved creation are covered in all three engines.                                                 |
+| Screen-reader experience          | Verify announcements, tooltip descriptions and the second live region during download with an actual assistive technology.                                                                            |
+| Download feedback in the browser  | Real-API browser tests now hold image and ZIP responses, verify busy/disabled state and reduced-motion spinner, then check error recovery and a completed ZIP download in all three engines.          |
 
 For review, confirm that every changed contract above retains a test at the level
 where it can actually fail. In particular: keep snapshot counts schema-valid,

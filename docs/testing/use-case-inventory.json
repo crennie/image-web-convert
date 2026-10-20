@@ -2798,6 +2798,8 @@
                 "apps/web/app/routes/conversion/components/ConversionSelection.tsx",
                 "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx",
                 "apps/web/app/routes/conversion/components/ConversionOperationStatus.tsx",
+                "apps/web/app/routes/conversion/components/BatchNavigationGuard.tsx",
+                "apps/web/app/components/StatusHelp.tsx",
                 "apps/web/app/routes/conversion/conversionController.ts"
             ],
             "cases": [
@@ -3040,6 +3042,75 @@
                             "layer": "Browser component",
                             "environment": "In-process jsdom with deterministic mocked HTTP responses",
                             "asserts": "The rendered error appears beside the enabled completed-image download; retry requests the file again and clears the alert."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-095",
+                    "actor": "Person",
+                    "given": "Batch creation is unresolved",
+                    "when": "They dismiss, then accept the browser reload warning",
+                    "then": "Dismissal retains creation; acceptance opens a fresh selection page.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/BatchNavigationGuard.tsx",
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E177",
+                            "file": "apps/web-e2e/src/integration/upload.spec.ts",
+                            "name": "reload dismissal retains creation and acceptance starts a fresh page",
+                            "layer": "Mocked browser integration",
+                            "environment": "Built browser with intercepted creation request in Chromium, Firefox, and WebKit",
+                            "asserts": "The browser presents a beforeunload dialog; dismissal retains creation and acceptance reloads a fresh page."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-097",
+                    "actor": "Person",
+                    "given": "Batch creation is unresolved",
+                    "when": "They dismiss, then accept the tab-close warning",
+                    "then": "Dismissal retains creation; acceptance closes the tab.",
+                    "sources": [
+                        "apps/web/app/routes/conversion/components/BatchNavigationGuard.tsx",
+                        "apps/web/app/routes/conversion/components/ConversionOperationPanel.tsx"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E179",
+                            "file": "apps/web-e2e/src/integration/upload.spec.ts",
+                            "name": "tab-close dismissal retains creation and acceptance leaves",
+                            "layer": "Mocked browser integration",
+                            "environment": "Built browser with intercepted creation request in Chromium, Firefox, and WebKit",
+                            "asserts": "Dismissing beforeunload leaves the tab and creation state intact; accepting it closes the tab."
+                        }
+                    ],
+                    "coverage": "covered",
+                    "gaps": []
+                },
+                {
+                    "id": "UC-096",
+                    "actor": "Person",
+                    "given": "A completed image is shown on a narrow touch viewport",
+                    "when": "They tap its status help",
+                    "then": "The explanation opens, is associated with the trigger, and fits the viewport.",
+                    "sources": [
+                        "apps/web/app/components/StatusHelp.tsx",
+                        "apps/web/app/routes/conversion/components/ConversionOperationStatus.tsx"
+                    ],
+                    "tests": [
+                        {
+                            "evidenceId": "E178",
+                            "file": "apps/web-e2e/src/e2e/conversion.spec.ts",
+                            "name": "opens completed status help by tap and keeps it within the viewport",
+                            "layer": "Real browser E2E",
+                            "environment": "375 × 667 touch-emulated Chromium, Firefox, and WebKit with real API and encoder",
+                            "asserts": "Tapping a completed file status opens described help fully within the viewport."
                         }
                     ],
                     "coverage": "covered",
