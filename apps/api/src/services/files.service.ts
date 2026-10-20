@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import type { Writable } from 'node:stream';
 import { pathForStored } from './storage.paths';
 import { ConversionStorageError } from './conversion-storage.service';
@@ -138,7 +138,7 @@ export async function writeZip(
     entries: ResolvedDownload[],
 ): Promise<void> {
     // Parallel stat callbacks can otherwise enqueue entries out of input order.
-    const archive = archiver('zip', { statConcurrency: 1, zlib: { level: 9 } });
+    const archive = new ZipArchive({ statConcurrency: 1, zlib: { level: 9 } });
     await new Promise<void>((resolve, reject) => {
         let settled = false;
         let outputFinished = false;

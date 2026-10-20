@@ -16,19 +16,21 @@
         }
     },
     "dependencies": {
-        "tslib": "^2.3.0"
+        "@image-web-convert/node-shared": "0.0.1",
+        "@opentelemetry/api": "1.9.0",
+        "@opentelemetry/auto-instrumentations-node": "0.81.2",
+        "@opentelemetry/exporter-trace-otlp-http": "0.223.0",
+        "@opentelemetry/resources": "2.12.0",
+        "@opentelemetry/sdk-node": "0.223.0",
+        "@opentelemetry/sdk-trace-base": "2.12.0",
+        "pino": "10.4.0",
+        "pino-http": "11.0.0",
+        "pino-pretty": "13.2.0",
+        "tslib": "^2.3.0",
+        "zod": "4.1.11"
     },
     "devDependencies": {
-        "@opentelemetry/api": "^1.9.0",
-        "@opentelemetry/auto-instrumentations-node": "^0.81.2",
-        "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",
-        "@opentelemetry/resources": "^2.12.0",
-        "@opentelemetry/sdk-node": "^0.223.0",
-        "@opentelemetry/sdk-trace-base": "^2.12.0",
-        "express": "^4.22.3",
-        "pino": "^9.9.0",
-        "pino-http": "^10.5.0",
-        "pino-pretty": "^13.1.1",
-        "zod": "^4.0.17"
+        "@types/express": "^5.0.6",
+        "express": "^5.3.0"
     }
 }

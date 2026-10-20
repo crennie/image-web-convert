@@ -35,7 +35,7 @@ vi.mock('../storage.paths', () => ({
 const resolve = (sid: string, ids: string[]) =>
     resolveFilesByIds(sid, ids, readMetaMock);
 
-// 3) Mock archiver (default export is a function that returns an archive instance)
+// 3) Mock the ZIP archive constructor.
 const archiveApi = Object.assign(new EventEmitter(), {
     pipe: vi.fn(),
     unpipe: vi.fn(),
@@ -45,7 +45,9 @@ const archiveApi = Object.assign(new EventEmitter(), {
     destroy: vi.fn(),
 });
 vi.mock('archiver', () => ({
-    default: vi.fn(() => archiveApi),
+    ZipArchive: vi.fn(function () {
+        return archiveApi;
+    }),
 }));
 
 const makeMeta = (

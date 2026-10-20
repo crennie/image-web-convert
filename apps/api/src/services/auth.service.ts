@@ -43,7 +43,7 @@ export async function validateRequestWithToken(
         return { valid: false, status: 401, apiError: response };
     }
 
-    if (!ConversionIdSchema.safeParse(sid).success) {
+    if (typeof sid !== 'string' || !ConversionIdSchema.safeParse(sid).success) {
         return {
             valid: false,
             status: 400,

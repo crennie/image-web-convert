@@ -153,6 +153,25 @@ it('applies the configured URL-encoded limit and rejects malformed forms', async
     expect(manifestType.status).toBe(415);
 });
 
+it('keeps merged route parameters distinct from repeated queries and rejects encoded separators', async () => {
+    const metadata = await fetch(
+        base + '/api/sessions/sid/files/file/meta?file=other&file=third',
+    );
+    expect(metadata.status).toBe(200);
+    expect(await metadata.json()).toEqual({ id: 'file' });
+    expect(completedOutput).toHaveBeenCalledWith('sid', 'operation', 'file');
+
+    auth.mockClear();
+    completedOutput.mockClear();
+    const encoded = await fetch(
+        base + '/api/sessions/sid/files/file%2Fother/meta',
+    );
+    expect(encoded.status).toBe(400);
+    expect(await encoded.json()).toMatchObject({ type: 'invalid_request' });
+    expect(auth).not.toHaveBeenCalled();
+    expect(completedOutput).not.toHaveBeenCalled();
+});
+
 it('does not expose rejected conversion metadata reads', async () => {
     const logged = vi
         .spyOn(console, 'error')
