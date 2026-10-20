@@ -81,6 +81,7 @@ other paths to the SSR server without removing the `/api` prefix:
 
 ```caddyfile
 http://localhost:8080 {
+    bind 127.0.0.1
     handle /api/* {
         reverse_proxy 127.0.0.1:4201
     }
@@ -138,5 +139,6 @@ Session bearer tokens are held in browser memory and sent with API calls;
 do not capture their headers or response bodies in proxy logs or support
 artifacts. Back up the persistent upload directory only under a private data
 policy. Before upgrading, stop the API, preserve that directory, and deploy a
-built revision plus its matching lockfile as one unit. [PF-21](plans/project-finalization.md#pf-21--final-release-candidate-verification-p1-pending)
-records the final release rollback procedure and candidate versions.
+built revision plus its matching lockfile as one unit. The [release candidate
+record](release-candidate.md#upgrade-and-rollback) gives the rollback procedure
+and candidate versions.

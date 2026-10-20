@@ -253,6 +253,7 @@ Every task is independently reviewable. Dependencies refer to completed tasks; s
 - **Depends:** PF-19 and PF-21 automated candidate verification; run before claiming a fully verified release on the target host.
 - **Acceptance:** record device, browser, assistive technology, host/proxy versions, steps, results and issues; resolve or explicitly accept each discrepancy. Until then the candidate is automation-verified only, with target-host and assistive-technology behavior unverified.
 - **Required checks:** keyboard and screen-reader conversion/download flow including live regions; physical touch/mobile tooltip, long-list and modal interaction; fresh operator setup, conversion and expiry behind the intended TLS proxy; branch-protection and private-reporting settings review. No remote settings change without authorization.
+- **Execution record:** use the [hands-on verification checklist](../testing/hands-on-release-verification.md) to capture device, host, results, and accepted discrepancies for the candidate; preparing the checklist does not complete any check.
 - **Deferral record:** owner: maintainer; reason: the maintainer requested on 2026-10-20 that hands-on verification wait; risk: target-host proxy/TLS, physical touch, screen-reader behavior, and maintainer-only settings remain unverified. Review by **2026-11-17** or before deployment on the target host, whichever comes first. Automation-only candidate evidence does not close these checks.
 
 ## Exit criteria
