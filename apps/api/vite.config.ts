@@ -2,7 +2,7 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-    root: __dirname,
+    root: import.meta.dirname,
     cacheDir: '../../node_modules/.vite/apps/api',
 
     // No Vite plugins needed for a Node/Express test target.
@@ -14,14 +14,14 @@ export default defineConfig({
         watch: false,
         include: [
             'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts}',
-            '**/__tests__/**/*.{js,ts}'
+            '**/__tests__/**/*.{js,ts}',
         ],
         exclude: [
             'dist/**',
             'build/**',
             'node_modules/**',
             '.next/**',
-            
+
             // Type declarations & generated files
             'out-tsc/**',
             '**/*.d.ts',
@@ -43,7 +43,7 @@ export default defineConfig({
                 // Type declarations & generated files
                 'out-tsc/**',
                 '**/*.d.ts',
-            ]
+            ],
         },
         // If your repo uses path aliases in tsconfig, uncomment this and install vite-tsconfig-paths
         // alias: {},

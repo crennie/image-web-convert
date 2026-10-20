@@ -1,12 +1,12 @@
 /// <reference types='vitest' />
 import { defineConfig } from 'vitest/config';
 import { reactRouter } from '@react-router/dev/vite';
-import tailwindcss from '@tailwindcss/vite'
+import tailwindcss from '@tailwindcss/vite';
 
 const apiProxyTarget = process.env.API_PROXY_TARGET || 'http://localhost:4201';
 
 export default defineConfig(() => ({
-    root: __dirname,
+    root: import.meta.dirname,
     cacheDir: '../../node_modules/.vite/apps/web',
     server: {
         port: 4200,
@@ -41,13 +41,11 @@ export default defineConfig(() => ({
         globals: true,
         environment: 'jsdom',
         setupFiles: ['./app/setupTests.tsx'],
-        include: [
-            'app/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
-        ],
+        include: ['app/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
         exclude: [
             // Build files
-            "build/**/",
-            "dist/**/",
+            'build/**/',
+            'dist/**/',
 
             // Type declarations & generated files
             'out-tsc/**',
@@ -59,27 +57,27 @@ export default defineConfig(() => ({
             provider: 'v8' as const,
             exclude: [
                 // Config files
-                "**/{vite,postcss,tailwind,eslint,jest,tsup,webpack,rollup}*.{js,ts,mjs,cjs}",
-                "*.config.{js,ts,mjs,cjs}",
-                "**/*.config.{js,ts,mjs,cjs}",
+                '**/{vite,postcss,tailwind,eslint,jest,tsup,webpack,rollup}*.{js,ts,mjs,cjs}',
+                '*.config.{js,ts,mjs,cjs}',
+                '**/*.config.{js,ts,mjs,cjs}',
 
                 // Test support and styles are not application logic
-                "**/__tests__/**",
-                "app/testUtils.tsx",
-                "**/*.css",
+                '**/__tests__/**',
+                'app/testUtils.tsx',
+                '**/*.css',
 
                 // React router
-                ".react-router/**",
-                "app/entry.client.tsx",
-                "app/entry.server.tsx",
+                '.react-router/**',
+                'app/entry.client.tsx',
+                'app/entry.server.tsx',
 
                 // Build files
-                "build/**/",
-                "dist/**/",
+                'build/**/',
+                'dist/**/',
 
                 // App files without unit tests
-                "app/routes.tsx",
-                "app/routes/**/index.{ts,tsx}",
+                'app/routes.tsx',
+                'app/routes/**/index.{ts,tsx}',
 
                 // Type declarations & generated files
                 'out-tsc/**',
