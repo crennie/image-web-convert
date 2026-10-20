@@ -12,6 +12,18 @@ import { safeErrorSummary } from '@image-web-convert/observability';
 export function conversionRuntime(req: Request): ConversionRuntime {
     return req.app.locals.conversions;
 }
+export function conversionParam(req: Request, name: string): string {
+    const value = req.params[name];
+    if (
+        typeof value !== 'string' ||
+        !ConversionIdSchema.safeParse(value).success
+    )
+        throw new ConversionTransitionError(
+            'invalid_request',
+            'Invalid identifier',
+        );
+    return value;
+}
 export function sendConversionError(res: Response, error: unknown) {
     const storageIoFailure = isStorageIoFailure(error);
     if (storageIoFailure) res.req.app?.locals.onStorageFault?.(error);

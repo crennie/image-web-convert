@@ -7,7 +7,11 @@ import {
     ConversionTransitionError,
 } from '../services/conversions.service';
 import { receiveConversionUpload } from './conversion-upload.http';
-import { authorizeConversion, conversionRuntime } from './conversions.http';
+import {
+    authorizeConversion,
+    conversionParam,
+    conversionRuntime,
+} from './conversions.http';
 import { UPLOAD_TMP_DIR } from '../services/storage.paths';
 
 export async function create(req: Request, res: Response) {
@@ -22,11 +26,12 @@ export async function create(req: Request, res: Response) {
 export async function show(req: Request, res: Response) {
     if (!(await authorizeConversion(req, res))) return;
     const runtime = conversionRuntime(req);
-    const release = runtime.acquireSessionUse(req.params.sid);
+    const sid = conversionParam(req, 'sid');
+    const release = runtime.acquireSessionUse(sid);
     try {
         const record = await runtime.read(
-            req.params.sid,
-            req.params.operationId,
+            sid,
+            conversionParam(req, 'operationId'),
         );
         res.json(conversionSnapshot(record.operation));
     } finally {
@@ -36,8 +41,8 @@ export async function show(req: Request, res: Response) {
 export async function cancel(req: Request, res: Response) {
     if (!(await authorizeConversion(req, res))) return;
     const record = await conversionRuntime(req).cancel(
-        req.params.sid,
-        req.params.operationId,
+        conversionParam(req, 'sid'),
+        conversionParam(req, 'operationId'),
     );
     res.json(conversionSnapshot(record.operation));
 }
@@ -45,7 +50,9 @@ export async function upload(req: Request, res: Response) {
     const session = await authorizeConversion(req, res);
     if (!session) return;
     const runtime = conversionRuntime(req);
-    const { sid, operationId, fileId } = req.params;
+    const sid = conversionParam(req, 'sid');
+    const operationId = conversionParam(req, 'operationId');
+    const fileId = conversionParam(req, 'fileId');
     const record = await runtime.read(sid, operationId);
     const slot = record.operation.files.find((file) => file.id === fileId);
     if (!slot)

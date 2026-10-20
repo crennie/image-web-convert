@@ -2,7 +2,6 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import compression from 'compression';
-import hpp from 'hpp';
 import { rateLimit } from 'express-rate-limit';
 import { loadEnv } from './env.js';
 import {
@@ -73,8 +72,6 @@ export async function createApp(deps: AppDeps = {}): Promise<express.Express> {
             crossOriginResourcePolicy: { policy: 'same-site' },
         }),
     );
-
-    app.use(hpp());
 
     // 3) CORS (restrictive by default)
     app.use(

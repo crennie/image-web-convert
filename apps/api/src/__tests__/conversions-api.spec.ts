@@ -88,8 +88,10 @@ beforeEach(async () => {
     await runtime.start();
     const app = await createApp({ conversions: runtime });
     app.locals.setReady(true);
-    await new Promise<void>((resolve) => {
-        server = app.listen(0, '127.0.0.1', resolve);
+    await new Promise<void>((resolve, reject) => {
+        server = app.listen(0, '127.0.0.1', (error) =>
+            error ? reject(error) : resolve(),
+        );
     });
     const address = server.address();
     if (!address || typeof address === 'string')

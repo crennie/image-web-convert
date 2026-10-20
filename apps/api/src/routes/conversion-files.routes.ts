@@ -6,6 +6,7 @@ import {
 import {
     authorizeConversion,
     conversionHandler,
+    conversionParam,
     conversionRuntime,
 } from '../controllers/conversions.http';
 import { ConversionTransitionError } from '../services/conversions.service';
@@ -21,12 +22,24 @@ import {
 // File routes serve only outputs committed by the current conversion operation.
 const router: Router = Router({ mergeParams: true });
 router.post('/download', requireJson);
+// Validate decoded file segments before the shared authentication/read middleware.
+router.use('/:fileId', (req, res, next) => {
+    if (!ConversionIdSchema.safeParse(req.params.fileId).success) {
+        res.status(400).json({
+            type: 'invalid_request',
+            message: 'Invalid identifier',
+        });
+        return;
+    }
+    next();
+});
 router.use(
     conversionHandler(async (req, res, next) => {
         if (!(await authorizeConversion(req, res))) return;
         const runtime = conversionRuntime(req);
-        const record = await runtime.read(req.params.sid);
-        const release = runtime.acquireSessionUse(req.params.sid);
+        const sid = conversionParam(req, 'sid');
+        const record = await runtime.read(sid);
+        const release = runtime.acquireSessionUse(sid);
         res.once('close', release);
         res.once('finish', release);
         res.locals.conversionOperationId = record.operation.id;
@@ -48,7 +61,7 @@ async function committed(
     try {
         return (
             await conversionRuntime(req).completedOutput(
-                req.params.sid,
+                conversionParam(req, 'sid'),
                 oid,
                 id,
             )
@@ -68,7 +81,7 @@ operationRouter.get(
         const meta = await committed(
             req,
             res.locals.conversionOperationId,
-            req.params.fileId,
+            conversionParam(req, 'fileId'),
         );
         if (!meta)
             throw new ConversionTransitionError(
@@ -82,8 +95,8 @@ operationRouter.get(
     '/:fileId',
     conversionHandler(async (req, res) => {
         const { found } = await resolveFilesByIds(
-            req.params.sid,
-            [req.params.fileId],
+            conversionParam(req, 'sid'),
+            [conversionParam(req, 'fileId')],
             (_sid, id) => committed(req, res.locals.conversionOperationId, id),
         );
         if (!found.length)
@@ -125,7 +138,7 @@ operationRouter.post(
         }
         try {
             const { found, missing } = await resolveFilesByIds(
-                req.params.sid,
+                conversionParam(req, 'sid'),
                 parsed.data.ids,
                 (_sid, id) =>
                     committed(req, res.locals.conversionOperationId, id),
