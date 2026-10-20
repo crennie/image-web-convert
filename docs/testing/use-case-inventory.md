@@ -151,6 +151,8 @@ Each `given`, `when`, and `then` cell is an outcome at the product or API bounda
 | UC-062 | Person  | An active batch reaches its fixed session deadline       | The deadline arrives                                | The browser reports ended access and stops upload, cancellation, and download commands.                                      | C       | E76      | Focused | covered  |
 | UC-063 | Person  | A completed image's download fails                       | They retry the download                             | The result remains available and the browser retries the same download.                                                      | C       | E77, E78 | Focused | covered  |
 | UC-067 | Person  | An operation snapshot is shown                           | They view the active conversion screen              | The screen shows the server-provided session expiry in local time so completed images can be downloaded before the deadline. | D1, C   | E82      | Focused | covered  |
+| UC-095 | Person  | Batch creation is unresolved                             | They dismiss the browser reload warning             | The page retains the in-progress batch creation.                                                                             | C       | E177     | Direct  | covered  |
+| UC-096 | Person  | A completed image is shown on a narrow touch viewport    | They tap its status help                            | The explanation opens, is associated with its trigger, and fits the viewport.                                                | C       | E178     | Direct  | covered  |
 
 ### Response privacy
 
@@ -366,6 +368,8 @@ Each item names an exact test title and what its assertions establish. Browser i
 | E174 | In-process API             | `apps/api/src/__tests__/conversions-api.spec.ts` — `keeps authenticated responses private and authorizes conditional, HEAD, and range downloads` | JSON, image, archive, conditional, HEAD, range, denied, and expired responses retain private/no-store; auth precedes conditional access. |
 | E175 | In-process API             | `apps/api/src/__tests__/request-boundary.spec.ts` — `keeps private cache policy on errors and only permits the configured preflight origin`      | Parser errors carry private/no-store; only the configured origin can pass browser CORS checks.                                           |
 | E176 | Built SSR HTTP integration | `apps/web-e2e/src/e2e/ssr-error.spec.ts` — `built production SSR hides a rendering failure in an HTTP 500 document`                              | A built HTTP 500 page includes generic copy and CSP without exposing the private error path or token.                                    |
+| E177 | Mocked browser integration | `apps/web-e2e/src/integration/upload.spec.ts` — `reload dismissal keeps an unresolved creation`                                                  | The browser presents beforeunload; dismissal keeps the pending creation in all three engines.                                            |
+| E178 | Real browser E2E           | `apps/web-e2e/src/e2e/conversion.spec.ts` — `opens completed status help by tap and keeps it within the viewport`                                | Tap opens described status help inside a 375 × 667 viewport with real conversion in all three engines.                                   |
 
 ## Coverage limits
 

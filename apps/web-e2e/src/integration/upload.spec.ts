@@ -124,6 +124,15 @@ test('Back and Forward protect an unresolved batch creation', async ({
         name: 'Leave this conversion?',
     });
     await expect(warning).toBeVisible();
+    expect(await warning.evaluate((dialog) => dialog.matches(':modal'))).toBe(
+        true,
+    );
+    await expect(page.getByRole('link', { name: 'Home' })).not.toBeFocused();
+    expect(
+        await warning.evaluate((dialog) =>
+            dialog.contains(document.activeElement),
+        ),
+    ).toBe(true);
     const stay = warning.getByRole('button', { name: 'Stay on this batch' });
     await expect(stay).toBeFocused();
     await stay.click();
@@ -145,6 +154,39 @@ test('Back and Forward protect an unresolved batch creation', async ({
     await expect(page.getByRole('status')).not.toContainText(
         'Creating conversion batch',
     );
+});
+
+test('reload dismissal keeps an unresolved creation', async ({ page }) => {
+    let releaseCreation!: () => void;
+    const creationHeld = new Promise<void>(
+        (resolve) => (releaseCreation = resolve),
+    );
+    await page.route(
+        '**/api/sessions/e2e-session/conversions',
+        async (route) => {
+            await creationHeld;
+            await route
+                .fulfill({ status: 503, json: { type: 'unavailable' } })
+                .catch(() => undefined);
+        },
+    );
+    await chooseFiles(page, firstImage);
+    await page.getByRole('button', { name: 'Start conversion' }).click();
+    await expect(page.getByRole('status')).toContainText(
+        'Creating conversion batch',
+    );
+
+    const dismissed = page.waitForEvent('dialog').then(async (dialog) => {
+        expect(dialog.type()).toBe('beforeunload');
+        await dialog.dismiss();
+    });
+    await page.evaluate(() => window.location.reload());
+    await dismissed;
+    await expect(page.getByRole('status')).toContainText(
+        'Creating conversion batch',
+    );
+
+    releaseCreation();
 });
 
 test('multiple selected files remain pending', async ({ page }) => {
@@ -519,6 +561,15 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     expect(tooltipBox.y + tooltipBox.height).toBeLessThanOrEqual(667);
     await page.evaluate(() => window.dispatchEvent(new Event('scroll')));
     await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    expect(
+        await files.evaluate((button) => {
+            const list = document.getElementById(
+                button.getAttribute('aria-controls') ?? '',
+            );
+            return list && getComputedStyle(list).transitionDuration;
+        }),
+    ).toBe('0.3s');
     await files.click();
     await restart.press('Enter');
     const dialog = page.getByRole('dialog', { name: 'Leave these results?' });

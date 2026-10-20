@@ -881,6 +881,12 @@ On Node **24.22.0** and npm **11.19.1**, the focused `playwright test --config a
 
 The focused history, long-list and progressive-results Playwright commands each passed in **Chromium, Firefox, and WebKit (3/3 each)**. The modal Vitest file passed **2/2**. `npm run lint` and `npm run typecheck` passed **8/8 tasks each**; the use-case inventory remained **94/94 covered**. Remaining PF-16 work includes reload/close acceptance and dismissal, touch interaction, permitted-motion animation/scroll behavior, more native modal variations, and an actual screen-reader/mobile pass. No manual assistive-technology result is claimed. Local commit: `PF-16: cover history and narrow results`.
 
+## PF-16 unload, touch and motion checkpoint (2026-10-20)
+
+**Status: in progress.** Combined the remaining small browser checks for a dismissed reload during unresolved creation, native creation-dialog top-layer focus, permitted accordion transition duration, and a real-API completed-status tooltip opened by tap at a 375 × 667 touch-emulated viewport. The existing Back/Forward and progressive-results scenarios carry the modal and motion assertions. UC-095–096 and E177–178 map the new workflow evidence. No production code or dependency changed.
+
+Focused Playwright runs passed **3/3** each for reload dismissal, Back/Forward, progressive results, and touch help across Chromium, Firefox, and WebKit. Web-E2E lint and TypeScript checks passed; the inventory validates **96/96 covered**. An attempted accepted-reload assertion did not navigate reliably in Firefox under Playwright after the dialog was accepted, so it was removed rather than counted as passed. Accepted reload and tab close, native modal edge cases, resize/unmount tooltip cleanup, scroll during permitted animation, physical mobile interaction, and an actual screen-reader pass remain. The touch test emulates a touch viewport; it is not a physical device result. Local commit: `PF-16: cover unload and touch behavior`.
+
 ## Dated dependency inventory (2026-10-16)
 
 Registry metadata was queried with `npm outdated --package-lock-only --json`; full and `--omit=dev` audits used `npm audit --package-lock-only --ignore-scripts --json`. Audit exits were 1 because findings exist. Counts refer to affected package entries, including parent propagation, not unique CVEs or demonstrated exploits.

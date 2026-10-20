@@ -86,6 +86,33 @@ test('releases preview URLs after removal, reselection, and route exit', async (
         .toBe(1);
 });
 
+test.describe('touch viewport', () => {
+    test.use({ hasTouch: true, viewport: { width: 375, height: 667 } });
+
+    test('opens completed status help by tap and keeps it within the viewport', async ({
+        page,
+    }) => {
+        await submit(page, [await image('touch.png')]);
+        await expect(page.getByRole('status')).toContainText(
+            'Operation: completed',
+        );
+        await page.getByRole('button', { name: 'Files (1)' }).tap();
+        const help = page
+            .getByRole('listitem', { name: 'touch.png' })
+            .getByRole('button', { name: 'completed', exact: true });
+        await help.tap();
+        await expect(help).toHaveAttribute('aria-describedby', /.+/);
+        const tooltip = page.getByRole('tooltip');
+        await expect(tooltip).toBeVisible();
+        const bounds = await tooltip.boundingBox();
+        if (!bounds) throw new Error('Expected visible tooltip bounds');
+        expect(bounds.x).toBeGreaterThanOrEqual(0);
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(375);
+        expect(bounds.y).toBeGreaterThanOrEqual(0);
+        expect(bounds.y + bounds.height).toBeLessThanOrEqual(667);
+    });
+});
+
 test('converts the complete batch and downloads decoded images and ZIP contents', async ({
     page,
 }, info) => {
