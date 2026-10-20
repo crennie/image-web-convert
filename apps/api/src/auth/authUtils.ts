@@ -1,9 +1,9 @@
-import { secureId } from "@image-web-convert/node-shared";
-import crypto from "node:crypto";
+import { secureId } from '@image-web-convert/node-shared';
+import crypto from 'node:crypto';
 
 export function generateAccessToken(): { token: string; hash: string } {
-    const token = secureId(32, "hex")
-    const hash = crypto.createHash("sha256").update(token).digest("hex");
+    const token = secureId(32, 'hex');
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
     return { token, hash };
 }
 
@@ -14,7 +14,7 @@ export function extractBearerToken(authorization?: string): string | null {
 }
 
 export function hashAccessToken(token: string): string {
-    return crypto.createHash("sha256").update(token).digest("hex");
+    return crypto.createHash('sha256').update(token).digest('hex');
 }
 
 export function timingSafeEqHex(aHex: string, bHex: string): boolean {
@@ -23,8 +23,8 @@ export function timingSafeEqHex(aHex: string, bHex: string): boolean {
     if (!hexPattern.test(aHex) || !hexPattern.test(bHex)) return false;
     if (aHex.length % 2 !== 0 || bHex.length % 2 !== 0) return false;
 
-    const a = Buffer.from(aHex, "hex");
-    const b = Buffer.from(bHex, "hex");
+    const a = Buffer.from(aHex, 'hex');
+    const b = Buffer.from(bHex, 'hex');
     if (a.length !== b.length) return false;
     return crypto.timingSafeEqual(a, b);
 }

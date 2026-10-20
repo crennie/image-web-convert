@@ -1,4 +1,4 @@
-# ADR-001: Backend-owned asynchronous conversions
+# ADR-003: Backend-owned asynchronous conversions
 
 Status: Accepted
 Date: 2026-09-30
@@ -24,3 +24,5 @@ The API owns one immutable conversion operation per session: its manifest, optio
 - Put scheduling in the browser: avoids a server worker, but cannot reliably advance or recover work after a tab or network interruption.
 
 This ADR records the current implementation retrospectively. The original migration detail remains in [the asynchronous conversion plan](../../plans/asynchronous-conversions.md).
+
+The single-process storage constraint is recorded separately in [ADR-001](ADR-001-use-process-owned-filesystem-runtime.md).

@@ -10,7 +10,9 @@ describe('Spinner', () => {
 
     it('sets aria-label and sr-only text from the label prop', () => {
         render(<Spinner label="Converting images" />);
-        const status = screen.getByRole('status', { name: /converting images/i });
+        const status = screen.getByRole('status', {
+            name: /converting images/i,
+        });
         expect(status).toBeInTheDocument();
         // sr-only label should mirror the aria-label
         expect(screen.getByText(/converting images/i)).toBeInTheDocument();
@@ -20,7 +22,9 @@ describe('Spinner', () => {
         render(<Spinner />);
         const status = screen.getByRole('status', { name: /loading/i });
         // first child span is the spinning visual
-        const visual = status.querySelector('span:nth-child(1)') as HTMLSpanElement;
+        const visual = status.querySelector(
+            'span:nth-child(1)',
+        ) as HTMLSpanElement;
         expect(visual).toBeTruthy();
         const cls = visual.className;
         expect(cls).toMatch(/inline-block/);
@@ -34,12 +38,13 @@ describe('Spinner', () => {
     it('applies default size/color classes and merges custom className', () => {
         render(<Spinner className="size-8 text-blue-500 custom-x" />);
         const status = screen.getByRole('status', { name: /loading/i });
-        const visual = status.querySelector('span:nth-child(1)') as HTMLSpanElement;
+        const visual = status.querySelector(
+            'span:nth-child(1)',
+        ) as HTMLSpanElement;
         const cls = visual.className;
         // custom classes present
         expect(cls).toMatch(/size-8/);
         expect(cls).toMatch(/text-blue-500/);
         expect(cls).toMatch(/custom-x/);
     });
-
 });

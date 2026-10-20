@@ -21,28 +21,14 @@ export type ApiErrorSessionExpired = z.infer<
     typeof ApiErrorSessionExpiredSchema
 >;
 
-export const ApiUploadsErrorSessionUsedSchema = apiErrorSchema('session_used');
-export type ApiUploadsErrorSessionUsed = z.infer<
-    typeof ApiUploadsErrorSessionUsedSchema
->;
-
-export const ApiUploadsErrorInProgressSchema =
+export const ApiErrorUploadInProgressSchema =
     apiErrorSchema('upload_in_progress');
-export type ApiUploadsErrorInProgress = z.infer<
-    typeof ApiUploadsErrorInProgressSchema
+export type ApiErrorUploadInProgress = z.infer<
+    typeof ApiErrorUploadInProgressSchema
 >;
 
-export const ApiUploadsErrorMimeSchema = apiErrorSchema('invalid_output_mime');
-export type ApiUploadsErrorMime = z.infer<typeof ApiUploadsErrorMimeSchema>;
-
-export const ApiUploadsErrorMissingFilesSchema =
-    apiErrorSchema('missing_files');
-export type ApiUploadsErrorMissingFiles = z.infer<
-    typeof ApiUploadsErrorMissingFilesSchema
->;
-
-export const ApiUploadsErrorFilesSchema = apiErrorSchema('upload_error');
-export type ApiUploadsErrorFiles = z.infer<typeof ApiUploadsErrorFilesSchema>;
+export const ApiErrorUploadFilesSchema = apiErrorSchema('upload_error');
+export type ApiErrorUploadFiles = z.infer<typeof ApiErrorUploadFilesSchema>;
 
 export const ApiErrorInvalidRequestSchema = apiErrorSchema('invalid_request');
 export type ApiErrorInvalidRequest = z.infer<
@@ -51,12 +37,6 @@ export type ApiErrorInvalidRequest = z.infer<
 
 export const ApiErrorFileNotFoundSchema = apiErrorSchema('file_not_found');
 export type ApiErrorFileNotFound = z.infer<typeof ApiErrorFileNotFoundSchema>;
-
-export const ApiErrorSessionNotReadySchema =
-    apiErrorSchema('session_not_ready');
-export type ApiErrorSessionNotReady = z.infer<
-    typeof ApiErrorSessionNotReadySchema
->;
 
 export const ApiErrorUploadLimitExceededSchema = apiErrorSchema(
     'upload_limit_exceeded',
@@ -91,14 +71,10 @@ export const ApiErrorSchema = z.discriminatedUnion('type', [
     ApiErrorTokenSchema,
     ApiErrorSessionNotFoundSchema,
     ApiErrorSessionExpiredSchema,
-    ApiUploadsErrorSessionUsedSchema,
-    ApiUploadsErrorInProgressSchema,
-    ApiUploadsErrorMimeSchema,
-    ApiUploadsErrorMissingFilesSchema,
-    ApiUploadsErrorFilesSchema,
+    ApiErrorUploadInProgressSchema,
+    ApiErrorUploadFilesSchema,
     ApiErrorInvalidRequestSchema,
     ApiErrorFileNotFoundSchema,
-    ApiErrorSessionNotReadySchema,
     ApiErrorUploadLimitExceededSchema,
 ]);
 export type ApiError = z.infer<typeof ApiErrorSchema>;

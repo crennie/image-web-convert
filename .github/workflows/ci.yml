@@ -19,6 +19,7 @@ concurrency:
 jobs:
     main:
         runs-on: ubuntu-latest
+        # The measured warm run is about 6.5 minutes; allow cold install and browser setup.
         timeout-minutes: 25
 
         # CI + npm network behavior
@@ -32,13 +33,13 @@ jobs:
 
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
               with:
                   filter: tree:0
                   fetch-depth: 0
 
             # Cache npm downloads for the lockfile install.
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
               with:
                   node-version: 24.22.0
                   cache: 'npm'
@@ -46,11 +47,12 @@ jobs:
             - run: npm ci
             - run: npx playwright install --with-deps
             - run: npm run check:use-cases
+            - run: npm run format:check
 
             - run: npm run ci:hook
             - name: Retain browser test diagnostics
               if: failure()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: browser-test-diagnostics
                   path: |

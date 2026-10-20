@@ -40,36 +40,6 @@ export const UploadMetaSchema = z.object({
 export type UploadMeta = z.infer<typeof UploadMetaSchema>;
 export type ApiUploadMeta = UploadMeta;
 
-export const ApiUploadAcceptedSchema = z.object({
-    id: z.string().min(1),
-    url: z.string().min(1),
-    metaUrl: z.string().min(1),
-    meta: UploadMetaSchema,
-    clientId: z.string().optional(),
-});
-export type ApiUploadAccepted = z.infer<typeof ApiUploadAcceptedSchema>;
-
-export const ApiUploadRejectedSchema = z.object({
-    fileName: z.string(),
-    error: z.string(),
-    clientId: z.string().optional(),
-});
-export type ApiUploadRejected = z.infer<typeof ApiUploadRejectedSchema>;
-
-export const ApiUploadsResponseSchema = z.object({
-    status: z.enum(['ok', 'partial']),
-    accepted: z.array(ApiUploadAcceptedSchema),
-    rejected: z.array(ApiUploadRejectedSchema),
-});
-export type ApiUploadsResponse = z.infer<typeof ApiUploadsResponseSchema>;
-
-/** Decoded upload fields after multipart strings have been parsed. */
-export const ApiUploadsRequestSchema = z.object({
-    outputMime: OutputMimeTypeSchema,
-    clientIds: z.array(z.string()),
-});
-export type ApiUploadsRequest = z.infer<typeof ApiUploadsRequestSchema>;
-
 export const ApiDownloadFilesRequestSchema = z.object({
     ids: z
         .array(z.string().regex(/^[A-Za-z0-9_-]{1,128}$/))

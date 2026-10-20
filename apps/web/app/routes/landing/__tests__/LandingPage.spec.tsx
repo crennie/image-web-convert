@@ -10,12 +10,13 @@ const SettingsDisplay = {
     uploadedFileLifespan: '30 minutes',
 };
 
-// --- Mocks --- 
+// --- Mocks ---
 // Keep a stable mock reference so we can assert call counts
 const clearSessionMock = vi.fn();
 
 vi.mock('@image-web-convert/ui', async (importOriginal) => {
-    const actual = await importOriginal<typeof import("@image-web-convert/ui")>();
+    const actual =
+        await importOriginal<typeof import('@image-web-convert/ui')>();
 
     return {
         ...actual,
@@ -29,11 +30,15 @@ vi.mock('@image-web-convert/ui', async (importOriginal) => {
 
 // Helpers
 function renderPage() {
-    return renderPageWithDeps(<LandingPage SettingsDisplay={SettingsDisplay} />);
+    return renderPageWithDeps(
+        <LandingPage SettingsDisplay={SettingsDisplay} />,
+    );
 }
 
 function reRenderPage(component: RenderResult) {
-    return component.rerender(pageHtmlWithDeps(<LandingPage SettingsDisplay={SettingsDisplay} />));
+    return component.rerender(
+        pageHtmlWithDeps(<LandingPage SettingsDisplay={SettingsDisplay} />),
+    );
 }
 
 describe('LandingPage', () => {
@@ -46,20 +51,23 @@ describe('LandingPage', () => {
 
         // Title
         expect(
-            screen.getByRole('heading', { level: 1, name: /image web convert/i })
+            screen.getByRole('heading', {
+                level: 1,
+                name: /image web convert/i,
+            }),
         ).toBeInTheDocument();
 
         // Subtitle (not a heading level, just text)
         expect(
-            screen.getByText(/convert your images for web display/i)
+            screen.getByText(/convert your images for web display/i),
         ).toBeInTheDocument();
 
         // Description
         expect(
-            screen.getByText(/strip metadata, compress, resize, and reformat/i)
+            screen.getByText(/strip metadata, compress, resize, and reformat/i),
         ).toBeInTheDocument();
         expect(
-            screen.getByText(/web-ready visuals that boost page performance/i)
+            screen.getByText(/web-ready visuals that boost page performance/i),
         ).toBeInTheDocument();
     });
 
@@ -74,18 +82,21 @@ describe('LandingPage', () => {
         renderPage();
 
         expect(
-            screen.getByRole('heading', { level: 2, name: /conversion process/i })
+            screen.getByRole('heading', {
+                level: 2,
+                name: /conversion process/i,
+            }),
         ).toBeInTheDocument();
 
         // Step headings
         expect(
-            screen.getByRole('heading', { level: 3, name: /step 1/i })
+            screen.getByRole('heading', { level: 3, name: /step 1/i }),
         ).toBeInTheDocument();
         expect(
-            screen.getByRole('heading', { level: 3, name: /step 2/i })
+            screen.getByRole('heading', { level: 3, name: /step 2/i }),
         ).toBeInTheDocument();
         expect(
-            screen.getByRole('heading', { level: 3, name: /step 3/i })
+            screen.getByRole('heading', { level: 3, name: /step 3/i }),
         ).toBeInTheDocument();
     });
 
@@ -94,25 +105,30 @@ describe('LandingPage', () => {
 
         // Find the Step 1 container and search within it
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        const step1 = screen.getByRole('heading', { level: 3, name: /step 1/i }).parentElement!;
+        const step1 = screen.getByRole('heading', {
+            level: 3,
+            name: /step 1/i,
+        }).parentElement!;
         expect(step1).not.toBeNull();
         const step1Region = within(step1);
 
         // Supported extensions (rendered with commas and <em> tags inside)
         const supported = ['.jpeg', '.png', '.heic'];
-        supported.forEach(ext => {
-            expect(step1Region.getByText(ext, { exact: false })).toBeInTheDocument();
+        supported.forEach((ext) => {
+            expect(
+                step1Region.getByText(ext, { exact: false }),
+            ).toBeInTheDocument();
         });
 
         // Max file size text
         expect(
-            step1Region.getByText(/images cannot exceed/i)
+            step1Region.getByText(/images cannot exceed/i),
         ).toBeInTheDocument();
         expect(step1Region.getByText(/25mb/i)).toBeInTheDocument();
 
         // Max total size text
         expect(
-            step1Region.getByText(/sessions cannot upload more than/i)
+            step1Region.getByText(/sessions cannot upload more than/i),
         ).toBeInTheDocument();
         expect(step1Region.getByText(/100mb/i)).toBeInTheDocument();
     });
@@ -123,23 +139,43 @@ describe('LandingPage', () => {
         // Step 2 details
 
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        const step2 = screen.getByRole('heading', { level: 3, name: /step 2/i }).parentElement!;
+        const step2 = screen.getByRole('heading', {
+            level: 3,
+            name: /step 2/i,
+        }).parentElement!;
         expect(step2).not.toBeNull();
 
         const step2Region = within(step2);
-        expect(step2Region.getByText(/metadata is removed/i)).toBeInTheDocument();
-        expect(step2Region.getByText(/color profile is normalized/i)).toBeInTheDocument();
-        expect(step2Region.getByText(/converted into your chosen output/i)).toBeInTheDocument();
+        expect(
+            step2Region.getByText(/metadata is removed/i),
+        ).toBeInTheDocument();
+        expect(
+            step2Region.getByText(/color profile is normalized/i),
+        ).toBeInTheDocument();
+        expect(
+            step2Region.getByText(/converted into your chosen output/i),
+        ).toBeInTheDocument();
 
         // Step 3 details
 
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        const step3 = screen.getByRole('heading', { level: 3, name: /step 3/i }).parentElement!;
+        const step3 = screen.getByRole('heading', {
+            level: 3,
+            name: /step 3/i,
+        }).parentElement!;
         expect(step3).not.toBeNull();
 
         const step3Region = within(step3);
-        expect(step3Region.getByText(/downloads are only available during your active session/i)).toBeInTheDocument();
-        expect(step3Region.getByText(/removes temporary copies after your session expires and any active processing or downloads finish/i)).toBeInTheDocument();
+        expect(
+            step3Region.getByText(
+                /downloads are only available during your active session/i,
+            ),
+        ).toBeInTheDocument();
+        expect(
+            step3Region.getByText(
+                /removes temporary copies after your session expires and any active processing or downloads finish/i,
+            ),
+        ).toBeInTheDocument();
         expect(step3Region.queryByText(/30 minutes/i)).not.toBeInTheDocument();
     });
 
@@ -149,7 +185,10 @@ describe('LandingPage', () => {
         expect(clearSessionMock).toHaveBeenCalledTimes(1);
         // sanity check: page content still renders
         expect(
-            screen.getByRole('heading', { level: 1, name: /image web convert/i })
+            screen.getByRole('heading', {
+                level: 1,
+                name: /image web convert/i,
+            }),
         ).toBeInTheDocument();
     });
 
@@ -173,5 +212,4 @@ describe('LandingPage', () => {
 
         expect(clearSessionMock).toHaveBeenCalledTimes(2);
     });
-
 });

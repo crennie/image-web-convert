@@ -133,6 +133,7 @@ async function productionApi(
         corsOrigin?: string;
         uploadIdleMs?: number;
         uploadTotalMs?: number;
+        sweepIntervalMs?: number;
         shutdownGraceMs?: number;
         enableOtel?: boolean;
         otelSampler?: string;
@@ -1474,6 +1475,9 @@ it('does not serve sealed legacy sidecars after the read fallback is retired', a
 });
 
 it('rejects symlinked session and committed files at download entrypoints', async () => {
+    // A periodic sweep may intentionally fail readiness while a temporary
+    // symlink is present; keep this test focused on the download guards.
+    await productionApi({ sweepIntervalMs: 60_000 });
     const s = await session();
     const operation = await create(s, 1);
     expect((await upload(s, operation)).status).toBe(200);

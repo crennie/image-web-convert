@@ -164,6 +164,7 @@ export async function startApi(
         corsOrigin?: string;
         uploadIdleMs?: number;
         uploadTotalMs?: number;
+        sweepIntervalMs?: number;
         shutdownGraceMs?: number;
         enableOtel?: boolean;
         otelSampler?: string;
@@ -198,7 +199,7 @@ export async function startApi(
         CONVERSION_UPLOAD_IDLE_MS: String(options.uploadIdleMs ?? 60000),
         CONVERSION_UPLOAD_TOTAL_MS: String(options.uploadTotalMs ?? 300000),
         CONVERSION_FILE_TIMEOUT_MS: '120000',
-        CONVERSION_SWEEP_INTERVAL_MS: '100',
+        CONVERSION_SWEEP_INTERVAL_MS: String(options.sweepIntervalMs ?? 100),
         CONVERSION_SHUTDOWN_GRACE_MS: String(options.shutdownGraceMs ?? 10000),
         CONVERSION_MAX_INPUT_PIXELS: '200000000',
         CONVERSION_MAX_DIMENSION: '8192',

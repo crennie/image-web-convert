@@ -63,7 +63,9 @@ describe('secureId', () => {
         // float
         expect(() => secureId(1.5, 'hex')).toThrow(/bytes.*positive integer/i);
         // NaN
-        expect(() => secureId(Number.NaN, 'hex')).toThrow(/bytes.*positive integer/i);
+        expect(() => secureId(Number.NaN, 'hex')).toThrow(
+            /bytes.*positive integer/i,
+        );
     });
 });
 

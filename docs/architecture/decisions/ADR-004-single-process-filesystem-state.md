@@ -1,4 +1,4 @@
-# ADR-002: Single-process filesystem conversion state
+# ADR-004: Single-process filesystem conversion state
 
 Status: Accepted
 Date: 2026-09-30
@@ -24,3 +24,5 @@ One API process owns a storage root and an in-process scheduler. The API persist
 - Keep only temporary files and process memory: simpler persistence, but loses authoritative state and committed output recovery after restart.
 
 This ADR records the current implementation retrospectively. See [the data view](../static/data.md) for the persisted boundaries.
+
+The current runtime constraint and independent file publication are recorded in [ADR-001](ADR-001-use-process-owned-filesystem-runtime.md) and [ADR-002](ADR-002-commit-files-independently.md).

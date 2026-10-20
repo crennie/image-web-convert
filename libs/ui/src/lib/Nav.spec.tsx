@@ -5,7 +5,11 @@ import { MemoryRouter } from 'react-router';
 describe('Nav', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     function renderNav(props?: any) {
-        return render(<MemoryRouter initialEntries={['/']}><Nav {...props} /></MemoryRouter>);
+        return render(
+            <MemoryRouter initialEntries={['/']}>
+                <Nav {...props} />
+            </MemoryRouter>,
+        );
     }
     it('renders a navigation landmark', () => {
         renderNav();
@@ -34,7 +38,7 @@ describe('Nav', () => {
     });
 
     it('merges additional className onto the nav element', () => {
-        renderNav({ className: "custom-nav" });
+        renderNav({ className: 'custom-nav' });
         expect(screen.getByRole('navigation').className).toMatch(/custom-nav/);
     });
 });

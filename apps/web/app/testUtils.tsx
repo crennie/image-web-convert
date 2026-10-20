@@ -4,11 +4,11 @@ import { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
 
 export function pageHtmlWithDeps(children: ReactNode) {
-    return <MemoryRouter initialEntries={['/']} >
-        <SessionProvider>
-            {children}
-        </SessionProvider>
-    </MemoryRouter>
+    return (
+        <MemoryRouter initialEntries={['/']}>
+            <SessionProvider>{children}</SessionProvider>
+        </MemoryRouter>
+    );
 }
 
 export function renderPageWithDeps(children: ReactNode) {
