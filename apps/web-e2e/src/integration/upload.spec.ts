@@ -114,18 +114,37 @@ test('manifest rejection offers a new batch instead of retrying the rejected int
 test('Back and Forward protect an unresolved batch creation', async ({
     page,
 }) => {
-    await page.goto('/');
+    await chooseFiles(page, firstImage);
+    await expect(
+        page.getByText(firstImage.name, { exact: true }),
+    ).toBeVisible();
+    await page.getByRole('link', { name: 'Home' }).click();
+    await expect(page).toHaveURL('/');
     await page.getByRole('link', { name: 'Convert Files' }).click();
+    await expect(page).toHaveURL(/\/conversion$/);
     const releaseCreation = await holdCreation(page);
     await chooseFiles(page, firstImage);
     await page.getByRole('button', { name: 'Start conversion' }).click();
     await expect(page.getByRole('status')).toContainText(
         'Creating conversion batch',
     );
-    await page.evaluate(() => history.back());
     const warning = page.getByRole('dialog', {
         name: 'Leave this conversion?',
     });
+    await page.getByRole('link', { name: 'Home' }).click();
+    await expect(warning).toBeVisible();
+    await warning.getByRole('button', { name: 'Stay on this batch' }).click();
+    await expect(warning).toBeHidden();
+    await expect
+        .poll(() =>
+            page.evaluate(() => {
+                const unload = new Event('beforeunload', { cancelable: true });
+                window.dispatchEvent(unload);
+                return unload.defaultPrevented;
+            }),
+        )
+        .toBe(true);
+    await page.evaluate(() => history.back());
     await expect(warning).toBeVisible();
     expect(await warning.evaluate((dialog) => dialog.matches(':modal'))).toBe(
         true,
@@ -148,7 +167,10 @@ test('Back and Forward protect an unresolved batch creation', async ({
     await expect(warning).toBeVisible();
     await warning.getByRole('button', { name: 'Leave conversion' }).click();
     await expect(page).toHaveURL('/');
-    await page.evaluate(() => history.forward());
+    await expect(
+        page.getByRole('link', { name: 'Convert Files' }),
+    ).toBeVisible();
+    await page.goForward();
     await expect(page).toHaveURL(/\/conversion$/);
     await expect(
         page.getByRole('button', { name: 'Choose images' }),
@@ -642,8 +664,14 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     await restart.press('Enter');
     const dialog = page.getByRole('dialog', { name: 'Leave these results?' });
     await expect(dialog).toBeVisible();
+    expect(await dialog.evaluate((element) => element.matches(':modal'))).toBe(
+        true,
+    );
     const stay = dialog.getByRole('button', { name: 'Stay on this batch' });
     await expect(stay).toBeFocused();
+    await page.mouse.click(1, 1);
+    await expect(dialog).toBeVisible();
+    await stay.focus();
     await stay.press('Shift+Tab');
     await expect(
         dialog.getByRole('button', { name: 'Leave results' }),

@@ -450,4 +450,24 @@ test('successful long list keeps ZIP reachable on a narrow viewport', async ({
             () => document.documentElement.scrollWidth <= window.innerWidth,
         ),
     ).toBe(true);
+    await files.click();
+    await expect(last).toBeVisible();
+    await last.scrollIntoViewIfNeeded();
+    await expect
+        .poll(() => page.evaluate(() => window.scrollY))
+        .toBeGreaterThan(0);
+    await files.click();
+    await page.mouse.wheel(0, 600);
+    await expect(files).toHaveAttribute('aria-expanded', 'false');
+    await expect
+        .poll(async () => {
+            const box = await zip.boundingBox();
+            return !!box && box.y >= 0 && box.y + box.height <= 667;
+        })
+        .toBe(true);
+    expect(
+        await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+    ).toBe(true);
 });

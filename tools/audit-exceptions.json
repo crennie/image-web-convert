@@ -1,0 +1,29 @@
+{
+    "owner": "PF-17",
+    "reason": "Existing high advisories in development tooling only; production audit must remain clear. Review and retire these exceptions during PF-17 dependency hygiene.",
+    "expires": "2026-11-17",
+    "devHighAdvisories": [
+        "GHSA-fv7c-fp4j-7gwp",
+        "GHSA-vfj7-8cjw-p6xm",
+        "GHSA-v2hh-gcrm-f6hx",
+        "GHSA-7p8r-x3mc-p8w7",
+        "GHSA-q3j6-qgpj-74h6",
+        "GHSA-v39h-62p7-jpjc",
+        "GHSA-f65p-4m7j-42xc",
+        "GHSA-jqff-g426-hqxp",
+        "GHSA-4c8g-83qw-93j6",
+        "GHSA-qw65-cvwx-89v3",
+        "GHSA-52cp-r559-cp3m",
+        "GHSA-5p4m-2wfm-xmqj",
+        "GHSA-2883-xcg3-v3hh",
+        "GHSA-3ppc-4f35-3m26",
+        "GHSA-7r86-cg39-jmmj",
+        "GHSA-23c5-xmqv-rm74",
+        "GHSA-c2c7-rcm5-vvqj",
+        "GHSA-xpqw-6gx7-v673",
+        "GHSA-2p49-hgcm-8545",
+        "GHSA-w27v-7q3p-w38r",
+        "GHSA-rfgv-xxqx-mfg5",
+        "GHSA-w293-vg96-wgc3"
+    ]
+}

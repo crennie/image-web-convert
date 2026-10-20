@@ -371,6 +371,17 @@ configuration (`VITE_API_URL` unset); do not build these tests against an extern
 API URL.
 
 GitHub Actions and `npm run ci:hook` require real API E2E and both browser targets.
+The separate weekly dependency audit checks the lockfile without installing or
+running packages. Any high or critical production advisory fails the job. The
+full-tooling audit allows only the reviewed advisory IDs in
+`tools/audit-exceptions.json`; new, resolved, or expired exceptions fail. The
+current exception owner and review date are recorded there. Audit JSON stays in
+the runner's temporary directory and is not uploaded as an artifact. Dependabot
+checks npm, GitHub Actions, and the devcontainer's first Node base image weekly;
+major updates remain separate for review. A Node base-image update also needs
+the devcontainer version checks updated before its build can pass. Maintainers
+must review branch-protection and private security-reporting settings in GitHub;
+the repository cannot enable those settings by itself.
 On CI failure, the `browser-test-diagnostics` artifact retains HTML reports, failure screenshots,
 and server stdout/stderr logs for seven days. Local diagnostics are under
 `apps/web-e2e/test-output/{e2e,integration}` and
