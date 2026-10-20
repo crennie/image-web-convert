@@ -105,9 +105,9 @@ use `motion-safe:animate-spin`.
 
 **Automated evidence:** [status tests][status-tests] exercise upload/server label
 variants, server-state precedence, and focus/Escape help. The progressive-results
-case in [browser upload integration][browser-upload] verifies tooltip visibility
-and Escape dismissal in a real browser. This is not exhaustive testing of every
-hover, touch, positioning, timer or icon-color branch; see the gap checklist.
+case in [browser upload integration][browser-upload] verifies focus, Escape,
+hover departure, scroll dismissal and viewport bounds in real browsers. Touch,
+resize, timer and icon-color branches remain in the gap checklist.
 
 ### Navigation protection and modal lifecycle
 
@@ -141,8 +141,11 @@ dismissal action. There is no modal queue or global modal provider.
 [controller tests][controller-tests], [transport tests][transport-tests],
 [browser upload integration][browser-upload], and [real lifecycle tests][real-lifecycle].
 The browser restart test checks autofocus, wrapping in both directions, Escape,
-focus return, and confirmed restart. The original browser run found a Tab-wrap
-failure; explicit wrapping was added and that case passed on rerun.
+focus return, and confirmed restart. Browser history tests cover Back/Forward
+while creation is unresolved. [Generic modal component tests][modal-tests]
+cover absent, disabled, hidden and inert controls plus close/reopen/unmount;
+jsdom cannot establish native top-layer behavior. The original browser run found
+a Tab-wrap failure; explicit wrapping was added and that case passed on rerun.
 
 ### Counts and summaries
 
@@ -234,8 +237,8 @@ revisions and error outcomes; [count tests][counts-unit] verify terminal visibil
 [browser count scenarios][counts-browser] verify default expansion by outcome;
 [browser upload integration][browser-upload] verifies reopening, controls,
 focus transfer on automatic collapse, keyboard exclusion of hidden rows,
-reduced-motion accordion behavior, and layout. Tests do not yet measure
-animation duration or actual viewport proximity of ZIP after a long list collapses.
+reduced-motion accordion behavior, and layout. A 20-file browser case checks ZIP
+viewport proximity after collapse; animation duration remains unmeasured.
 
 ## Testing seams and what each level proves
 
@@ -329,11 +332,11 @@ replace CI logs. The following checks remain useful to close specific gaps:
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Cross-browser behavior            | Focused PF-16 cases now pass in all three engines; run the complete integration and real-API suites again for final release verification.                                                    |
 | New-control motion preferences    | Spinner and accordion reduced-motion behavior is now covered in all three browser engines. Retain it while adding broader mobile interaction checks.                                         |
-| Tooltip lifecycle                 | Focus, Escape, hover, mouse departure and description cleanup are covered in browser integration. Add click/touch, scroll/resize, viewport-edge placement and unmount cleanup tests.         |
-| Generic modal variations          | Test no focusable controls, disabled/hidden/inert controls, unmount while open and reuse beyond the current two-button confirmation dialog.                                                  |
+| Tooltip lifecycle                 | Focus, Escape, hover departure, scroll dismissal and narrow viewport placement are covered in browser integration. Add click/touch, resize and unmount cleanup checks.                       |
+| Generic modal variations          | Component tests cover absent, disabled, hidden and inert controls plus close/reopen/unmount. Native top-layer variations beyond the current confirmation dialog still need browser evidence. |
 | Automatic collapse focus transfer | Browser integration now focuses an image download during processing, then verifies toggle focus and keyboard exclusion of the collapsed row after completion in all three engines.           |
-| Long-list layout                  | Confirm ZIP is brought into view after successful collapse on a narrow viewport; check actual animation and scroll behavior.                                                                 |
-| Navigation variants               | Exercise browser Back/Forward, reload/close acceptance and dismissal, and departure while creation is unresolved. Current route tests primarily use links and callbacks.                     |
+| Long-list layout                  | A 20-file success case confirms ZIP is in the narrow viewport after collapse. Add permitted-motion animation and scroll behavior checks.                                                     |
+| Navigation variants               | Back/Forward stay/leave during unresolved creation is covered in all three engines. Reload/close acceptance and dismissal still need a browser/manual pass.                                  |
 | Screen-reader experience          | Verify announcements, tooltip descriptions and the second live region during download with an actual assistive technology.                                                                   |
 | Download feedback in the browser  | Real-API browser tests now hold image and ZIP responses, verify busy/disabled state and reduced-motion spinner, then check error recovery and a completed ZIP download in all three engines. |
 
@@ -353,6 +356,7 @@ extending the jsdom mock to pretend those behaviors work.
 [help]: ../../apps/web/app/components/StatusHelp.tsx
 [guard]: ../../apps/web/app/routes/conversion/components/BatchNavigationGuard.tsx
 [modal]: ../../apps/web/app/components/Modal.tsx
+[modal-tests]: ../../apps/web/app/components/Modal.spec.tsx
 [schemas]: ../../libs/schemas/src/lib/api/conversions.ts
 [status-tests]: ../../apps/web/app/routes/conversion/__tests__/ConversionOperationStatus.spec.tsx
 [panel-tests]: ../../apps/web/app/routes/conversion/__tests__/ConversionOperationPanel.spec.tsx

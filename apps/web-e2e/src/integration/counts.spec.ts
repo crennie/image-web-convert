@@ -354,3 +354,100 @@ for (const outcome of outcomes) {
             );
     });
 }
+
+test('successful long list keeps ZIP reachable on a narrow viewport', async ({
+    page,
+}) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    const total = 20;
+    let intent!: ApiCreateConversionRequest;
+    let revision = 0;
+    let uploads = 0;
+    let finish = false;
+    await page.route('**/api/sessions', (route) =>
+        route.fulfill({ json: session }),
+    );
+    await page.route('**/conversions', async (route) => {
+        intent = route.request().postDataJSON();
+        await route.fulfill({
+            status: 201,
+            json: operationSnapshot(
+                intent,
+                Array(total).fill('awaiting_upload'),
+                'awaiting_uploads',
+                ++revision,
+            ),
+        });
+    });
+    await page.route('**/conversions/counts-operation/files/*', (route) => {
+        uploads++;
+        return route.fulfill({
+            json: operationSnapshot(
+                intent,
+                Array(total).fill('awaiting_upload'),
+                'awaiting_uploads',
+                ++revision,
+            ),
+        });
+    });
+    await page.route('**/conversions/counts-operation', (route) =>
+        route.fulfill({
+            json: operationSnapshot(
+                intent,
+                finish
+                    ? Array(total).fill('completed')
+                    : uploads === total
+                      ? [...Array(total - 1).fill('uploaded'), 'completed']
+                      : Array(total).fill('awaiting_upload'),
+                finish
+                    ? 'completed'
+                    : uploads === total
+                      ? 'processing'
+                      : 'awaiting_uploads',
+                ++revision,
+            ),
+        }),
+    );
+    await page.goto('/conversion');
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Choose images' }).click();
+    await (
+        await chooser
+    ).setFiles(
+        Array.from({ length: total }, (_, index) => ({
+            ...firstImage,
+            name: `long-list-${index}.png`,
+        })),
+    );
+    await page.getByRole('button', { name: 'Start conversion' }).click();
+    await expect.poll(() => uploads).toBe(total);
+    const last = page.getByRole('listitem', {
+        name: `long-list-${total - 1}.png`,
+        exact: true,
+    });
+    const download = last.getByRole('button', {
+        name: 'Download result-19.webp',
+    });
+    await expect(download).toBeVisible();
+    await download.focus();
+    await expect(download).toBeFocused();
+    finish = true;
+    const files = page.getByRole('button', { name: `Files (${total})` });
+    await expect(files).toHaveAttribute('aria-expanded', 'false');
+    await expect(files).toBeFocused();
+    const zip = page.getByRole('button', {
+        name: 'Download completed images as ZIP',
+    });
+    await expect(zip).toBeEnabled();
+    await expect
+        .poll(async () => {
+            const box = await zip.boundingBox();
+            return !!box && box.y >= 0 && box.y + box.height <= 667;
+        })
+        .toBe(true);
+    expect(
+        await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+    ).toBe(true);
+});
