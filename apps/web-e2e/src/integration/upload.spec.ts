@@ -642,8 +642,14 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     await restart.press('Enter');
     const dialog = page.getByRole('dialog', { name: 'Leave these results?' });
     await expect(dialog).toBeVisible();
+    expect(await dialog.evaluate((element) => element.matches(':modal'))).toBe(
+        true,
+    );
     const stay = dialog.getByRole('button', { name: 'Stay on this batch' });
     await expect(stay).toBeFocused();
+    await page.mouse.click(1, 1);
+    await expect(dialog).toBeVisible();
+    await stay.focus();
     await stay.press('Shift+Tab');
     await expect(
         dialog.getByRole('button', { name: 'Leave results' }),
