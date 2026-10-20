@@ -387,6 +387,8 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     await expect(
         page.getByRole('button', { name: 'Cancel conversion' }),
     ).toBeEnabled();
+    await icon.focus();
+    await expect(icon).toBeFocused();
     finishBatch = true;
     await expect(page.getByRole('status')).toContainText(
         'Operation: completed',
@@ -401,6 +403,12 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     const restart = page.getByRole('button', { name: 'Start new batch' });
     await expect(zip).toBeEnabled();
     await expect(restart).toBeEnabled();
+    const files = page.getByRole('button', { name: /Files \(/ });
+    await expect(files).toHaveAttribute('aria-expanded', 'false');
+    await expect(files).toBeFocused();
+    await expect(icon).toBeHidden();
+    await files.press('Tab');
+    await expect(zip).toBeFocused();
     // Font loading and the final operation render can move both buttons.
     // Compare their settled positions while retaining the strict alignment limit.
     await expect
@@ -423,17 +431,31 @@ test('route creates a manifest, uploads slots, polls and downloads progressive r
     expect(restartBox.x + restartBox.width).toBeGreaterThan(
         panelBox.x + panelBox.width * 0.9,
     );
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await restart.focus();
-    const files = page.getByRole('button', { name: /Files \(/ });
-    await expect(files).toHaveAttribute('aria-expanded', 'false');
     await files.click();
     await expect(row).toBeVisible();
+    expect(
+        await files.evaluate((button) => {
+            const list = document.getElementById(
+                button.getAttribute('aria-controls') ?? '',
+            );
+            return list && getComputedStyle(list).transitionDuration;
+        }),
+    ).toBe('0s');
     const help = row.getByRole('button', { name: 'completed', exact: true });
     await help.scrollIntoViewIfNeeded();
     await help.focus();
     await expect(page.getByRole('tooltip')).toBeVisible();
     await help.press('Escape');
     await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await files.focus();
+    await help.hover();
+    await expect(help).toHaveAttribute('aria-describedby', /.+/);
+    await expect(page.getByRole('tooltip')).toBeVisible();
+    await files.hover();
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await expect(help).not.toHaveAttribute('aria-describedby', /.+/);
     await files.click();
     await restart.press('Enter');
     const dialog = page.getByRole('dialog', { name: 'Leave these results?' });

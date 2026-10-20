@@ -232,9 +232,10 @@ This distinction matters when designing additional error-discovery behavior.
 **Automated evidence:** [status tests][status-tests] cover close/reopen, stable
 revisions and error outcomes; [count tests][counts-unit] verify terminal visibility;
 [browser count scenarios][counts-browser] verify default expansion by outcome;
-[browser upload integration][browser-upload] verifies reopening, controls and
-layout. Tests do not yet measure animation duration or actual viewport proximity
-of ZIP after a long list collapses.
+[browser upload integration][browser-upload] verifies reopening, controls,
+focus transfer on automatic collapse, keyboard exclusion of hidden rows,
+reduced-motion accordion behavior, and layout. Tests do not yet measure
+animation duration or actual viewport proximity of ZIP after a long list collapses.
 
 ## Testing seams and what each level proves
 
@@ -324,17 +325,17 @@ These are historical results, not fresh execution claims for future revisions.
 This document was added afterward; it does not provide a coverage percentage or
 replace CI logs. The following checks remain useful to close specific gaps:
 
-| Gap                               | Required verification                                                                                                                                                                                                                  |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Cross-browser behavior            | Run both Playwright suites with Firefox/WebKit once their system libraries are available.                                                                                                                                              |
-| New-control motion preferences    | Exercise spinner and accordion with reduced motion enabled; assert no animation and preserved functionality. Existing particle tests do not cover these controls.                                                                      |
-| Tooltip lifecycle                 | Add hover-to-tooltip timing, mouse departure, blur, click/touch, scroll/resize, viewport-edge placement and cleanup tests.                                                                                                             |
-| Generic modal variations          | Test no focusable controls, disabled/hidden/inert controls, unmount while open and reuse beyond the current two-button confirmation dialog.                                                                                            |
-| Automatic collapse focus transfer | Focus a row control, deliver successful terminal snapshot, then assert toggle focus and absence of collapsed rows from keyboard navigation. Current tests verify collapsed visibility but do not directly assert this transfer branch. |
-| Long-list layout                  | Confirm ZIP is brought into view after successful collapse on a narrow viewport; check actual animation and scroll behavior.                                                                                                           |
-| Navigation variants               | Exercise browser Back/Forward, reload/close acceptance and dismissal, and departure while creation is unresolved. Current route tests primarily use links and callbacks.                                                               |
-| Screen-reader experience          | Verify announcements, tooltip descriptions and the second live region during download with an actual assistive technology.                                                                                                             |
-| Download feedback in the browser  | Add an intentionally held image/ZIP response and an error response; verify the selected spinner and disabled controls before resolving. Current spinner-lifetime assertions are component-level.                                       |
+| Gap                               | Required verification                                                                                                                                                                        |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cross-browser behavior            | Focused PF-16 cases now pass in all three engines; run the complete integration and real-API suites again for final release verification.                                                    |
+| New-control motion preferences    | Spinner and accordion reduced-motion behavior is now covered in all three browser engines. Retain it while adding broader mobile interaction checks.                                         |
+| Tooltip lifecycle                 | Focus, Escape, hover, mouse departure and description cleanup are covered in browser integration. Add click/touch, scroll/resize, viewport-edge placement and unmount cleanup tests.         |
+| Generic modal variations          | Test no focusable controls, disabled/hidden/inert controls, unmount while open and reuse beyond the current two-button confirmation dialog.                                                  |
+| Automatic collapse focus transfer | Browser integration now focuses an image download during processing, then verifies toggle focus and keyboard exclusion of the collapsed row after completion in all three engines.           |
+| Long-list layout                  | Confirm ZIP is brought into view after successful collapse on a narrow viewport; check actual animation and scroll behavior.                                                                 |
+| Navigation variants               | Exercise browser Back/Forward, reload/close acceptance and dismissal, and departure while creation is unresolved. Current route tests primarily use links and callbacks.                     |
+| Screen-reader experience          | Verify announcements, tooltip descriptions and the second live region during download with an actual assistive technology.                                                                   |
+| Download feedback in the browser  | Real-API browser tests now hold image and ZIP responses, verify busy/disabled state and reduced-motion spinner, then check error recovery and a completed ZIP download in all three engines. |
 
 For review, confirm that every changed contract above retains a test at the level
 where it can actually fail. In particular: keep snapshot counts schema-valid,
