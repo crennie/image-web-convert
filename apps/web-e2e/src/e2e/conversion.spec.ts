@@ -10,6 +10,82 @@ import {
     imageButton,
 } from '../support/conversion';
 
+test('releases preview URLs after removal, reselection, and route exit', async ({
+    page,
+}) => {
+    const events: { action: string; url: string }[] = [];
+    await page.exposeBinding(
+        'recordPreviewUrl',
+        (_source, action: string, url: string) => {
+            events.push({ action, url });
+        },
+    );
+    await page.addInitScript(() => {
+        const created = URL.createObjectURL.bind(URL);
+        const revoked = URL.revokeObjectURL.bind(URL);
+        const record = (action: string, url: string) => {
+            void (
+                window as typeof window & {
+                    recordPreviewUrl: (
+                        action: string,
+                        url: string,
+                    ) => Promise<void>;
+                }
+            ).recordPreviewUrl(action, url);
+        };
+        URL.createObjectURL = (object) => {
+            const url = created(object);
+            record('create', url);
+            return url;
+        };
+        URL.revokeObjectURL = (url) => {
+            record('revoke', url);
+            revoked(url);
+        };
+    });
+    await page.goto('/conversion');
+    const choose = async (name: string) => {
+        const chooser = page.waitForEvent('filechooser');
+        await page.getByRole('button', { name: 'Choose images' }).click();
+        await (await chooser).setFiles(await image(name));
+        await expect(
+            page.getByRole('button', { name: `Remove ${name}` }),
+        ).toBeVisible();
+    };
+    await choose('first.png');
+    await expect
+        .poll(() => events.filter((event) => event.action === 'create').length)
+        .toBe(1);
+    const first = events.find((event) => event.action === 'create')?.url;
+    expect(first).toBeDefined();
+    await page.getByRole('button', { name: 'Remove first.png' }).click();
+    await expect
+        .poll(
+            () =>
+                events.filter(
+                    (event) => event.url === first && event.action === 'revoke',
+                ).length,
+        )
+        .toBe(1);
+    await choose('second.png');
+    await expect
+        .poll(() => events.filter((event) => event.action === 'create').length)
+        .toBe(2);
+    const second = events.filter((event) => event.action === 'create')[1].url;
+    expect(second).not.toBe(first);
+    await page.getByRole('link', { name: 'Home' }).click();
+    await expect(page).toHaveURL('/');
+    await expect
+        .poll(
+            () =>
+                events.filter(
+                    (event) =>
+                        event.url === second && event.action === 'revoke',
+                ).length,
+        )
+        .toBe(1);
+});
+
 test('converts the complete batch and downloads decoded images and ZIP contents', async ({
     page,
 }, info) => {

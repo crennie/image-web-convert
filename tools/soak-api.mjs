@@ -8,6 +8,7 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import sharp from 'sharp';
 
 const root = path.resolve(import.meta.dirname, '..');
 const entry = path.join(root, 'apps/api/dist/main.js');
@@ -22,6 +23,18 @@ const fixture = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWMQCViAFTEMLQkAQz9BARED1cAAAAAASUVORK5CYII=',
     'base64',
 );
+// Exercise decoder and encoder allocation as well as the tiny request path.
+// A solid image keeps the upload small while still decoding 12 MP of pixels.
+const largeFixture = await sharp({
+    create: {
+        width: 4000,
+        height: 3000,
+        channels: 3,
+        background: '#356a9c',
+    },
+})
+    .png()
+    .toBuffer();
 const soakRoot = path.join(root, 'tmp/finalization-pf15');
 await fs.mkdir(soakRoot, { recursive: true });
 const directory = await fs.mkdtemp(path.join(soakRoot, 'run-'));
@@ -121,6 +134,8 @@ try {
         }
     }, 30_000);
     for (let round = 1; round <= rounds; round++) {
+        const input = round % 3 === 0 ? largeFixture : fixture;
+        const pixels = round % 3 === 0 ? 12_000_000 : 64;
         // Session issuance is intentionally limited to three per minute.
         let created;
         await waitFor(async () => {
@@ -152,7 +167,7 @@ try {
                         {
                             clientId: 'image',
                             name: 'image.png',
-                            sizeBytes: fixture.length,
+                            sizeBytes: input.length,
                         },
                     ],
                 }),
@@ -163,7 +178,7 @@ try {
         const form = new FormData();
         form.append(
             'file',
-            new Blob([fixture], { type: 'image/png' }),
+            new Blob([input], { type: 'image/png' }),
             'image.png',
         );
         await request(
@@ -175,7 +190,15 @@ try {
             },
             200,
         );
+        let conversionProbeMaxMs = 0;
         await waitFor(async () => {
+            const probeStart = performance.now();
+            const probe = await request('/readyz', undefined, 200);
+            await probe.body?.cancel();
+            conversionProbeMaxMs = Math.max(
+                conversionProbeMaxMs,
+                Math.round(performance.now() - probeStart),
+            );
             const response = await request(
                 `${base}/conversions/${operation.id}`,
                 { headers: auth },
@@ -223,7 +246,11 @@ try {
                 })),
         );
         await delay(200);
-        samples.push(await sample(round));
+        samples.push({
+            ...(await sample(round)),
+            pixels,
+            conversionProbeMaxMs,
+        });
         process.stdout.write(`${JSON.stringify(samples.at(-1))}\n`);
     }
     const first = samples[0];
@@ -232,8 +259,18 @@ try {
         throw new Error('Expired session data remained on disk');
     if (last.fds - first.fds > 12)
         throw new Error('File descriptors grew across expiry cycles');
-    if (last.rssKb - first.rssKb > 50 * 1024)
-        throw new Error('RSS grew by more than 50 MiB across expiry cycles');
+    // Native decoder caches can warm during the first large conversion. Compare
+    // like-sized cycles, while keeping a wider cold-to-warm safety tripwire.
+    const largeSamples = samples.filter((point) => point.pixels === 12_000_000);
+    if (last.rssKb - first.rssKb > 100 * 1024)
+        throw new Error('RSS grew by more than 100 MiB from cold start');
+    if (
+        largeSamples.length > 1 &&
+        largeSamples.at(-1).rssKb - largeSamples[0].rssKb > 50 * 1024
+    )
+        throw new Error(
+            'RSS grew by more than 50 MiB across large-image cycles',
+        );
     passed = true;
     process.stdout.write(
         `Soak passed: ${rounds} expiry cycles; log: ${path.join(directory, 'api.log')}\n`,
