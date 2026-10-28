@@ -4,7 +4,7 @@ ARG AGENT_BASE_IMAGE=local-agentic-dev/codex-agent:dev
 
 # Keep the first base image explicit so Dependabot can propose its updates.
 # Coordinate this pin with NODE_VERSION below and the devcontainer setup check.
-FROM node:26.12.1-trixie AS node-runtime
+FROM node:24.22.0-trixie AS node-runtime
 
 # Match browser revisions to the repository's locked Playwright version. Keep
 # downloads in a separate stage so source changes do not invalidate this cache.
