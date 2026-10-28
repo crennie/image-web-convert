@@ -8,14 +8,14 @@
         "@image-web-convert/schemas": "0.0.1",
         "archiver": "8.0.0",
         "compression": "1.8.2",
-        "cors": "2.8.5",
+        "cors": "2.8.6",
         "express": "5.3.0",
         "express-rate-limit": "8.7.1",
         "file-type": "21.3.4",
         "heic-convert": "2.1.0",
-        "helmet": "8.1.0",
+        "helmet": "8.3.0",
         "sharp": "0.35.5",
-        "zod": "4.1.11"
+        "zod": "4.6.7"
     },
     "nx": {
         "targets": {
