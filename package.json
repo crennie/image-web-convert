@@ -33,7 +33,7 @@
     "devDependencies": {
         "@babel/core": "^7.28.4",
         "@babel/preset-react": "^7.29.7",
-        "@eslint/js": "9.39.5",
+        "@eslint/js": "10.0.1",
         "@nx/devkit": "23.3.0",
         "@nx/eslint": "23.3.0",
         "@nx/eslint-plugin": "23.3.0",
