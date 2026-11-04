@@ -11,7 +11,7 @@ export type SessionImageConfig = z.infer<typeof SessionImageConfigSchema>;
 /** Browser fallback while the effective backend configuration is loading. */
 export const DEFAULT_SESSION_IMAGE_CONFIG: SessionImageConfig = {
     ttlMinutes: 15,
-    maxFiles: 20,
+    maxFiles: 100,
     maxBytesPerFile: 20_000_000,
     maxTotalBytes: 500_000_000,
 };

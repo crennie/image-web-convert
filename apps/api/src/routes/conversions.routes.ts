@@ -1,3 +1,4 @@
+import { loadEnv } from '../env';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import {
@@ -12,9 +13,10 @@ import { requireJson } from '../controllers/request.http';
 export default function createConversionsRouter(): Router {
     const router = Router({ mergeParams: true });
     // Separate from command limits: 500 ms polling is 120 requests/minute per UI.
+    const env = loadEnv();
     const polling = rateLimit({
-        windowMs: 60000,
-        max: 240,
+        windowMs: env.RATE_LIMIT_WINDOW_MS,
+        max: env.POLLING_RATE_LIMIT_MAX,
         standardHeaders: true,
         legacyHeaders: false,
         message: {

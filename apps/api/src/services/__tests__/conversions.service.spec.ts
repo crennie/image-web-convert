@@ -94,7 +94,7 @@ describe('conversion creation and snapshots', () => {
             ['file-1', 'client-1', '1.png'],
         ]);
         expect(operation.options.outputMime).toBe('image/webp');
-        expect(operation.limits.maxFiles).toBe(20);
+        expect(operation.limits.maxFiles).toBe(100);
         expect(operation.processingOptions.limitInputPixels).toBe(20_000_000);
         expect(operation).toMatchObject({
             revision: 0,

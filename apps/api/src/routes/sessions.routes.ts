@@ -1,19 +1,17 @@
 import { Router } from 'express';
 import { createSession } from '../controllers/sessions.controller';
 import rateLimit from 'express-rate-limit';
+import { loadEnv } from '../env';
 
-const sessionsRouter: Router = Router();
-
-// Stricter limiter only for POST /sessions - 3 sessions / minute
-// TODO: Configurable? What about for unit testing?
-const sessionLimiter = rateLimit({
-    windowMs: 60_000,
-    max: 3,
-    standardHeaders: true,
-    legacyHeaders: false,
-});
-
-// POST /sessions
-sessionsRouter.post('/', sessionLimiter, createSession);
-
-export default sessionsRouter;
+export default function createSessionsRouter(): Router {
+    const router = Router();
+    const env = loadEnv();
+    const sessionLimiter = rateLimit({
+        windowMs: env.RATE_LIMIT_WINDOW_MS,
+        max: env.SESSION_RATE_LIMIT_MAX,
+        standardHeaders: true,
+        legacyHeaders: false,
+    });
+    router.post('/', sessionLimiter, createSession);
+    return router;
+}

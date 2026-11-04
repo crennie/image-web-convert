@@ -174,15 +174,15 @@ it('rejects invalid selected files with reasons before creating a batch', () => 
     ).toHaveTextContent('large.png - Exceeds per-file size limit');
     choose(
         Array.from(
-            { length: 20 },
+            { length: 100 },
             (_, index) =>
                 new File(['abc'], `${index}.png`, { type: 'image/png' }),
         ),
     );
     expect(
         screen.getByRole('list', { name: 'Selection errors' }),
-    ).toHaveTextContent('You can add up to 20 files.');
-    expect(screen.getByText('20 files ready to upload.')).toBeInTheDocument();
+    ).toHaveTextContent('You can add up to 100 files.');
+    expect(screen.getByText('100 files ready to upload.')).toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalled();
 });
 it('keeps preview URLs stable and creates a fresh session only on a deliberate new batch', async () => {

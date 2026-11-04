@@ -1,3 +1,4 @@
+import { DEFAULT_SESSION_IMAGE_CONFIG } from '@image-web-convert/schemas';
 import {
     getSessionImageConfig,
     getConversionRuntimeConfig,
@@ -27,8 +28,8 @@ describe('API environment configuration', () => {
 
     it('loads explicit conversion resource bounds and deadline defaults', () => {
         expect(getConversionRuntimeConfig({})).toEqual({
-            maxOperations: 3,
-            maxUploads: 2,
+            maxOperations: 10,
+            maxUploads: 4,
             uploadIdleMs: 60000,
             uploadTotalMs: 300000,
             fileTimeoutMs: 120000,
@@ -63,6 +64,11 @@ describe('API environment configuration', () => {
     ])('rejects invalid conversion limit %s', (key, value) => {
         expect(() => loadEnv({ [key]: value })).toThrow('Invalid environment');
     });
+    it('keeps browser fallback limits aligned with backend defaults', () => {
+        expect(getSessionImageConfig({})).toEqual(DEFAULT_SESSION_IMAGE_CONFIG);
+        expect(getSessionImageConfig({}).maxFiles).toBe(100);
+    });
+
     it('loads backend-owned image limits', () => {
         expect(
             getSessionImageConfig({

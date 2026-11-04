@@ -191,11 +191,11 @@ the browser's local time.
 | Environment variable                        | Default     | Meaning                                                                                                        |
 | ------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------- |
 | `SESSION_TTL_MINUTES`                       | 15          | Fixed session lifetime                                                                                         |
-| `SESSION_MAX_FILES`                         | 20          | Files per manifest                                                                                             |
+| `SESSION_MAX_FILES`                         | 100         | Files per manifest                                                                                             |
 | `SESSION_PER_FILE_BYTES`                    | 20000000    | Bytes per file                                                                                                 |
 | `SESSION_MAX_TOTAL_BYTES`                   | 500000000   | Total declared bytes per manifest                                                                              |
-| `CONVERSION_MAX_OPERATIONS`                 | 3           | Concurrent nonterminal operations admitted                                                                     |
-| `CONVERSION_MAX_UPLOADS`                    | 2           | Concurrent upload transports across the process                                                                |
+| `CONVERSION_MAX_OPERATIONS`                 | 10          | Concurrent nonterminal operations admitted                                                                     |
+| `CONVERSION_MAX_UPLOADS`                    | 4           | Concurrent upload transports across the process                                                                |
 | `CONVERSION_UPLOAD_IDLE_MS`                 | 60000       | Upload inactivity deadline                                                                                     |
 | `CONVERSION_UPLOAD_TOTAL_MS`                | 300000      | Total upload deadline                                                                                          |
 | `CONVERSION_FILE_TIMEOUT_MS`                | 120000      | Cooperative per-file conversion deadline                                                                       |
@@ -203,13 +203,15 @@ the browser's local time.
 | `CONVERSION_SHUTDOWN_GRACE_MS`              | 10000       | Process shutdown grace period                                                                                  |
 | `CONVERSION_MAX_INPUT_PIXELS`               | 20000000    | Input pixel ceiling, including HEIC header preflight                                                           |
 | `CONVERSION_MAX_DIMENSION`                  | 8192        | Maximum output dimension                                                                                       |
-| `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS`   | 100 / 60000 | General request budget per IP                                                                                  |
+| `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS`   | 1000 / 60000 | General request budget per IP                                                                                  |
 | `TRUSTED_PROXY_IPS`                         | empty       | Comma-separated IP addresses of immediate trusted reverse proxies; forwarded IP headers are ignored by default |
 | `BODY_LIMIT_JSON` / `BODY_LIMIT_URLENCODED` | 2mb / 2mb   | Maximum parsed request body size; positive byte counts with optional `b`, `kb`, `mb`, or `gb` suffixes         |
 
-Session creation has a separate three-per-minute/IP limit. Operation status
-polling has a separate 240-per-minute/IP budget and does not consume the general
-command budget. Session creation does consume the general budget. Health and
+Session creation has a separate 60-per-minute/IP limit (`SESSION_RATE_LIMIT_MAX`).
+Operation status polling has a separate 1200-per-minute/IP budget
+(`POLLING_RATE_LIMIT_MAX`). Both use `RATE_LIMIT_WINDOW_MS`. Polling does not
+consume the general command budget. Session creation does consume the general
+budget. Health and
 readiness requests are exempt. All other requests use the general limiter before
 body parsing; a rejected request returns HTTP 429 with `Retry-After`. Configured
 cross-origin responses expose that header to browser code. CORS does not grant

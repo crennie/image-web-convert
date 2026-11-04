@@ -133,8 +133,23 @@ it('rejects before JSON parsing and retains CORS on general 429 responses', asyn
     expect(Number(denied.headers.get('retry-after'))).toBeGreaterThan(0);
 });
 
+it('allows repeated local batches beyond the old session limit by default', async () => {
+    await start();
+    for (let i = 0; i < 4; i++) {
+        const response = await fetch(base + '/api/sessions', {
+            method: 'POST',
+        });
+        expect(response.status).toBe(201);
+        expect(response.headers.get('ratelimit-limit')).toBe('60');
+    }
+});
+
 it('keeps session and status budgets separate from general commands', async () => {
-    await start({ RATE_LIMIT_MAX: '10' });
+    await start({
+        RATE_LIMIT_MAX: '10',
+        SESSION_RATE_LIMIT_MAX: '3',
+        POLLING_RATE_LIMIT_MAX: '240',
+    });
     for (let i = 0; i < 3; i++) {
         expect(
             (await fetch(base + '/api/sessions', { method: 'POST' })).status,
@@ -158,6 +173,8 @@ it.each([
     ['TRUSTED_PROXY_IPS', '127.0.0.1,example.com'],
     ['TRUSTED_PROXY_IPS', '127.0.0.1,'],
     ['RATE_LIMIT_MAX', '0'],
+    ['SESSION_RATE_LIMIT_MAX', '0'],
+    ['POLLING_RATE_LIMIT_MAX', '-1'],
     ['RATE_LIMIT_WINDOW_MS', '2147483648'],
 ])('rejects invalid admission setting %s=%s at startup', (key, value) => {
     expect(() => loadEnv({ [key]: value })).toThrow(key);
