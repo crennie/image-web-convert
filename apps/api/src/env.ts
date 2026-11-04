@@ -40,12 +40,14 @@ const EnvSchema = z.object({
         .positive()
         .max(2_147_483_647)
         .default(60_000),
-    RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
+    RATE_LIMIT_MAX: z.coerce.number().int().positive().default(1000),
+    SESSION_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(60),
+    POLLING_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(1200),
     // Only these immediate proxy peers may supply X-Forwarded-For.
     TRUSTED_PROXY_IPS: trustedProxyIps,
 
-    CONVERSION_MAX_OPERATIONS: z.coerce.number().int().positive().default(3),
-    CONVERSION_MAX_UPLOADS: z.coerce.number().int().positive().default(2),
+    CONVERSION_MAX_OPERATIONS: z.coerce.number().int().positive().default(10),
+    CONVERSION_MAX_UPLOADS: z.coerce.number().int().positive().default(4),
     CONVERSION_UPLOAD_IDLE_MS: z.coerce
         .number()
         .int()
@@ -84,7 +86,7 @@ const EnvSchema = z.object({
     CONVERSION_MAX_DIMENSION: z.coerce.number().int().positive().default(8192),
 
     SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(15),
-    SESSION_MAX_FILES: z.coerce.number().int().positive().default(20),
+    SESSION_MAX_FILES: z.coerce.number().int().positive().default(100),
     SESSION_PER_FILE_BYTES: z.coerce
         .number()
         .int()

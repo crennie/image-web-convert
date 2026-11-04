@@ -27,6 +27,7 @@ const initial = new Date('2026-09-09T12:00:00.000Z');
 const expiresAt = '2026-09-09T12:15:00.000Z';
 const config = {
     ...getConversionRuntimeConfig({}),
+    maxUploads: 2,
     sweepIntervalMs: 1000,
     shutdownGraceMs: 100,
 };

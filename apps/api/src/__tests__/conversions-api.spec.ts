@@ -70,6 +70,7 @@ beforeAll(async () => {
     };
 });
 beforeEach(async () => {
+    vi.stubEnv('POLLING_RATE_LIMIT_MAX', '240');
     await fs.mkdir(temp, { recursive: true });
     releases = [];
     sockets = [];
@@ -77,6 +78,8 @@ beforeEach(async () => {
     const { getConversionRuntimeConfig } = await import('../env');
     runtimeConfig = {
         ...getConversionRuntimeConfig({}),
+        maxOperations: 3,
+        maxUploads: 2,
         uploadIdleMs: 10_000,
         uploadTotalMs: 30_000,
         sweepIntervalMs: 100,
@@ -106,6 +109,7 @@ afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(temp, { recursive: true, force: true });
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
 });
 afterAll(async () => {
     await fs.rm(directory, { recursive: true, force: true });

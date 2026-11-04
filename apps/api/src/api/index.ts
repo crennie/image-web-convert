@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import sessionsRouter from '../routes/sessions.routes';
+import createSessionsRouter from '../routes/sessions.routes';
 
 import createConversionsRouter from '../routes/conversions.routes';
 import conversionFilesRouter from '../routes/conversion-files.routes';
@@ -10,7 +10,7 @@ import { sendConversionError } from '../controllers/conversions.http';
 export default function createApiRouter(): Router {
     const apiRouter: Router = Router();
 
-    apiRouter.use('/sessions', sessionsRouter);
+    apiRouter.use('/sessions', createSessionsRouter());
     // The retired synchronous /uploads route has no handler; it returns 404.
     apiRouter.use('/sessions/:sid', (req, res, next) => {
         if (!ConversionIdSchema.safeParse(req.params.sid).success)

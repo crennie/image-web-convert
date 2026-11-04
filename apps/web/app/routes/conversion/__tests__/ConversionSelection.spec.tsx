@@ -180,3 +180,22 @@ it('keeps keyboard focus predictable when dismissing middle and last errors', ()
         screen.queryByRole('button', { name: 'Clear all errors' }),
     ).not.toBeInTheDocument();
 });
+
+it('accepts a 100-file batch and rejects files beyond the default limit', () => {
+    const { container } = render(<Harness />);
+    const files = Array.from(
+        { length: 101 },
+        (_, index) =>
+            new File(['image'], `image-${index}.png`, { type: 'image/png' }),
+    );
+    choose(container, files);
+    expect(
+        screen.getByRole('button', { name: 'Remove image-99.png' }),
+    ).toBeInTheDocument();
+    expect(
+        screen.queryByRole('button', { name: 'Remove image-100.png' }),
+    ).not.toBeInTheDocument();
+    expect(
+        screen.getByRole('list', { name: 'Selection errors' }),
+    ).toHaveTextContent('image-100.png - You can add up to 100 files.');
+});
